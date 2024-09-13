@@ -21,7 +21,7 @@ use sui_sdk::{
     SUI_COIN_TYPE,
 };
 use sui_types::{
-    base_types::{SequenceNumber, SuiAddress},
+    base_types::{ObjectRef, SequenceNumber, SuiAddress},
     event::EventID,
     object::Owner,
     Identifier,
@@ -171,6 +171,17 @@ impl SuiReadClient {
             )
         })
         .await
+        // NOTE: This is a hack to filter out the Coin that is locked on testnet.
+        // Not to be used after this issue is solved.
+        .map(|iter| {
+            iter.filter(|coin| {
+                coin.coin_object_id
+                    != ObjectID::from_str(
+                        "0x00870e0e381500d55838a520961bb8c75afa0a442921a6d7f56bb14ad5850eff",
+                    )
+                    .expect("this is a valid ID")
+            })
+        })
     }
 
     /// Returns a vector of coins of provided `coin_type` whose total balance is at least `balance`.
@@ -216,6 +227,17 @@ impl SuiReadClient {
     /// Returns `true` iff the system uses SUI as the coin type.
     pub fn uses_sui_coin(&self) -> bool {
         self.coin_type == TypeTag::from_str(SUI_COIN_TYPE).expect("SUI should be a valid type")
+    }
+
+    /// Get the latest object reference given an [`ObjectID`].
+    pub async fn get_object_ref(&self, object_id: ObjectID) -> Result<ObjectRef, anyhow::Error> {
+        Ok(self
+            .sui_client
+            .read_api()
+            .get_object_with_options(object_id, SuiObjectDataOptions::new())
+            .await?
+            .into_object()?
+            .object_ref())
     }
 }
 
