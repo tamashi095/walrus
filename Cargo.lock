@@ -11903,7 +11903,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -11923,7 +11923,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-e2e-tests"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "tokio",
@@ -11938,7 +11938,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-event"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -11964,7 +11964,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-orchestrator"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aws-config",
  "aws-runtime",
@@ -11992,7 +11992,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-sdk"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "bcs",
  "fastcrypto 0.1.8 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -12015,7 +12015,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-service"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -12070,7 +12070,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-simtest"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -12094,7 +12094,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-stress"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -12115,7 +12115,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-sui"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "anyhow",
  "bcs",
@@ -12146,7 +12146,7 @@ dependencies = [
 
 [[package]]
 name = "walrus-test-utils"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "rand 0.8.5",
  "tempfile",
