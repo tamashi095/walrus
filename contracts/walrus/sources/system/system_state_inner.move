@@ -24,7 +24,7 @@ use walrus::{
 const MAX_MAX_EPOCHS_AHEAD: u32 = 1000;
 
 // Keep in sync with the same constant in `crates/walrus-sui/utils.rs`.
-const BYTES_PER_UNIT_SIZE: u64 = 1_024 * 1_024; // 1 MiB
+const BYTES_PER_UNIT_SIZE: u64 = 1_024;
 
 // Errors
 const EStorageExceeded: u64 = 1;
