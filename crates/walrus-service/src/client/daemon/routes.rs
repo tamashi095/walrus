@@ -31,6 +31,8 @@ use crate::{
     common::api::{self, BlobIdString},
 };
 
+/// The status endpoint, which always returns a 200 status when it is available.
+pub const STATUS_ENDPOINT: &str = "/status";
 /// OpenAPI documentation endpoint.
 pub const API_DOCS: &str = "/v1/api";
 /// The path to get the blob with the given blob ID.
@@ -170,6 +172,18 @@ pub(super) async fn store_blob_options() -> impl IntoResponse {
         (ACCESS_CONTROL_MAX_AGE, "86400"),
         (ACCESS_CONTROL_ALLOW_HEADERS, "*"),
     ]
+}
+
+#[tracing::instrument(level = Level::ERROR, skip_all)]
+#[utoipa::path(
+    get,
+    path = api::rewrite_route(STATUS_ENDPOINT),
+    responses(
+        (status = 200, description = "The service is running"),
+    ),
+)]
+pub(super) async fn status() -> Response {
+    "OK".into_response()
 }
 
 #[derive(Debug, Deserialize, IntoParams)]
