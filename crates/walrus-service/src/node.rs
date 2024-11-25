@@ -1151,7 +1151,7 @@ impl StorageNodeInner {
             .maybe_advance_event_cursor(event_index, cursor)?;
 
         let event_cursor_progress = &self.metrics.event_cursor_progress;
-        metrics::with_label!(event_cursor_progress, STATUS_PERSISTED).add(persisted);
+        metrics::with_label!(event_cursor_progress, STATUS_PERSISTED).set(persisted);
         metrics::with_label!(event_cursor_progress, STATUS_PENDING).set(pending);
 
         Ok(())
