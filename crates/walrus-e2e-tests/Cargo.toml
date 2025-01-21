@@ -6,6 +6,8 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lib]
+
 [dev-dependencies]
 anyhow.workspace = true
 prometheus.workspace = true

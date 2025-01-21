@@ -28,3 +28,5 @@ working_dir
 *.log
 venv/
 **/tmp
+.direnv
+result
