@@ -283,6 +283,15 @@ pub mod storage_node {
     contract_ident!(struct storage_node::StorageNodeCap);
     contract_ident!(fn storage_node::create_storage_node_info);
 }
+/// Module for tags corresponding to the Move module `metadata`.
+pub mod metadata {
+    use super::*;
+
+    contract_ident!(struct metadata::Metadata);
+    contract_ident!(fn metadata::new);
+    contract_ident!(fn metadata::insert_or_update);
+    contract_ident!(fn metadata::remove);
+}
 
 /// Module for tags corresponding to the Move module `blob`.
 pub mod blob {

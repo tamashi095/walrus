@@ -52,8 +52,11 @@ use crate::{
     contracts::{self, AssociatedContractStruct, TypeOriginMap},
     types::{
         move_structs::{
+            Blob,
+            BlobWithMetadata,
             EpochState,
             EventBlob,
+            Metadata,
             StakingInnerV1,
             StakingObjectForDeserialization,
             StakingPool,
@@ -172,6 +175,18 @@ pub trait ReadClient: Send + Sync {
         &self,
         node_ids: &[ObjectID],
     ) -> impl Future<Output = Result<Vec<StorageNode>>> + Send;
+
+    /// Returns the metadata associated with a blob object.
+    fn get_blob_metadata(
+        &self,
+        blob_id: ObjectID,
+    ) -> impl Future<Output = SuiClientResult<Option<Metadata>>> + Send;
+
+    /// Returns the blob object and its associated metadata.
+    fn get_blob_with_metadata(
+        &self,
+        blob_id: ObjectID,
+    ) -> impl Future<Output = SuiClientResult<BlobWithMetadata>> + Send;
 
     /// Returns the current epoch state.
     fn epoch_state(&self) -> impl Future<Output = SuiClientResult<EpochState>> + Send;
@@ -825,6 +840,31 @@ impl ReadClient for SuiReadClient {
             .into_iter()
             .map(|pool| pool.node_info)
             .collect())
+    }
+
+    async fn get_blob_metadata(&self, blob_id: ObjectID) -> SuiClientResult<Option<Metadata>> {
+        self.sui_client
+            .get_dynamic_field::<Vec<u8>, Metadata>(
+                blob_id,
+                TypeTag::Vector(Box::new(TypeTag::U8)),
+                b"metadata".to_vec(),
+            )
+            .await
+            .map(Some)
+            .or_else(|_| Ok(None))
+    }
+
+    async fn get_blob_with_metadata(&self, blob_id: ObjectID) -> SuiClientResult<BlobWithMetadata> {
+        let blob = self.sui_client.get_sui_object::<Blob>(blob_id).await?;
+        let metadata = self.get_blob_metadata(blob_id).await?;
+        Ok(BlobWithMetadata {
+            id: blob.id,
+            blob_id: blob.blob_id,
+            certified_epoch: blob.certified_epoch,
+            storage: blob.storage,
+            deletable: blob.deletable,
+            metadata,
+        })
     }
 
     async fn epoch_state(&self) -> SuiClientResult<EpochState> {

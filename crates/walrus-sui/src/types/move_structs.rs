@@ -3,7 +3,7 @@
 
 //! Walrus move type bindings. Replicates the move types in Rust.
 
-use std::{fmt::Display, num::NonZeroU16};
+use std::{collections::BTreeMap, fmt::Display, num::NonZeroU16};
 
 use fastcrypto::traits::ToFromBytes;
 use serde::{
@@ -104,6 +104,34 @@ fn object_id_schema() -> schema::Ref {
 
 impl AssociatedContractStruct for Blob {
     const CONTRACT_STRUCT: StructTag<'static> = contracts::blob::Blob;
+}
+
+/// The metadata struct for Blob objects.
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct Metadata {
+    /// The metadata key-value pairs.
+    pub metadata: BTreeMap<String, String>,
+}
+
+impl AssociatedContractStruct for Metadata {
+    const CONTRACT_STRUCT: StructTag<'static> = contracts::metadata::Metadata;
+}
+
+/// A blob with its metadata.
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+pub struct BlobWithMetadata {
+    /// The object ID of the blob.
+    pub id: ObjectID,
+    /// The blob ID.
+    pub blob_id: BlobId,
+    /// The epoch in which the blob was certified.
+    pub certified_epoch: Option<Epoch>,
+    /// The [`StorageResource`] used to store the blob.
+    pub storage: StorageResource,
+    /// Marks the blob as deletable.
+    pub deletable: bool,
+    /// The metadata associated with the blob.
+    pub metadata: Option<Metadata>,
 }
 
 /// Event blob attestation.

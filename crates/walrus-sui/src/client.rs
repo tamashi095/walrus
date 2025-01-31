@@ -45,8 +45,15 @@ use crate::{
     contracts,
     types::{
         move_errors::MoveExecutionError,
-        move_structs::{Authorized, EpochState, SharedBlob, StorageNode},
-        Blob,
+        move_structs::{
+            Authorized,
+            Blob,
+            BlobWithMetadata,
+            EpochState,
+            Metadata,
+            SharedBlob,
+            StorageNode,
+        },
         BlobEvent,
         Committee,
         ContractEvent,
@@ -737,6 +744,59 @@ impl SuiContractClient {
             .await
     }
 
+    /// Adds metadata to a blob object.
+    ///
+    /// Aborts if metadata already exists.
+    pub async fn add_blob_metadata(
+        &mut self,
+        blob_id: ObjectID,
+        metadata: Metadata,
+    ) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .add_blob_metadata(blob_id, metadata)
+            .await
+    }
+
+    /// Removes and returns the metadata from a blob object.
+    ///
+    /// Aborts if metadata does not exist.
+    pub async fn take_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
+        self.inner.lock().await.remove_blob_metadata(blob_id).await
+    }
+
+    /// Inserts or updates a key-value pair in the blob's metadata.
+    ///
+    /// If the key already exists, its value is updated. Aborts if metadata does not exist.
+    pub async fn insert_or_update_blob_metadata_pair(
+        &mut self,
+        blob_id: ObjectID,
+        key: String,
+        value: String,
+    ) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .insert_or_update_blob_metadata_pair(blob_id, key, value)
+            .await
+    }
+
+    /// Removes and returns a key-value pair from the blob's metadata.
+    ///
+    /// Aborts if metadata does not exist.
+    pub async fn remove_blob_metadata_key(
+        &mut self,
+        blob_id: ObjectID,
+        key: String,
+    ) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .remove_blob_metadata_key(blob_id, key)
+            .await
+    }
+
     /// Sends `n` WAL coins of `amount` to the specified `address`.
     #[cfg(any(test, feature = "test-utils"))]
     pub async fn multiple_pay_wal(
@@ -775,6 +835,65 @@ impl SuiContractClientInner {
             read_client,
             gas_budget,
         })
+    }
+
+    /// Adds metadata to a blob object.
+    ///
+    /// Aborts if metadata already exists.
+    pub async fn add_blob_metadata(
+        &mut self,
+        blob_id: ObjectID,
+        metadata: Metadata,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder.add_metadata(blob_id.into(), metadata).await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Removes and returns the metadata from a blob object.
+    ///
+    /// Aborts if metadata does not exist.
+    pub async fn remove_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder.take_metadata(blob_id.into()).await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Inserts or updates a key-value pair in the blob's metadata.
+    ///
+    /// If the key already exists, its value is updated. Aborts if metadata does not exist.
+    pub async fn insert_or_update_blob_metadata_pair(
+        &mut self,
+        blob_id: ObjectID,
+        key: String,
+        value: String,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .insert_or_update_metadata_pair(blob_id.into(), key, value)
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Removes and returns a key-value pair from the blob's metadata.
+    ///
+    /// Aborts if metadata does not exist.
+    pub async fn remove_blob_metadata_key(
+        &mut self,
+        blob_id: ObjectID,
+        key: String,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder.remove_metadata_pair(blob_id.into(), key).await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
     }
 
     /// Returns the contained [`SuiReadClient`].
@@ -1682,6 +1801,14 @@ impl ReadClient for SuiContractClient {
 
     async fn get_storage_nodes_by_ids(&self, node_ids: &[ObjectID]) -> Result<Vec<StorageNode>> {
         self.read_client.get_storage_nodes_by_ids(node_ids).await
+    }
+
+    async fn get_blob_metadata(&self, blob_id: ObjectID) -> SuiClientResult<Option<Metadata>> {
+        self.read_client.get_blob_metadata(blob_id).await
+    }
+
+    async fn get_blob_with_metadata(&self, blob_id: ObjectID) -> SuiClientResult<BlobWithMetadata> {
+        self.read_client.get_blob_with_metadata(blob_id).await
     }
 
     async fn epoch_state(&self) -> SuiClientResult<EpochState> {

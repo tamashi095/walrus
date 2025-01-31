@@ -42,7 +42,7 @@ use super::{
 use crate::{
     contracts::{self, FunctionTag},
     types::{
-        move_structs::{Authorized, WalExchange},
+        move_structs::{Authorized, Metadata, WalExchange},
         NetworkAddress,
         NodeMetadata,
         NodeRegistrationParams,
@@ -374,14 +374,62 @@ impl WalrusPtbBuilder {
         self.mark_arg_as_consumed(&blob_arg);
         Ok(())
     }
+
+    /// Adds a call to create a new instance of Metadata and returns the result [`Argument`].
+    pub async fn new_metadata(&mut self) -> SuiClientResult<Argument> {
+        let result_arg = self.walrus_move_call(contracts::metadata::new, vec![])?;
+        self.add_result_to_be_consumed(result_arg);
+        Ok(result_arg)
+    }
+
+    /// Adds a call to insert or update a key-value pair in a Metadata object.
+    pub async fn insert_or_update_metadata(
+        &mut self,
+        metadata: ArgumentOrOwnedObject,
+        key: String,
+        value: String,
+    ) -> SuiClientResult<()> {
+        let metadata_arg = self.argument_from_arg_or_obj(metadata).await?;
+        let key_arg = self.pt_builder.pure(key)?;
+        let value_arg = self.pt_builder.pure(value)?;
+        self.walrus_move_call(
+            contracts::metadata::insert_or_update,
+            vec![metadata_arg, key_arg, value_arg],
+        )?;
+        Ok(())
+    }
+
+    /// Adds a call to remove a key-value pair from a Metadata object and returns the
+    /// result [`Argument`].
+    pub async fn remove_metadata(
+        &mut self,
+        metadata: ArgumentOrOwnedObject,
+        key: String,
+    ) -> SuiClientResult<Argument> {
+        let metadata_arg = self.argument_from_arg_or_obj(metadata).await?;
+        let key_arg = self.pt_builder.pure(key)?;
+        let result_arg =
+            self.walrus_move_call(contracts::metadata::remove, vec![metadata_arg, key_arg])?;
+        self.add_result_to_be_consumed(result_arg);
+        Ok(result_arg)
+    }
+
     /// Adds a call to add metadata to a blob.
     pub async fn add_metadata(
         &mut self,
         blob_object: ArgumentOrOwnedObject,
-        metadata: ArgumentOrOwnedObject,
+        metadata: Metadata,
     ) -> SuiClientResult<()> {
+        // Create a new metadata object
+        let metadata_arg = self.new_metadata().await?;
+
+        // Iterate through the passed-in metadata and populate the move metadata
+        for (key, value) in metadata.metadata {
+            self.insert_or_update_metadata(metadata_arg.into(), key, value)
+                .await?;
+        }
+
         let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
-        let metadata_arg = self.argument_from_arg_or_obj(metadata).await?;
         self.walrus_move_call(contracts::blob::add_metadata, vec![blob_arg, metadata_arg])?;
         self.mark_arg_as_consumed(&metadata_arg);
         Ok(())
