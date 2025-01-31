@@ -374,6 +374,62 @@ impl WalrusPtbBuilder {
         self.mark_arg_as_consumed(&blob_arg);
         Ok(())
     }
+    /// Adds a call to add metadata to a blob.
+    pub async fn add_metadata(
+        &mut self,
+        blob_object: ArgumentOrOwnedObject,
+        metadata: ArgumentOrOwnedObject,
+    ) -> SuiClientResult<()> {
+        let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
+        let metadata_arg = self.argument_from_arg_or_obj(metadata).await?;
+        self.walrus_move_call(contracts::blob::add_metadata, vec![blob_arg, metadata_arg])?;
+        self.mark_arg_as_consumed(&metadata_arg);
+        Ok(())
+    }
+
+    /// Adds a call to take metadata from a blob and returns the result [`Argument`].
+    pub async fn take_metadata(
+        &mut self,
+        blob_object: ArgumentOrOwnedObject,
+    ) -> SuiClientResult<Argument> {
+        let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
+        let result_arg = self.walrus_move_call(contracts::blob::take_metadata, vec![blob_arg])?;
+        self.add_result_to_be_consumed(result_arg);
+        Ok(result_arg)
+    }
+
+    /// Adds a call to insert or update a metadata key-value pair in a blob.
+    pub async fn insert_or_update_metadata_pair(
+        &mut self,
+        blob_object: ArgumentOrOwnedObject,
+        key: String,
+        value: String,
+    ) -> SuiClientResult<()> {
+        let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
+        let key_arg = self.pt_builder.pure(key)?;
+        let value_arg = self.pt_builder.pure(value)?;
+        self.walrus_move_call(
+            contracts::blob::insert_or_update_metadata_pair,
+            vec![blob_arg, key_arg, value_arg],
+        )?;
+        Ok(())
+    }
+
+    /// Adds a call to remove a metadata key-value pair from a blob.
+    pub async fn remove_metadata_pair(
+        &mut self,
+        blob_object: ArgumentOrOwnedObject,
+        key: String,
+    ) -> SuiClientResult<Argument> {
+        let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
+        let key_arg = self.pt_builder.pure(key)?;
+        let result_arg = self.walrus_move_call(
+            contracts::blob::remove_metadata_pair,
+            vec![blob_arg, key_arg],
+        )?;
+        self.add_result_to_be_consumed(result_arg);
+        Ok(result_arg)
+    }
 
     /// Adds a call to create a new shared blob from the blob.
     pub async fn new_shared_blob(

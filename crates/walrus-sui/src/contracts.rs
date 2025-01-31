@@ -290,6 +290,10 @@ pub mod blob {
 
     contract_ident!(struct blob::Blob);
     contract_ident!(fn blob::burn);
+    contract_ident!(fn blob::add_metadata);
+    contract_ident!(fn blob::take_metadata);
+    contract_ident!(fn blob::insert_or_update_metadata_pair);
+    contract_ident!(fn blob::remove_metadata_pair);
 }
 
 /// Module for tags corresponding to the Move module `shared_blob`.
