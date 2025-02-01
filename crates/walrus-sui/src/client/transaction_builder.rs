@@ -14,6 +14,7 @@ use fastcrypto::traits::ToFromBytes;
 use sui_sdk::rpc_types::SuiObjectDataOptions;
 use sui_types::{
     base_types::{ObjectID, ObjectType, SuiAddress},
+    collection_types::Entry,
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, Command, ObjectArg, ProgrammableTransaction},
     Identifier,
@@ -234,6 +235,9 @@ impl WalrusPtbBuilder {
         function: FunctionTag<'_>,
         arguments: Vec<Argument>,
     ) -> SuiClientResult<Argument> {
+        tracing::info!("package_id: {:?}", package_id);
+        tracing::info!("function: {:?}", function);
+        tracing::info!("arguments: {:?}", arguments);
         Ok(self.pt_builder.programmable_move_call(
             package_id,
             Identifier::from_str(function.module)?,
@@ -424,11 +428,12 @@ impl WalrusPtbBuilder {
         let metadata_arg = self.new_metadata().await?;
 
         // Iterate through the passed-in metadata and populate the move metadata
-        for (key, value) in metadata.metadata {
-            self.insert_or_update_metadata(metadata_arg.into(), key, value)
+        for Entry { key, value } in metadata.metadata.contents {
+            self.insert_or_update_metadata(metadata_arg.into(), key.clone(), value.clone())
                 .await?;
+            // tracing::info!("key: {}, value: {}", key, value);
         }
-
+        // tracing::info!("metadata_arg: {:?}", metadata_arg);
         let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
         self.walrus_move_call(contracts::blob::add_metadata, vec![blob_arg, metadata_arg])?;
         self.mark_arg_as_consumed(&metadata_arg);
@@ -442,7 +447,6 @@ impl WalrusPtbBuilder {
     ) -> SuiClientResult<Argument> {
         let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
         let result_arg = self.walrus_move_call(contracts::blob::take_metadata, vec![blob_arg])?;
-        self.add_result_to_be_consumed(result_arg);
         Ok(result_arg)
     }
 
@@ -466,16 +470,15 @@ impl WalrusPtbBuilder {
     /// Adds a call to remove a metadata key-value pair from a blob.
     pub async fn remove_metadata_pair(
         &mut self,
-        blob_object: ArgumentOrOwnedObject,
+        blob_id: ObjectID,
         key: String,
     ) -> SuiClientResult<Argument> {
-        let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
+        let blob_arg = self.argument_from_arg_or_obj(blob_id.into()).await?;
         let key_arg = self.pt_builder.pure(key)?;
         let result_arg = self.walrus_move_call(
             contracts::blob::remove_metadata_pair,
             vec![blob_arg, key_arg],
         )?;
-        self.add_result_to_be_consumed(result_arg);
         Ok(result_arg)
     }
 

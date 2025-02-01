@@ -22,6 +22,7 @@ use sui_sdk::{
 };
 use sui_types::{
     base_types::SuiAddress,
+    collection_types::Entry,
     event::EventID,
     programmable_transaction_builder::ProgrammableTransactionBuilder,
     transaction::{Argument, ProgrammableTransaction, TransactionData, TransactionKind},
@@ -762,7 +763,7 @@ impl SuiContractClient {
     /// Removes and returns the metadata from a blob object.
     ///
     /// Aborts if metadata does not exist.
-    pub async fn take_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
+    pub async fn remove_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
         self.inner.lock().await.remove_blob_metadata(blob_id).await
     }
 
@@ -846,7 +847,14 @@ impl SuiContractClientInner {
         metadata: Metadata,
     ) -> SuiClientResult<()> {
         let mut pt_builder = self.transaction_builder()?;
-        pt_builder.add_metadata(blob_id.into(), metadata).await?;
+        pt_builder
+            .add_metadata(blob_id.into(), metadata.clone())
+            .await?;
+        for Entry { key, value } in metadata.metadata.contents {
+            pt_builder
+                .insert_or_update_metadata_pair(blob_id.into(), key.clone(), value.clone())
+                .await?;
+        }
         let (ptb, _) = pt_builder.finish().await?;
         self.sign_and_send_ptb(ptb).await?;
         Ok(())
@@ -890,9 +898,10 @@ impl SuiContractClientInner {
         key: String,
     ) -> SuiClientResult<()> {
         let mut pt_builder = self.transaction_builder()?;
-        pt_builder.remove_metadata_pair(blob_id.into(), key).await?;
+        pt_builder.remove_metadata_pair(blob_id, key).await?;
         let (ptb, _) = pt_builder.finish().await?;
         self.sign_and_send_ptb(ptb).await?;
+
         Ok(())
     }
 

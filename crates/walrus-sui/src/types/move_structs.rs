@@ -3,7 +3,7 @@
 
 //! Walrus move type bindings. Replicates the move types in Rust.
 
-use std::{collections::BTreeMap, fmt::Display, num::NonZeroU16};
+use std::{fmt::Display, num::NonZeroU16};
 
 use fastcrypto::traits::ToFromBytes;
 use serde::{
@@ -15,6 +15,7 @@ use serde::{
 };
 use sui_types::{
     base_types::{ObjectID, SuiAddress},
+    collection_types::{Entry, VecMap},
     messages_checkpoint::CheckpointSequenceNumber,
 };
 use utoipa::openapi::schema;
@@ -110,11 +111,35 @@ impl AssociatedContractStruct for Blob {
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct Metadata {
     /// The metadata key-value pairs.
-    pub metadata: BTreeMap<String, String>,
+    pub metadata: VecMap<String, String>,
+}
+
+impl Metadata {
+    /// Create a new metadata object with no key-value pairs.
+    pub fn new() -> Self {
+        Self {
+            metadata: VecMap { contents: vec![] },
+        }
+    }
+
+    /// Insert a key-value pair into the metadata.
+    pub fn insert(&mut self, key: String, value: String) {
+        if let Some(idx) = self.metadata.contents.iter().position(|e| e.key == key) {
+            self.metadata.contents[idx].value = value;
+        } else {
+            self.metadata.contents.push(Entry { key, value });
+        }
+    }
 }
 
 impl AssociatedContractStruct for Metadata {
     const CONTRACT_STRUCT: StructTag<'static> = contracts::metadata::Metadata;
+}
+
+impl Default for Metadata {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// A blob with its metadata.
