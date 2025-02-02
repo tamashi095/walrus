@@ -52,7 +52,7 @@ use walrus_service::{
 use walrus_sui::{
     client::{BlobPersistence, ExpirySelectionPolicy, PostStoreAction, ReadClient, SuiClientError},
     types::{
-        move_errors::{MoveExecutionError, RawMoveError},
+        move_errors::{BlobError, MoveExecutionError, RawMoveError},
         move_structs::{Metadata, SharedBlob},
         Blob,
         BlobEvent,
@@ -1272,14 +1272,45 @@ async fn test_blob_metadata() -> TestResult {
     assert!(matches!(
         result,
         Err(SuiClientError::TransactionExecutionError(
-            MoveExecutionError::OtherMoveModule(RawMoveError { .. })
-        ))
+            MoveExecutionError::OtherMoveModule(RawMoveError {
+                function,
+                module,
+                error_code,
+                ..
+            })
+        )) if function == *"get_idx" && module == *"vec_map" && error_code == 1
     ));
 
     // Test metadata operations on second blob
     let second_blob_id = blobs[1].id;
     let second_blob_key = "second_blob_key".to_string();
     let second_blob_value = "second_blob_value".to_string();
+
+    let result = client
+        .as_mut()
+        .sui_client_mut()
+        .insert_or_update_blob_metadata_pair(
+            second_blob_id,
+            second_blob_key.clone(),
+            second_blob_value.clone(),
+        )
+        .await;
+
+    tracing::info!("result: {:?}", result);
+    assert!(matches!(
+        result,
+        Err(SuiClientError::TransactionExecutionError(
+            MoveExecutionError::Blob(BlobError::EMissingMetadata(..))
+        ))
+    ));
+
+    // Add metadata to second blob and retry insert
+    client
+        .as_mut()
+        .sui_client_mut()
+        .add_blob_metadata(second_blob_id, Metadata::default())
+        .await
+        .expect("add_blob_metadata should succeed");
 
     client
         .as_mut()
@@ -1291,21 +1322,6 @@ async fn test_blob_metadata() -> TestResult {
         )
         .await
         .expect("insert_or_update_blob_metadata_pair should succeed");
-
-    let res = client
-        .as_ref()
-        .sui_client()
-        .get_blob_with_metadata(second_blob_id)
-        .await
-        .expect("get_blob_with_metadata should succeed");
-    let metadata = res.metadata.as_ref().expect("metadata should exist");
-    assert_eq!(
-        metadata
-            .metadata
-            .get(&second_blob_key)
-            .expect("key should exist"),
-        &second_blob_value
-    );
 
     // Test removing all metadata
     client
