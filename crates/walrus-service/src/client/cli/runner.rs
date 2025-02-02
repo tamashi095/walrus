@@ -322,7 +322,7 @@ impl ClientCommandRunner {
                 .print_output(self.json)
             }
 
-            CliCommands::GetBlobMetadata { blob_obj_id } => {
+            CliCommands::GetBlobMetadata { blob_obj_id, out } => {
                 let sui_read_client = get_sui_read_client_from_rpc_node_or_wallet(
                     &self.config?,
                     None,
@@ -331,10 +331,18 @@ impl ClientCommandRunner {
                 )
                 .await?;
                 let metadata = sui_read_client.get_blob_with_metadata(blob_obj_id).await?;
-                GetBlobMetadataOutput {
-                    metadata: Some(metadata),
+                if let Some(out_path) = out {
+                    let json_str = serde_json::to_string_pretty(&metadata)
+                        .context("failed to serialize metadata")?;
+                    std::fs::write(out_path, json_str)
+                        .context("failed to write metadata to json file")?;
+                    Ok(())
+                } else {
+                    GetBlobMetadataOutput {
+                        metadata: Some(metadata),
+                    }
+                    .print_output(self.json)
                 }
-                .print_output(self.json)
             }
 
             CliCommands::SetBlobMetadata {
@@ -352,8 +360,10 @@ impl ClientCommandRunner {
                     Ok(_) => {
                         if !self.json {
                             println!(
-                                "{} Successfully added metadata for blob object {}",
+                                "{} Successfully added metadata ({}: {}) for blob object {}",
                                 success(),
+                                key,
+                                value,
                                 blob_obj_id
                             );
                         }
@@ -374,8 +384,11 @@ impl ClientCommandRunner {
                                 .map(|_| {
                                     if !self.json {
                                         println!(
-                                            "{} Successfully updated metadata for blob object {}",
+                                            "{} Successfully updated metadata ({}: {}) \
+                                            for blob object {}",
                                             success(),
+                                            key,
+                                            value,
                                             blob_obj_id
                                         );
                                     }
@@ -386,6 +399,40 @@ impl ClientCommandRunner {
                         }
                     }
                 }
+            }
+
+            CliCommands::RemoveBlobMetadata { blob_obj_id } => {
+                let mut sui_client = self
+                    .config?
+                    .new_contract_client(self.wallet?, self.gas_budget)
+                    .await?;
+                sui_client.remove_blob_metadata(blob_obj_id).await?;
+                if !self.json {
+                    println!(
+                        "{} Successfully removed metadata for blob object {}",
+                        success(),
+                        blob_obj_id
+                    );
+                }
+                Ok(())
+            }
+
+            CliCommands::RemoveBlobMetadataPair { blob_obj_id, key } => {
+                let mut sui_client = self
+                    .config?
+                    .new_contract_client(self.wallet?, self.gas_budget)
+                    .await?;
+                sui_client
+                    .remove_blob_metadata_pair(blob_obj_id, key)
+                    .await?;
+                if !self.json {
+                    println!(
+                        "{} Successfully removed metadata for blob object {}",
+                        success(),
+                        blob_obj_id
+                    );
+                }
+                Ok(())
             }
         }
     }

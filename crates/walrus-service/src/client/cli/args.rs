@@ -454,11 +454,15 @@ pub enum CliCommands {
         /// The object ID of the blob to get the metadata of.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
+        /// If unset, prints the blob to stdout.
+        #[clap(long)]
+        #[serde(default, deserialize_with = "crate::utils::resolve_home_dir_option")]
+        out: Option<PathBuf>,
     },
     /// Set the metadata of a blob.
     SetBlobMetadata {
         /// The object ID of the blob to set the metadata of.
-        #[clap(long)]
+        #[clap(index = 1)]
         blob_obj_id: ObjectID,
         /// The key to set the metadata of.
         #[clap(long)]
@@ -466,6 +470,22 @@ pub enum CliCommands {
         /// The value to set the metadata of.
         #[clap(long)]
         value: String,
+    },
+    /// Remove the metadata from a blob.
+    RemoveBlobMetadata {
+        /// The object ID of the blob to remove the metadata from.
+        #[clap(index = 1)]
+        blob_obj_id: ObjectID,
+    },
+
+    /// Remove a key-value pair from a blob's metadata.
+    RemoveBlobMetadataPair {
+        /// The object ID of the blob.
+        #[clap(index = 1)]
+        blob_obj_id: ObjectID,
+        /// The key to remove from the blob's metadata.
+        #[clap(long)]
+        key: String,
     },
 }
 
