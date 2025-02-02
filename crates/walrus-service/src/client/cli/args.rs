@@ -452,7 +452,7 @@ pub enum CliCommands {
     /// Get the metadata of a blob.
     GetBlobMetadata {
         /// The object ID of the blob to get the metadata of.
-        #[clap(long)]
+        #[clap(index = 1)]
         blob_obj_id: ObjectID,
     },
     /// Set the metadata of a blob.
