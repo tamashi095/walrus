@@ -145,16 +145,8 @@ impl Default for Metadata {
 /// A blob with its metadata.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
 pub struct BlobWithMetadata {
-    /// The object ID of the blob.
-    pub id: ObjectID,
-    /// The blob ID.
-    pub blob_id: BlobId,
-    /// The epoch in which the blob was certified.
-    pub certified_epoch: Option<Epoch>,
-    /// The [`StorageResource`] used to store the blob.
-    pub storage: StorageResource,
-    /// Marks the blob as deletable.
-    pub deletable: bool,
+    /// The blob.
+    pub blob: Blob,
     /// The metadata associated with the blob.
     pub metadata: Option<Metadata>,
 }

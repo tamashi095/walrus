@@ -855,15 +855,9 @@ impl ReadClient for SuiReadClient {
     }
 
     async fn get_blob_with_metadata(&self, blob_id: ObjectID) -> SuiClientResult<BlobWithMetadata> {
-        let blob = self.sui_client.get_sui_object::<Blob>(blob_id).await?;
-        let metadata = self.get_blob_metadata(blob_id).await?;
         Ok(BlobWithMetadata {
-            id: blob.id,
-            blob_id: blob.blob_id,
-            certified_epoch: blob.certified_epoch,
-            storage: blob.storage,
-            deletable: blob.deletable,
-            metadata,
+            blob: self.sui_client.get_sui_object::<Blob>(blob_id).await?,
+            metadata: self.get_blob_metadata(blob_id).await?,
         })
     }
 

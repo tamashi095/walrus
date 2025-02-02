@@ -290,7 +290,6 @@ pub mod metadata {
     contract_ident!(struct metadata::Metadata);
     contract_ident!(fn metadata::new);
     contract_ident!(fn metadata::insert_or_update);
-    contract_ident!(fn metadata::remove);
 }
 
 /// Module for tags corresponding to the Move module `blob`.

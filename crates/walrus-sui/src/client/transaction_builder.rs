@@ -403,21 +403,6 @@ impl WalrusPtbBuilder {
         Ok(())
     }
 
-    /// Adds a call to remove a key-value pair from a Metadata object and returns the
-    /// result [`Argument`].
-    pub async fn remove_metadata(
-        &mut self,
-        metadata: ArgumentOrOwnedObject,
-        key: String,
-    ) -> SuiClientResult<Argument> {
-        let metadata_arg = self.argument_from_arg_or_obj(metadata).await?;
-        let key_arg = self.pt_builder.pure(key)?;
-        let result_arg =
-            self.walrus_move_call(contracts::metadata::remove, vec![metadata_arg, key_arg])?;
-        self.add_result_to_be_consumed(result_arg);
-        Ok(result_arg)
-    }
-
     /// Adds a call to add metadata to a blob.
     pub async fn add_metadata(
         &mut self,
@@ -431,9 +416,7 @@ impl WalrusPtbBuilder {
         for Entry { key, value } in metadata.metadata.contents {
             self.insert_or_update_metadata(metadata_arg.into(), key.clone(), value.clone())
                 .await?;
-            // tracing::info!("key: {}, value: {}", key, value);
         }
-        // tracing::info!("metadata_arg: {:?}", metadata_arg);
         let blob_arg = self.argument_from_arg_or_obj(blob_object).await?;
         self.walrus_move_call(contracts::blob::add_metadata, vec![blob_arg, metadata_arg])?;
         self.mark_arg_as_consumed(&metadata_arg);
