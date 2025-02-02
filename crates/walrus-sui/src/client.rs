@@ -747,7 +747,7 @@ impl SuiContractClient {
 
     /// Adds metadata to a blob object.
     ///
-    /// Aborts if metadata already exists.
+    /// If metadata already exists, an error is returned.
     pub async fn add_blob_metadata(
         &mut self,
         blob_id: ObjectID,
@@ -760,16 +760,17 @@ impl SuiContractClient {
             .await
     }
 
-    /// Removes and returns the metadata from a blob object.
+    /// Removes the metadata from a blob object.
     ///
-    /// Aborts if metadata does not exist.
+    /// If metadata does not exist, an error is returned.
     pub async fn remove_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
         self.inner.lock().await.remove_blob_metadata(blob_id).await
     }
 
     /// Inserts or updates a key-value pair in the blob's metadata.
     ///
-    /// If the key already exists, its value is updated. Aborts if metadata does not exist.
+    /// If the key already exists, its value is updated.
+    /// If metadata does not exist, an error is returned.
     pub async fn insert_or_update_blob_metadata_pair(
         &mut self,
         blob_id: ObjectID,
@@ -783,10 +784,10 @@ impl SuiContractClient {
             .await
     }
 
-    /// Removes and returns a key-value pair from the blob's metadata.
+    /// Removes a key-value pair from the blob's metadata.
     ///
-    /// Aborts if metadata does not exist.
-    pub async fn remove_blob_metadata_key(
+    /// If the key does not exist, an error is returned.
+    pub async fn remove_blob_metadata_pair(
         &mut self,
         blob_id: ObjectID,
         key: String,
@@ -794,7 +795,7 @@ impl SuiContractClient {
         self.inner
             .lock()
             .await
-            .remove_blob_metadata_key(blob_id, key)
+            .remove_blob_metadata_pair(blob_id, key)
             .await
     }
 
@@ -839,8 +840,6 @@ impl SuiContractClientInner {
     }
 
     /// Adds metadata to a blob object.
-    ///
-    /// Aborts if metadata already exists.
     pub async fn add_blob_metadata(
         &mut self,
         blob_id: ObjectID,
@@ -861,8 +860,6 @@ impl SuiContractClientInner {
     }
 
     /// Removes and returns the metadata from a blob object.
-    ///
-    /// Aborts if metadata does not exist.
     pub async fn remove_blob_metadata(&mut self, blob_id: ObjectID) -> SuiClientResult<()> {
         let mut pt_builder = self.transaction_builder()?;
         pt_builder.take_metadata(blob_id.into()).await?;
@@ -872,8 +869,6 @@ impl SuiContractClientInner {
     }
 
     /// Inserts or updates a key-value pair in the blob's metadata.
-    ///
-    /// If the key already exists, its value is updated. Aborts if metadata does not exist.
     pub async fn insert_or_update_blob_metadata_pair(
         &mut self,
         blob_id: ObjectID,
@@ -890,9 +885,7 @@ impl SuiContractClientInner {
     }
 
     /// Removes and returns a key-value pair from the blob's metadata.
-    ///
-    /// Aborts if metadata does not exist.
-    pub async fn remove_blob_metadata_key(
+    pub async fn remove_blob_metadata_pair(
         &mut self,
         blob_id: ObjectID,
         key: String,

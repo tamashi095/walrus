@@ -1191,7 +1191,7 @@ async fn test_blob_metadata() -> TestResult {
         client
             .as_mut()
             .sui_client_mut()
-            .remove_blob_metadata_key(blobs[0].id, key.clone())
+            .remove_blob_metadata_pair(blobs[0].id, key.clone())
             .await
             .expect("remove blob metadata key should succeed");
     }
@@ -1266,7 +1266,7 @@ async fn test_blob_metadata() -> TestResult {
     let result = client
         .as_mut()
         .sui_client_mut()
-        .remove_blob_metadata_key(blobs[0].id, non_existing_key)
+        .remove_blob_metadata_pair(blobs[0].id, non_existing_key)
         .await;
 
     assert!(matches!(
@@ -1286,6 +1286,7 @@ async fn test_blob_metadata() -> TestResult {
     let second_blob_key = "second_blob_key".to_string();
     let second_blob_value = "second_blob_value".to_string();
 
+    // Inserting key-value pair without adding metadata to the blob should fail.
     let result = client
         .as_mut()
         .sui_client_mut()
@@ -1296,7 +1297,20 @@ async fn test_blob_metadata() -> TestResult {
         )
         .await;
 
-    tracing::info!("result: {:?}", result);
+    assert!(matches!(
+        result,
+        Err(SuiClientError::TransactionExecutionError(
+            MoveExecutionError::Blob(BlobError::EMissingMetadata(..))
+        ))
+    ));
+
+    // Removing metadata from a blob that does not have any should fail.
+    let result = client
+        .as_mut()
+        .sui_client_mut()
+        .remove_blob_metadata(second_blob_id)
+        .await;
+
     assert!(matches!(
         result,
         Err(SuiClientError::TransactionExecutionError(
@@ -1323,7 +1337,7 @@ async fn test_blob_metadata() -> TestResult {
         .await
         .expect("insert_or_update_blob_metadata_pair should succeed");
 
-    // Test removing all metadata
+    // Test removing metadata from the blob
     client
         .as_mut()
         .sui_client_mut()
