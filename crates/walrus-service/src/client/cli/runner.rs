@@ -11,7 +11,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use chrono::{DateTime, Utc};
 use indicatif::MultiProgress;
 use itertools::Itertools as _;
@@ -34,9 +34,13 @@ use walrus_sui::{
         ExpirySelectionPolicy,
         PostStoreAction,
         ReadClient,
+        SuiClientError,
         SuiContractClient,
     },
-    types::move_structs::EpochState,
+    types::{
+        move_errors::{BlobError, MoveExecutionError},
+        move_structs::{EpochState, Metadata},
+    },
     utils::SuiNetwork,
 };
 
@@ -78,6 +82,7 @@ use crate::{
             ExchangeOutput,
             ExtendBlobOutput,
             FundSharedBlobOutput,
+            GetBlobMetadataOutput,
             InfoBftOutput,
             InfoCommitteeOutput,
             InfoEpochOutput,
@@ -315,6 +320,72 @@ impl ClientCommandRunner {
                     amount,
                 }
                 .print_output(self.json)
+            }
+
+            CliCommands::GetBlobMetadata { blob_obj_id } => {
+                let sui_read_client = get_sui_read_client_from_rpc_node_or_wallet(
+                    &self.config?,
+                    None,
+                    self.wallet,
+                    self.wallet_path.is_none(),
+                )
+                .await?;
+                let metadata = sui_read_client.get_blob_with_metadata(blob_obj_id).await?;
+                GetBlobMetadataOutput {
+                    metadata: Some(metadata),
+                }
+                .print_output(self.json)
+            }
+
+            CliCommands::SetBlobMetadata {
+                blob_obj_id,
+                key,
+                value,
+            } => {
+                let mut sui_client = self
+                    .config?
+                    .new_contract_client(self.wallet?, self.gas_budget)
+                    .await?;
+                let mut metadata = Metadata::new();
+                metadata.insert(key.clone(), value.clone());
+                match sui_client.add_blob_metadata(blob_obj_id, metadata).await {
+                    Ok(_) => {
+                        if !self.json {
+                            println!(
+                                "{} Successfully added metadata for blob object {}",
+                                success(),
+                                blob_obj_id
+                            );
+                        }
+                        Ok(())
+                    }
+                    Err(e) => {
+                        if let SuiClientError::TransactionExecutionError(
+                            MoveExecutionError::Blob(BlobError::EDuplicateMetadata(_)),
+                        ) = &e
+                        {
+                            sui_client
+                                .insert_or_update_blob_metadata_pair(
+                                    blob_obj_id,
+                                    key.clone(),
+                                    value.clone(),
+                                )
+                                .await
+                                .map(|_| {
+                                    if !self.json {
+                                        println!(
+                                            "{} Successfully updated metadata for blob object {}",
+                                            success(),
+                                            blob_obj_id
+                                        );
+                                    }
+                                })
+                                .map_err(|e| anyhow!("{:?}", e))
+                        } else {
+                            Err(anyhow!("{:?}", e))
+                        }
+                    }
+                }
             }
         }
     }

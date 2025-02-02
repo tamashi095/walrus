@@ -449,6 +449,24 @@ pub enum CliCommands {
         #[clap(long)]
         amount: Option<u64>,
     },
+    /// Get the metadata of a blob.
+    GetBlobMetadata {
+        /// The object ID of the blob to get the metadata of.
+        #[clap(long)]
+        blob_obj_id: ObjectID,
+    },
+    /// Set the metadata of a blob.
+    SetBlobMetadata {
+        /// The object ID of the blob to set the metadata of.
+        #[clap(long)]
+        blob_obj_id: ObjectID,
+        /// The key to set the metadata of.
+        #[clap(long)]
+        key: String,
+        /// The value to set the metadata of.
+        #[clap(long)]
+        value: String,
+    },
 }
 
 /// Subcommands for the `info` command.
