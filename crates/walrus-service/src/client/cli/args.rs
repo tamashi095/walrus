@@ -449,9 +449,9 @@ pub enum CliCommands {
         #[clap(long)]
         amount: Option<u64>,
     },
-    /// Get the metadata of a blob.
-    GetBlobMetadata {
-        /// The object ID of the blob to get the metadata of.
+    /// Get the attribute of a blob.
+    GetBlobAttribute {
+        /// The object ID of the blob to get the attribute of.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
         /// If unset, prints the blob to stdout.
@@ -459,31 +459,25 @@ pub enum CliCommands {
         #[serde(default, deserialize_with = "crate::utils::resolve_home_dir_option")]
         out: Option<PathBuf>,
     },
-    /// Set the metadata of a blob.
-    SetBlobMetadata {
-        /// The object ID of the blob to set the metadata of.
+    /// Set the attribute of a blob.
+    SetBlobAttribute {
+        /// The object ID of the blob to set the attribute of.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
-        /// The key to set the metadata of.
+        /// The key to set the attribute of.
         #[clap(long)]
         key: String,
-        /// The value to set the metadata of.
+        /// The value to set the attribute of.
         #[clap(long)]
         value: String,
     },
-    /// Remove the metadata from a blob.
-    RemoveBlobMetadata {
-        /// The object ID of the blob to remove the metadata from.
-        #[clap(index = 1)]
-        blob_obj_id: ObjectID,
-    },
 
-    /// Remove a key-value pair from a blob's metadata.
-    RemoveBlobMetadataPair {
+    /// Remove a key-value pair from a blob's attribute.
+    RemoveBlobAttribute {
         /// The object ID of the blob.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
-        /// The key to remove from the blob's metadata.
+        /// The key to remove from the blob's attribute.
         #[clap(long)]
         key: String,
     },
@@ -679,18 +673,21 @@ impl PublisherArgs {
 
     pub(crate) fn generate_auth_config(&mut self) -> Result<Option<AuthConfig>> {
         if self.jwt_decode_secret.is_some() || self.jwt_expiring_sec > 0 || self.jwt_verify_upload {
-            let mut config = self
-                .jwt_decode_secret
-                .take()
-                .map(AuthConfig::new)
-                .unwrap_or(Ok(AuthConfig::default()))?;
-            config.expiring_sec = self.jwt_expiring_sec;
-            config.verify_upload = self.jwt_verify_upload;
-            config.algorithm = self.jwt_algorithm;
-            tracing::info!("Auth config applied: {config:?}");
-            Ok(Some(config))
+            let mut auth_config = AuthConfig {
+                expiring_sec: self.jwt_expiring_sec,
+                verify_upload: self.jwt_verify_upload,
+                algorithm: self.jwt_algorithm,
+                ..Default::default()
+            };
+
+            if let Some(secret) = self.jwt_decode_secret.as_ref() {
+                auth_config.with_key_from_str(secret)?;
+            }
+
+            tracing::info!(config=?auth_config, "authentication config applied");
+            Ok(Some(auth_config))
         } else {
-            tracing::info!("Auth disabled");
+            tracing::info!("auth disabled");
             Ok(None)
         }
     }

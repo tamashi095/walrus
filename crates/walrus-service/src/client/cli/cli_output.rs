@@ -37,7 +37,7 @@ use crate::client::{
         ExchangeOutput,
         ExtendBlobOutput,
         FundSharedBlobOutput,
-        GetBlobMetadataOutput,
+        GetBlobAttributeOutput,
         InfoBftOutput,
         InfoCommitteeOutput,
         InfoEpochOutput,
@@ -1004,10 +1004,10 @@ fn add_node_health_to_table(table: &mut Table, node: &NodeHealthOutput, node_idx
     }
 }
 
-impl CliOutput for GetBlobMetadataOutput {
+impl CliOutput for GetBlobAttributeOutput {
     fn print_cli_output(&self) {
-        if let Some(blob_with_metadata) = &self.metadata {
-            let cert_epoch_str = blob_with_metadata
+        if let Some(blob_with_attribute) = &self.attribute {
+            let cert_epoch_str = blob_with_attribute
                 .blob
                 .certified_epoch
                 .map_or("".to_string(), |epoch| {
@@ -1026,23 +1026,23 @@ impl CliOutput for GetBlobMetadataOutput {
                 Storage expiry epoch: {end_epoch}
                 ",
                 heading = "Blob Information".bold().walrus_purple(),
-                blob_id = blob_with_metadata.blob.blob_id,
-                object_id = blob_with_metadata.blob.id,
-                size = HumanReadableBytes(blob_with_metadata.blob.size),
-                reg_epoch = blob_with_metadata.blob.registered_epoch,
-                deletable = blob_with_metadata.blob.deletable,
+                blob_id = blob_with_attribute.blob.blob_id,
+                object_id = blob_with_attribute.blob.id,
+                size = HumanReadableBytes(blob_with_attribute.blob.size),
+                reg_epoch = blob_with_attribute.blob.registered_epoch,
+                deletable = blob_with_attribute.blob.deletable,
                 cert_epoch = cert_epoch_str,
-                end_epoch = blob_with_metadata.blob.storage.end_epoch,
+                end_epoch = blob_with_attribute.blob.storage.end_epoch,
             );
 
-            if let Some(metadata) = &blob_with_metadata.metadata {
-                println!("\n{}", "Metadata".bold().walrus_purple());
-                for (key, value) in metadata.iter() {
+            if let Some(attribute) = &blob_with_attribute.attribute {
+                println!("\n{}", "Attribute".bold().walrus_purple());
+                for (key, value) in attribute.iter() {
                     println!("{}: {}", key, value);
                 }
             }
         } else {
-            println!("No metadata found");
+            println!("No attribute found");
         }
     }
 }

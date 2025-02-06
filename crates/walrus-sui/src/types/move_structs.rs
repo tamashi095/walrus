@@ -107,18 +107,39 @@ impl AssociatedContractStruct for Blob {
     const CONTRACT_STRUCT: StructTag<'static> = contracts::blob::Blob;
 }
 
-/// The metadata struct for Blob objects.
+/// The attribute struct for Blob objects.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct Metadata {
+pub struct BlobAttribute {
     /// The metadata key-value pairs.
     pub metadata: VecMap<String, String>,
 }
 
-impl Metadata {
-    /// Create a new metadata object with no key-value pairs.
-    pub fn new() -> Self {
+impl Default for BlobAttribute {
+    fn default() -> Self {
         Self {
             metadata: VecMap { contents: vec![] },
+        }
+    }
+}
+
+impl BlobAttribute {
+    /// Creates a new BlobAttribute from any collection of key-value pairs.
+    pub fn from<I, K, V>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<String>,
+    {
+        let contents = iter
+            .into_iter()
+            .map(|(key, value)| Entry {
+                key: key.into(),
+                value: value.into(),
+            })
+            .collect();
+
+        Self {
+            metadata: VecMap { contents },
         }
     }
 
@@ -131,62 +152,67 @@ impl Metadata {
         }
     }
 
-    /// Get a cloned copy of the value associated with a key. Returns `None` if
-    /// the key doesn't exist. Accepts any type that implements `AsRef<str>`.
-    pub fn get<Q: AsRef<str>>(&self, key: &Q) -> Option<String> {
+    /// Get a value from the metadata.
+    pub fn get<T: AsRef<str>>(&self, key: T) -> Option<&str> {
         self.metadata
             .contents
             .iter()
-            .find(|entry| entry.key == key.as_ref())
-            .map(|entry| entry.value.clone())
+            .find(|e| e.key == key.as_ref())
+            .map(|e| e.value.as_str())
     }
 
     /// Returns an iterator over the key-value pairs in the metadata.
-    pub fn iter(&self) -> MetadataIter<'_> {
+    pub fn iter(&self) -> MetadataIter {
         MetadataIter {
             inner: self.metadata.contents.iter(),
         }
     }
+
+    /// Returns the number of key-value pairs in the attribute.
+    pub fn len(&self) -> usize {
+        self.metadata.contents.len()
+    }
+
+    /// Returns `true` if the attribute is empty.
+    pub fn is_empty(&self) -> bool {
+        self.metadata.contents.is_empty()
+    }
 }
 
-/// Iterator struct for Metadata key-value pairs
+/// Iterator for BlobAttribute key-value pairs.
 #[derive(Debug)]
 pub struct MetadataIter<'a> {
-    /// The inner iterator.
     inner: std::slice::Iter<'a, Entry<String, String>>,
 }
 
 impl<'a> Iterator for MetadataIter<'a> {
-    type Item = (&'a str, &'a str);
+    type Item = (&'a String, &'a String);
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner
-            .next()
-            .map(|entry| (entry.key.as_str(), entry.value.as_str()))
-    }
-
-    fn size_hint(&self) -> (usize, Option<usize>) {
-        self.inner.size_hint()
+        self.inner.next().map(|entry| (&entry.key, &entry.value))
     }
 }
 
-impl AssociatedContractStruct for Metadata {
+impl<'a> IntoIterator for &'a BlobAttribute {
+    type Item = (&'a String, &'a String);
+    type IntoIter = MetadataIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl AssociatedContractStruct for BlobAttribute {
     const CONTRACT_STRUCT: StructTag<'static> = contracts::metadata::Metadata;
-}
-
-impl Default for Metadata {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 /// A blob with its metadata.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
-pub struct BlobWithMetadata {
+pub struct BlobWithAttribute {
     /// The blob.
     pub blob: Blob,
-    /// The metadata associated with the blob.
-    pub metadata: Option<Metadata>,
+    /// The attribute associated with the blob.
+    pub attribute: Option<BlobAttribute>,
 }
 
 /// Event blob attestation.
@@ -265,6 +291,21 @@ pub struct StorageNodeCap {
     pub deny_list_sequence_number: u64,
     /// The size of the deny list.
     pub deny_list_size: u64,
+}
+
+impl StorageNodeCap {
+    /// Creates a new `StorageNodeCap` for testing.
+    pub fn new_for_testing() -> Self {
+        Self {
+            id: ObjectID::random(),
+            node_id: ObjectID::random(),
+            last_epoch_sync_done: 1,
+            last_event_blob_attestation: None,
+            deny_list_root: [0; 32],
+            deny_list_sequence_number: 0,
+            deny_list_size: 0,
+        }
+    }
 }
 
 impl AssociatedContractStruct for StorageNodeCap {
