@@ -464,22 +464,42 @@ pub enum CliCommands {
         /// The object ID of the blob to set the attribute of.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
-        /// The key to set the attribute of.
-        #[clap(long)]
-        key: String,
-        /// The value to set the attribute of.
-        #[clap(long)]
-        value: String,
+        /// The key-value pairs to set as attributes, in the format "key=value".
+        /// Multiple pairs can be separated by spaces or commas.
+        #[clap(
+            long = "attrs",
+            num_args = 1..,
+            value_delimiter = ' ',
+            value_parser = parse_and_split_attrs
+        )]
+        attributes: Vec<(String, String)>,
     },
 
     /// Remove a key-value pair from a blob's attribute.
+    RemoveBlobAttributeFields {
+        /// The object ID of the blob.
+        #[clap(index = 1)]
+        blob_obj_id: ObjectID,
+        /// The keys to remove from the blob's attribute.
+        /// Multiple keys can be separated by spaces or commas.
+        /// Examples:
+        ///   --keys key1,key2 key3
+        ///   --keys "key1, key2" key3
+        ///   --keys key1 key2,key3
+        #[clap(
+            long,
+            num_args = 1..,
+            value_parser = parse_keys,
+            value_delimiter = ' '
+        )]
+        keys: Vec<String>,
+    },
+
+    /// Remove the attribute dynamic field from a blob.
     RemoveBlobAttribute {
         /// The object ID of the blob.
         #[clap(index = 1)]
         blob_obj_id: ObjectID,
-        /// The key to remove from the blob's attribute.
-        #[clap(long)]
-        key: String,
     },
 }
 
@@ -1266,4 +1286,30 @@ impl UserConfirmation {
     pub fn is_required(&self) -> bool {
         matches!(self, UserConfirmation::Required)
     }
+}
+
+fn parse_and_split_attrs(input: &str) -> Result<Vec<(String, String)>> {
+    // Split by both comma and space, then filter out empty strings
+    input
+        .split([',', ' '])
+        .filter(|s| !s.is_empty())
+        .map(|pair| {
+            let parts: Vec<&str> = pair.split('=').collect();
+            match parts.as_slice() {
+                [key, value] => Ok((key.to_string(), value.to_string())),
+                _ => Err(anyhow!(
+                    "Invalid key-value pair format. Expected 'key=value'"
+                )),
+            }
+        })
+        .collect()
+}
+
+fn parse_keys(input: &str) -> Result<Vec<String>> {
+    Ok(input
+        .split([',', ' '])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(String::from)
+        .collect())
 }

@@ -806,16 +806,31 @@ impl SuiContractClient {
         &mut self,
         blob_obj_id: ObjectID,
         pairs: I,
+        force: bool,
     ) -> SuiClientResult<()>
     where
         I: IntoIterator<Item = (T, T)>,
         T: Into<String>,
     {
-        self.inner
-            .lock()
+        let mut inner = self.inner.lock().await;
+        let pairs_clone: Vec<(String, String)> = pairs
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        match inner
+            .insert_or_update_blob_attribute_pairs(blob_obj_id, pairs_clone.clone())
             .await
-            .insert_or_update_blob_attribute_pairs(blob_obj_id, pairs)
-            .await
+        {
+            Ok(()) => Ok(()),
+            Err(SuiClientError::TransactionExecutionError(MoveExecutionError::Blob(
+                BlobError::EMissingMetadata(_),
+            ))) if force => {
+                inner
+                    .add_blob_attribute(blob_obj_id, &BlobAttribute::from(pairs_clone))
+                    .await
+            }
+            Err(e) => Err(e),
+        }
     }
 
     /// Removes key-value pairs from the blob's attribute.

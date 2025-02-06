@@ -343,37 +343,50 @@ impl ClientCommandRunner {
 
             CliCommands::SetBlobAttribute {
                 blob_obj_id,
-                key,
-                value,
+                attributes,
             } => {
                 let mut sui_client = self
                     .config?
                     .new_contract_client(self.wallet?, self.gas_budget)
                     .await?;
-                let attribute = BlobAttribute::from([(key.clone(), value.clone())]);
+                let attribute = BlobAttribute::from(attributes);
                 sui_client
                     .add_blob_attribute(blob_obj_id, attribute, true)
                     .await?;
                 if !self.json {
                     println!(
-                        "{} Successfully added attribute ({}: {}) for blob object {}",
+                        "{} Successfully added attribute for blob object {}",
                         success(),
-                        key,
-                        value,
                         blob_obj_id
                     );
                 }
                 Ok(())
             }
 
-            CliCommands::RemoveBlobAttribute { blob_obj_id, key } => {
+            CliCommands::RemoveBlobAttributeFields { blob_obj_id, keys } => {
                 let mut sui_client = self
                     .config?
                     .new_contract_client(self.wallet?, self.gas_budget)
                     .await?;
                 sui_client
-                    .remove_blob_attribute_pairs(blob_obj_id, [key])
+                    .remove_blob_attribute_pairs(blob_obj_id, keys)
                     .await?;
+                if !self.json {
+                    println!(
+                        "{} Successfully removed attribute for blob object {}",
+                        success(),
+                        blob_obj_id
+                    );
+                }
+                Ok(())
+            }
+
+            CliCommands::RemoveBlobAttribute { blob_obj_id } => {
+                let mut sui_client = self
+                    .config?
+                    .new_contract_client(self.wallet?, self.gas_budget)
+                    .await?;
+                sui_client.remove_blob_attribute(blob_obj_id).await?;
                 if !self.json {
                     println!(
                         "{} Successfully removed attribute for blob object {}",

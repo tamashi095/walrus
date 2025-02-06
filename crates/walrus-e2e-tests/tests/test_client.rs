@@ -1144,6 +1144,7 @@ impl<'a> BlobAttributeTestContext<'a> {
     pub async fn insert_or_update_attribute_pairs_and_verify(
         &mut self,
         kvs: &HashMap<String, String>,
+        force: bool,
     ) -> TestResult {
         let client = self.client.as_mut().sui_client_mut();
         client
@@ -1152,6 +1153,7 @@ impl<'a> BlobAttributeTestContext<'a> {
                 kvs.iter()
                     .map(|(k, v)| (k.to_string(), v.to_string()))
                     .collect::<Vec<(String, String)>>(),
+                force,
             )
             .await?;
         if let Some(expected_pairs) = &mut self.expected_pairs {
@@ -1308,10 +1310,10 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
 
     // Test adding a pair without attribute should fail.
     let result = test_context
-        .insert_or_update_attribute_pairs_and_verify(&HashMap::from([(
-            "key".to_string(),
-            "value".to_string(),
-        )]))
+        .insert_or_update_attribute_pairs_and_verify(
+            &HashMap::from([("key".to_string(), "value".to_string())]),
+            false,
+        )
         .await;
     assert!(matches!(
         result
@@ -1339,15 +1341,17 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
         ))
     ));
 
-    // Initialize empty attribute.
     test_context
-        .add_attribute_and_verify(BlobAttribute::default(), false)
+        .insert_or_update_attribute_pairs_and_verify(
+            &HashMap::from([("key".to_string(), "value".to_string())]),
+            true,
+        )
         .await?;
 
     let kvs = test_context.key_value_pairs.clone();
     // Test adding individual pairs.
     test_context
-        .insert_or_update_attribute_pairs_and_verify(&kvs)
+        .insert_or_update_attribute_pairs_and_verify(&kvs, false)
         .await?;
 
     // Test removing random pairs.
@@ -1366,16 +1370,16 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
     let updated_value = "updated_value".to_string();
 
     test_context
-        .insert_or_update_attribute_pairs_and_verify(&HashMap::from([(
-            key.clone(),
-            initial_value.clone(),
-        )]))
+        .insert_or_update_attribute_pairs_and_verify(
+            &HashMap::from([(key.clone(), initial_value.clone())]),
+            false,
+        )
         .await?;
     test_context
-        .insert_or_update_attribute_pairs_and_verify(&HashMap::from([(
-            key.clone(),
-            updated_value.clone(),
-        )]))
+        .insert_or_update_attribute_pairs_and_verify(
+            &HashMap::from([(key.clone(), updated_value.clone())]),
+            false,
+        )
         .await?;
 
     // Test removing non-existent pairs.
