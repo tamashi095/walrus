@@ -475,7 +475,6 @@ pub enum CliCommands {
         )]
         attributes: Vec<(String, String)>,
     },
-
     /// Remove a key-value pair from a blob's attribute.
     RemoveBlobAttributeFields {
         /// The object ID of the blob.
@@ -488,7 +487,6 @@ pub enum CliCommands {
         #[clap(long, value_delimiter = ',')]
         keys: Vec<String>,
     },
-
     /// Remove the attribute dynamic field from a blob.
     RemoveBlobAttribute {
         /// The object ID of the blob.

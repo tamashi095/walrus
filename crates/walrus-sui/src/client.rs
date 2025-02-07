@@ -801,7 +801,7 @@ impl SuiContractClient {
     /// Inserts or updates a key-value pairs in the blob's attribute.
     ///
     /// If the key already exists, its value is updated.
-    /// If attribute does not exist, an error is returned.
+    /// If attribute does not exist, an error is returned unless `force` is true.
     pub async fn insert_or_update_blob_attribute_pairs<I, T>(
         &mut self,
         blob_obj_id: ObjectID,

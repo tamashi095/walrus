@@ -1141,6 +1141,9 @@ impl<'a> BlobAttributeTestContext<'a> {
     }
 
     /// Insert or update the blob attribute and verify the result.
+    ///
+    /// When force is true, a new attribute dynamic field will be created if it
+    /// does not exist.
     pub async fn insert_or_update_attribute_pairs_and_verify(
         &mut self,
         kvs: &HashMap<String, String>,
