@@ -103,7 +103,8 @@ impl ProtocolParameters for ProtocolNodeParameters {}
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ProtocolClientParameters {
     target_load: u64,
-    blob_size: usize,
+    min_size_log2: usize,
+    max_size_log2: usize,
     metrics_port: u16,
 }
 
@@ -111,7 +112,8 @@ impl Default for ProtocolClientParameters {
     fn default() -> Self {
         Self {
             target_load: 2,
-            blob_size: 10_000,
+            min_size_log2: 10,
+            max_size_log2: 20,
             metrics_port: 9584,
         }
     }
@@ -279,7 +281,14 @@ impl ProtocolCommands for TargetProtocol {
                         "--sui-network {}",
                         parameters.node_parameters.sui_network.r#type()
                     ),
-                    format!("--blob-size {}", parameters.client_parameters.blob_size),
+                    format!(
+                        "--min_size_log2 {}",
+                        parameters.client_parameters.min_size_log2
+                    ),
+                    format!(
+                        "--max_size_log2 {}",
+                        parameters.client_parameters.max_size_log2
+                    ),
                 ]
                 .join(" ");
 
