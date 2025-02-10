@@ -149,6 +149,7 @@ pub mod dbtool;
 pub mod events;
 pub mod server;
 pub mod system_events;
+pub mod quilt;
 
 pub(crate) mod metrics;
 
