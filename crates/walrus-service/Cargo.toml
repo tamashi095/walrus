@@ -50,6 +50,7 @@ node = [
   "dep:tokio-util",
   "dep:typed-store",
 ]
+quilt = []
 test-utils = [
   "client",
   "dep:tempfile",
