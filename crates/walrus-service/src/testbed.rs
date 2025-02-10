@@ -349,7 +349,7 @@ pub async fn deploy_walrus_contract(
         println!("Admin wallet address:");
         println!("{}", admin_wallet.active_address()?);
         // Try to flush output
-        let _ = std::io::stdout().flush();
+        // let _ = std::io::stdout().flush();
 
         // Get coins from faucet for the wallet.
         let sui_client = admin_wallet.get_client().await?;

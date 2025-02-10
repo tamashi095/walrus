@@ -155,7 +155,7 @@ impl ProtocolCommands for TargetProtocol {
             host_addresses: ips.iter().map(|ip| ip.to_string()).collect(),
             rest_api_port: parameters.node_parameters.rest_api_port,
             storage_capacity: 1_000_000_000_000,
-            storage_price: 1,
+            storage_price: 0,
             write_price: 0,
             deterministic_keys: true,
             n_shards: NonZeroU16::new(
