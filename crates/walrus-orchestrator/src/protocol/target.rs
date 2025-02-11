@@ -9,7 +9,9 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
-use sui_keys::keystore::FileBasedKeystore;
+use sui_config::PersistedConfig;
+use sui_keys::keystore::{FileBasedKeystore, Keystore};
+use sui_sdk::sui_client_config::SuiClientConfig;
 use walrus_core::ShardIndex;
 use walrus_service::{
     node::config,
@@ -200,17 +202,40 @@ impl ProtocolCommands for TargetProtocol {
             testbed_config_path.display()
         );
 
-        // Upload the admin wallet
-        // let admin_keystore =
-        //     FileBasedKeystore::new(&parameters.node_parameters.admin_keystore_path)
-        //         .expect("Failed to load admin keystore");
-        // let serialized_admin_keystore =
-        //     serde_yaml::to_string(&admin_keystore).expect("Failed to serialized admin keystore");
-        // let admin_keystore_destination = parameters.settings.working_dir.join("sui.keystore");
-        // let upload_admin_keystore = format!(
-        //     "echo -e '{serialized_admin_keystore}' > {}",
-        //     admin_keystore_destination.display()
-        // );
+        // Generate command to upload the admin wallet
+        let mut admin_config: SuiClientConfig =
+            PersistedConfig::read(&parameters.node_parameters.admin_wallet_path)
+                .expect("Failed to read admin wallet");
+
+        match &mut admin_config.keystore {
+            Keystore::File(k) => {
+                k.set_path(&parameters.settings.working_dir.join("sui.keystore"));
+            }
+            _ => panic!("Expected a file-based keystore"),
+        };
+        let serialized_admin_config =
+            serde_yaml::to_string(&admin_config).expect("Failed to serialize admin wallet");
+        let upload_admin_config = format!(
+            "echo -e '{serialized_admin_config}' > {}",
+            parameters
+                .settings
+                .working_dir
+                .join("admin_wallet.yaml")
+                .display()
+        );
+
+        // Generate command to upload the admin keystore
+        let serialized_admin_keystore: String =
+            std::fs::read_to_string(&parameters.node_parameters.admin_keystore_path)
+                .expect("Failed to read admin keystore");
+        let upload_admin_keystore = format!(
+            "echo -e '{serialized_admin_keystore}' > {}",
+            parameters
+                .settings
+                .working_dir
+                .join("sui.keystore")
+                .display()
+        );
 
         // Generate a command to print all client and storage node configs on all instances.
         let generate_config_command = [
@@ -229,7 +254,8 @@ impl ProtocolCommands for TargetProtocol {
         [
             "source $HOME/.cargo/env",
             &upload_testbed_config_command,
-            // &upload_admin_keystore,
+            &upload_admin_config,
+            &upload_admin_keystore,
             &generate_config_command,
         ]
         .join(" && ")

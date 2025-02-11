@@ -14,12 +14,20 @@ use std::{
 };
 
 use anyhow::{anyhow, ensure, Context};
+use fastcrypto::{secp256k1::Secp256k1KeyPair, traits::KeyPair};
 use futures::future::join_all;
 use rand::{rngs::StdRng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_with::base64::Base64;
-use sui_sdk::wallet_context::WalletContext;
-use sui_types::base_types::ObjectID;
+use sui_keys::keystore::{AccountKeystore, FileBasedKeystore, Keystore};
+use sui_sdk::{
+    sui_client_config::{self, SuiClientConfig, SuiEnv},
+    wallet_context::WalletContext,
+};
+use sui_types::{
+    base_types::ObjectID,
+    crypto::{random_committee_key_pairs_of_size, SuiKeyPair},
+};
 use walrus_core::{
     keys::{NetworkKeyPair, ProtocolKeyPair},
     EpochCount,
@@ -524,6 +532,33 @@ pub async fn create_backup_config(
         },
         database_url.to_string(),
     ))
+}
+
+pub async fn create_deterministic_admin_wallets(
+    n: usize,
+    keystore_path: &PathBuf,
+) -> Result<Vec<SuiClientConfig>, anyhow::Error> {
+    let mut rng = StdRng::seed_from_u64(0);
+
+    let mut sui_client_configs = Vec::new();
+    for i in 0..n {
+        // Create a keystore
+        let keystore_path = keystore_path.join(format!("{i}-sui.keystore"));
+        let mut keystore =
+            FileBasedKeystore::new(&keystore_path).context("creating keystore failed")?;
+        let alias = Some("admin".to_string());
+        let keypair = Secp256k1KeyPair::generate(&mut rng);
+        keystore
+            .add_key(alias, SuiKeyPair::Secp256k1(keypair))
+            .context("adding key to keystore failed")?;
+
+        // Create a sui client config
+        let mut sui_client_config = SuiClientConfig::new(Keystore::File(keystore));
+        sui_client_config.add_env(SuiEnv::testnet());
+
+        sui_client_configs.push(sui_client_config)
+    }
+    Ok(sui_client_configs)
 }
 
 /// Create storage node configurations for the testbed.

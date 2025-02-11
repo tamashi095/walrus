@@ -118,6 +118,7 @@ serde_with.workspace = true
 serde_yaml.workspace = true
 snap.workspace = true
 sui-config.workspace = true
+sui-keys.workspace = true
 sui-macros.workspace = true
 sui-package-resolver.workspace = true
 sui-protocol-config.workspace = true

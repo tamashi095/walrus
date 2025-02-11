@@ -201,12 +201,14 @@ fn main() -> anyhow::Result<()> {
 mod commands {
     use config::NodeRegistrationParamsForThirdPartyRegistration;
     use itertools::Itertools as _;
+    use sui_sdk::sui_client_config;
     use testbed::ADMIN_CONFIG_PREFIX;
     use walrus_service::{
         client::cli::HumanReadableFrost,
         testbed::{
             create_backup_config,
             create_client_config,
+            create_deterministic_admin_wallets,
             create_storage_node_configs,
             deploy_walrus_contract,
             DeployTestbedContractParameters,
@@ -378,17 +380,16 @@ mod commands {
             tokio::time::sleep(cooldown.into()).await;
         }
 
+        // let sui_client_configs =
+        //     create_deterministic_admin_wallets(testbed_config.nodes.len(), &working_dir).await?;
+        // for config in &sui_client_configs {
+        //     let persisted_config = config.save();
+        // }
+
         let admin_wallet_path = admin_wallet_path.or(Some(
             working_dir.join(format!("{ADMIN_CONFIG_PREFIX}.yaml")),
         ));
-        let admin_wallet = match load_wallet(admin_wallet_path.clone()) {
-            Ok(wallet) => wallet,
-            Err(err) => {
-                tracing::warn!("Failed to load admin wallet: {err}");
-                tracing::info!("Creating a new admin wallet");
-                load_wallet(None).context("Failed to create a new admin wallet")?
-            }
-        };
+        let admin_wallet = load_wallet(admin_wallet_path).context("Failed to load admin wallet")?;
         let mut admin_contract_client = testbed_config
             .system_ctx
             .new_contract_client(admin_wallet, ExponentialBackoffConfig::default(), None)
