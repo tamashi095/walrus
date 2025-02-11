@@ -349,7 +349,7 @@ pub async fn deploy_walrus_contract(
         println!("Admin wallet address:");
         println!("{}", admin_wallet.active_address()?);
         // Try to flush output
-        // let _ = std::io::stdout().flush();
+        let _ = std::io::stdout().flush();
 
         // Get coins from faucet for the wallet.
         let sui_client = admin_wallet.get_client().await?;
@@ -458,12 +458,21 @@ pub async fn create_client_config(
     let client_address = client_wallet.active_address()?;
 
     // Get Sui coins from faucet or the admin wallet.
-    get_sui_from_wallet_or_faucet(
-        client_address,
-        admin_contract_client.wallet_mut(),
-        &sui_network,
+    if let Err(e) = tokio::time::timeout(
+        Duration::from_secs(2),
+        get_sui_from_wallet_or_faucet(
+            client_address,
+            admin_contract_client.wallet_mut(),
+            &sui_network,
+        ),
     )
-    .await?;
+    .await
+    {
+        tracing::warn!("Failed to get SUI from faucet: {}", e);
+        tracing::info!("Funding client wallet from admin wallet");
+        admin_contract_client.send_sui(100, client_address).await?;
+    }
+
     // Fund the client wallet with WAL.
     admin_contract_client
         .send_wal(

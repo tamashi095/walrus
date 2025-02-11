@@ -9,6 +9,7 @@ use std::{
 };
 
 use serde::{Deserialize, Serialize};
+use sui_keys::keystore::FileBasedKeystore;
 use walrus_core::ShardIndex;
 use walrus_service::{
     node::config,
@@ -56,6 +57,10 @@ pub struct ProtocolNodeParameters {
     metrics_port: u16,
     #[serde(default = "config::defaults::polling_interval")]
     event_polling_interval: Duration,
+    #[serde(default = "default_node_parameters::admin_wallet_path")]
+    admin_wallet_path: PathBuf,
+    #[serde(default = "default_node_parameters::admin_keystore_path")]
+    admin_keystore_path: PathBuf,
 }
 
 impl Default for ProtocolNodeParameters {
@@ -67,6 +72,8 @@ impl Default for ProtocolNodeParameters {
             rest_api_port: config::defaults::rest_api_port(),
             metrics_port: config::defaults::metrics_port(),
             event_polling_interval: config::defaults::polling_interval(),
+            admin_wallet_path: default_node_parameters::admin_wallet_path(),
+            admin_keystore_path: default_node_parameters::admin_keystore_path(),
         }
     }
 }
@@ -95,6 +102,14 @@ mod default_node_parameters {
 
     pub fn default_contract_dir() -> PathBuf {
         PathBuf::from("./contracts")
+    }
+
+    pub fn admin_wallet_path() -> PathBuf {
+        PathBuf::from("crates/walrus-orchestrator/assets/admin_wallet.yaml")
+    }
+
+    pub fn admin_keystore_path() -> PathBuf {
+        PathBuf::from("crates/walrus-orchestrator/assets/sui.keystore")
     }
 }
 
@@ -146,6 +161,7 @@ impl ProtocolCommands for TargetProtocol {
     {
         // Create an admin wallet locally to setup the Walrus smart contract.
         let ips = instances.map(|x| x.main_ip).collect::<Vec<_>>();
+        let admin_wallet_path = &parameters.node_parameters.admin_wallet_path;
 
         let testbed_config = testbed::deploy_walrus_contract(DeployTestbedContractParameters {
             working_dir: parameters.settings.working_dir.as_path(),
@@ -168,7 +184,7 @@ impl ProtocolCommands for TargetProtocol {
             epoch_duration: Duration::from_secs(3600),
             epoch_zero_duration: Duration::from_secs(0),
             max_epochs_ahead: 104,
-            admin_wallet_path: None,
+            admin_wallet_path: Some(admin_wallet_path.clone()),
             do_not_copy_contracts: false,
             with_wal_exchange: true,
         })
@@ -184,9 +200,21 @@ impl ProtocolCommands for TargetProtocol {
             testbed_config_path.display()
         );
 
+        // Upload the admin wallet
+        // let admin_keystore =
+        //     FileBasedKeystore::new(&parameters.node_parameters.admin_keystore_path)
+        //         .expect("Failed to load admin keystore");
+        // let serialized_admin_keystore =
+        //     serde_yaml::to_string(&admin_keystore).expect("Failed to serialized admin keystore");
+        // let admin_keystore_destination = parameters.settings.working_dir.join("sui.keystore");
+        // let upload_admin_keystore = format!(
+        //     "echo -e '{serialized_admin_keystore}' > {}",
+        //     admin_keystore_destination.display()
+        // );
+
         // Generate a command to print all client and storage node configs on all instances.
         let generate_config_command = [
-            &format!("./{BINARY_PATH}/walrus-node"),
+            &format!("./{BINARY_PATH}/walrus-deploy"),
             "generate-dry-run-configs",
             &format!(
                 "--working-dir {}",
@@ -201,6 +229,7 @@ impl ProtocolCommands for TargetProtocol {
         [
             "source $HOME/.cargo/env",
             &upload_testbed_config_command,
+            // &upload_admin_keystore,
             &generate_config_command,
         ]
         .join(" && ")
@@ -323,7 +352,7 @@ impl ProtocolMetrics for TargetProtocol {
                     metrics_port,
                     None,
                 );
-                let metrics_path = format!("{metrics_address}/metrics",);
+                let metrics_path = format!("{metrics_address}/metrics");
                 (instance, metrics_path)
             })
             .collect()

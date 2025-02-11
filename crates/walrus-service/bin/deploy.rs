@@ -201,6 +201,7 @@ fn main() -> anyhow::Result<()> {
 mod commands {
     use config::NodeRegistrationParamsForThirdPartyRegistration;
     use itertools::Itertools as _;
+    use sui_sdk::wallet_context::WalletContext;
     use testbed::ADMIN_CONFIG_PREFIX;
     use walrus_service::{
         client::cli::HumanReadableFrost,
@@ -381,7 +382,15 @@ mod commands {
         let admin_wallet_path = admin_wallet_path.or(Some(
             working_dir.join(format!("{ADMIN_CONFIG_PREFIX}.yaml")),
         ));
-        let admin_wallet = load_wallet(admin_wallet_path).context("unable to load admin wallet")?;
+        let admin_wallet = match load_wallet(admin_wallet_path) {
+            Ok(wallet) => wallet,
+            Err(err) => {
+                tracing::warn!("Failed to load admin wallet: {err}");
+                tracing::info!("Creating a new admin wallet");
+                WalletContext::new(admin_wallet_path, None, None)
+                    .context("Failed to create admin wallet")?
+            }
+        };
         let mut admin_contract_client = testbed_config
             .system_ctx
             .new_contract_client(admin_wallet, ExponentialBackoffConfig::default(), None)
