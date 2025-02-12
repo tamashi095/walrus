@@ -9,7 +9,7 @@ use sui::vec_map::{Self, VecMap};
 
 
 /// The metadata struct for Blob objects.
-public struct Quilt has key {
+public struct QuiltingTaskManager has store {
     id: UID,
     tasks: VecMap<u256, QuiltingTask>,
 }
@@ -38,16 +38,16 @@ struct QuiltingTask has store, drop {
     blobs: vector<u256>,
 }
 
-/// Creates a new instance of Quilt.
-public fun new(ctx: &mut TxContext): Quilt {
-    Quilt {
+/// Creates a new instance of QuiltingTaskManager.
+public(package) fun new(ctx: &mut TxContext): QuiltingTaskManager {
+    QuiltingTaskManager {
         id: object::new(ctx),
         tasks: vec_map::empty(),
     }
 }
 
 /// Add a new quilting task. Returns false if at capacity.
-public fun add_task(self: &mut Quilt, leader_index: u16, task_id: u256): bool {
+public(package) fun add_task(self: &mut QuiltingTaskManager, leader_index: u16, task_id: u256): bool {
     if (vec_map::size(&self.tasks) >= MAX_TASKS) {
         return false
     };
@@ -62,7 +62,7 @@ public fun add_task(self: &mut Quilt, leader_index: u16, task_id: u256): bool {
 }
 
 /// Remove a quilting task. Returns false if task doesn't exist.
-public fun remove_task(self: &mut Quilt, task_id: u256): bool {
+public(package) fun remove_task(self: &mut QuiltingTaskManager, task_id: u256): bool {
     if (!vec_map::contains(&self.tasks, &task_id)) {
         return false
     };
@@ -71,7 +71,7 @@ public fun remove_task(self: &mut Quilt, task_id: u256): bool {
 }
 
 /// Update state of an existing task. Returns false if task doesn't exist.
-public fun update_task_state(self: &mut Quilt, task_id: u256, new_state: u8): bool {
+public(package) fun update_task_state(self: &mut QuiltingTaskManager, task_id: u256, new_state: u8): bool {
     if (!vec_map::contains(&self.tasks, &task_id)) {
         return false
     };
@@ -80,7 +80,7 @@ public fun update_task_state(self: &mut Quilt, task_id: u256, new_state: u8): bo
     true
 }
 
-public fun set_blobs_to_task(self: &mut Quilt, task_id: u256, blobs: vector<u256>): bool {
+public(package) fun set_blobs_to_task(self: &mut QuiltingTaskManager, task_id: u256, blobs: vector<u256>) {
     if (!vec_map::contains(&self.tasks, &task_id)) {
         return false
     };

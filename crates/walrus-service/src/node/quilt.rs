@@ -11,6 +11,8 @@ use uuid::Uuid;
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
+use quilt_factory::Quilt;
+
 /// Represents a quilting task with its metadata and state
 #[derive(Debug, Serialize, Deserialize)]
 struct QuiltingTask {

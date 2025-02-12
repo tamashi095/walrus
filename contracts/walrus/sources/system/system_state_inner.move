@@ -66,6 +66,8 @@ public struct SystemStateInnerV1 has store {
     /// performance of the map, it can be cleaned up as a side effect of the
     /// updates / registrations.
     deny_list_sizes: ExtendedField<VecMap<ID, u64>>,
+    /// Quilt.
+    quilting_task_manager: QuiltingTaskManager,
 }
 
 /// Creates an empty system state with a capacity of zero and an empty
@@ -84,6 +86,7 @@ public(package) fun create_empty(max_epochs_ahead: u32, ctx: &mut TxContext): Sy
         future_accounting,
         event_blob_certification_state,
         deny_list_sizes: extended_field::new(vec_map::empty(), ctx),
+        quilting_task_manager: quilt::new(ctx),
     }
 }
 
@@ -656,6 +659,32 @@ public(package) fun delete_deny_listed_blob(
     assert!(epoch == self.epoch(), EInvalidIdEpoch);
 
     events::emit_deny_listed_blob_deleted(epoch, message.blob_id());
+}
+
+// === Quilting ===
+
+public(package) fun add_quilt_task(self: &mut SystemStateInnerV1, leader_index: u16, task_id: u256): bool {
+    let added = self.quilting_task_manager.add_task(leader_index, task_id);
+    if (added) {
+        events::emit_quilt_task_init(task_id, self.epoch(), leader_index);
+    };
+    added
+}
+
+public(package) fun remove_quilt_task(self: &mut SystemStateInnerV1, task_id: u256): bool {
+    self.quilting_task_manager.remove_task(task_id)
+}
+
+public(package) fun update_quilt_task_state(self: &mut SystemStateInnerV1, task_id: u256, new_state: u8): bool {
+    self.quilting_task_manager.update_task_state(task_id, new_state)
+}
+
+public(package) fun set_blobs_to_quilt_task(self: &mut SystemStateInnerV1, task_id: u256, blobs: vector<u256>): bool {
+    let added = self.quilting_task_manager.set_blobs_to_task(task_id, blobs);
+    if (added) {
+        events::emit_quilt_blobs_selected(task_id, self.epoch(), leader_index, blobs)
+    };
+    added
 }
 
 // === Testing ===

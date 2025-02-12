@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use walrus_core::BlobId;
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-struct Quilt {
+pub struct Quilt {
     quilt_blob_id: Option<BlobId>,
     blobs: Vec<(BlobId, u64)>,
     quilt_path: Option<PathBuf>,

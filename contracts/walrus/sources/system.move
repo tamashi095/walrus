@@ -238,6 +238,24 @@ public(package) fun version(system: &System): u64 {
     system.version
 }
 
+// === Quilting ===
+
+public(package) fun add_quilt_task(self: &mut System, leader_index: u16, task_id: u256): bool {
+    self.inner_mut().add_quilt_task(leader_index, task_id)
+}
+
+public(package) fun remove_quilt_task(self: &mut System, task_id: u256): bool {
+    self.inner_mut().remove_quilt_task(task_id)
+}
+
+public(package) fun update_quilt_task_state(self: &mut System, task_id: u256, new_state: u8): bool {
+    self.inner_mut().update_quilt_task_state(task_id, new_state)
+}
+
+public(package) fun set_blobs_to_quilt_task(self: &mut System, task_id: u256, blobs: vector<u256>): bool {
+    self.inner_mut().set_blobs_to_quilt_task(task_id, blobs)
+}
+
 // === Upgrade ===
 
 public(package) fun set_new_package_id(system: &mut System, new_package_id: ID) {
