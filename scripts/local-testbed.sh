@@ -6,18 +6,30 @@ set -euo pipefail
 
 trap ctrl_c INT
 
-function kill_tmux_sessions() {
+join_by() {
+  delim_save="$1"
+  delim=""
+  shift
+  str=""
+  for arg in "$@"; do
+    str="$str$delim$arg"
+    delim="$delim_save"
+  done
+  echo "$str"
+}
+
+kill_tmux_sessions() {
   { tmux ls || true; } | { grep -o "dryrun-node-\d*" || true; } | xargs -n1 tmux kill-session -t
 }
 
-function ctrl_c() {
+ctrl_c() {
   kill_tmux_sessions
   exit 0
 }
 
 kill_tmux_sessions
 
-function usage() {
+usage() {
   echo "Usage: $0 [OPTIONS]"
   echo "OPTIONS:"
   echo "  -b <database_url>     Specify a backup database url (ie: postgresql://postgres:postgres@localhost/postgres, default: none)"
@@ -31,7 +43,7 @@ function usage() {
   echo "  -t                    Use testnet contracts"
 }
 
-function run_node() {
+run_node() {
   cmd="./target/release/walrus-node run --config-path $working_dir/$1.yaml ${2:-} \
     |& tee $working_dir/$1.log"
   echo "Running within tmux: '$cmd'..."
@@ -101,8 +113,9 @@ echo "$0: Using backup_database_url: $backup_database_url"
 
 if ! $use_existing_config; then
   if [[ -n "$backup_database_url" ]]; then
-    echo "Migrating database to ensure it's starting fresh... [backup_database_url=$backup_database_url]"
-    diesel migration --database-url "$backup_database_url" redo
+    echo "Reverting database migrations to ensure walrus-backup is starting fresh... [backup_database_url=$backup_database_url]"
+    diesel migration --database-url "$backup_database_url" revert --all ||:
+    diesel migration --database-url "$backup_database_url" run
 
     # shellcheck disable=SC2207
     schema_files=( $(git ls-files '**/schema.rs') )
@@ -113,10 +126,20 @@ if ! $use_existing_config; then
   fi
 fi
 
-echo Building walrus, walrus-node, and walrus-deploy binaries...
 
-features="deploy"
-cargo build --release --bin walrus --bin walrus --bin walrus-node --bin walrus-deploy --features "$features"
+features=( deploy )
+binaries=( walrus walrus-node walrus-deploy )
+if [[ -n "$backup_database_url" ]]; then
+  features+=( backup )
+  binaries+=( walrus-backup )
+fi
+
+echo "Building $(join_by ', ' "${binaries[@]}") binaries..."
+# shellcheck disable=SC2046
+cargo build \
+  --release \
+  $(printf -- "--bin %s " "${binaries[@]}") \
+  --features "$(join_by , "${features[@]}")"
 
 # Set working directory
 working_dir="./working_dir"
