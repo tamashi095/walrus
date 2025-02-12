@@ -7,12 +7,9 @@ use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use sui_sdk::rpc_types::SuiEvent;
 use sui_types::{base_types::ObjectID, event::EventID};
-use walrus_core::{ensure, BlobId, EncodingType, Epoch, ShardIndex};
+use walrus_core::{ensure, BlobId, EncodingType, Epoch, ShardIndex, QuiltTaskId};
 
 use crate::contracts::{self, AssociatedSuiEvent, MoveConversionError, StructTag};
-
-/// Alias for BlobId to represent quilt task IDs
-pub type QuiltTaskId = BlobId;
 
 fn ensure_event_type(
     sui_event: &SuiEvent,
@@ -809,7 +806,7 @@ impl DenyListEvent {
 pub struct QuiltBlobSelected {
     pub quilt_task_id: QuiltTaskId,
     pub epoch: Epoch,
-    pub leader_shard_index: ShardIndex,
+    pub leader_id: ObjectID,
     pub blob_ids: Vec<BlobId>,
     pub event_id: EventID,
 }
@@ -824,12 +821,12 @@ impl TryFrom<SuiEvent> for QuiltBlobSelected {
     fn try_from(sui_event: SuiEvent) -> Result<Self, Self::Error> {
         ensure_event_type(&sui_event, &Self::EVENT_STRUCT)?;
 
-        let (quilt_task_id, epoch, leader_shard_index, blob_ids) = bcs::from_bytes(sui_event.bcs.bytes())?;
+        let (quilt_task_id, epoch, leader_id, blob_ids) = bcs::from_bytes(sui_event.bcs.bytes())?;
 
         Ok(Self {
             quilt_task_id,
             epoch,
-            leader_shard_index,
+            leader_id,
             blob_ids,
             event_id: sui_event.id,
         })
@@ -840,7 +837,7 @@ impl TryFrom<SuiEvent> for QuiltBlobSelected {
 pub struct QuiltTaskInit {
     pub quilt_task_id: QuiltTaskId,
     pub epoch: Epoch,
-    pub leader_shard_index: ShardIndex,
+    pub leader_id: ObjectID,
     pub event_id: EventID,
 }
 
@@ -854,12 +851,12 @@ impl TryFrom<SuiEvent> for QuiltTaskInit {
     fn try_from(sui_event: SuiEvent) -> Result<Self, Self::Error> {
         ensure_event_type(&sui_event, &Self::EVENT_STRUCT)?;
 
-        let (quilt_task_id, epoch, leader_shard_index) = bcs::from_bytes(sui_event.bcs.bytes())?;
+        let (quilt_task_id, epoch, leader_id) = bcs::from_bytes(sui_event.bcs.bytes())?;
 
         Ok(Self {
             quilt_task_id,
             epoch,
-            leader_shard_index,
+            leader_id,
             event_id: sui_event.id,
         })
     }
@@ -982,6 +979,12 @@ impl TryFrom<SuiEvent> for ContractEvent {
             )),
             contracts::events::DenyListBlobDeleted => Ok(ContractEvent::BlobEvent(
                 BlobEvent::DenyListBlobDeleted(value.try_into()?),
+            )),
+            contracts::events::QuiltTaskInit => Ok(ContractEvent::QuiltEvent(
+                QuiltEvent::QuiltTaskInit(value.try_into()?),
+            )),
+            contracts::events::QuiltBlobSelected => Ok(ContractEvent::QuiltEvent(
+                QuiltEvent::QuiltBlobSelected(value.try_into()?),
             )),
             _ => unreachable!("Encountered unexpected unrecognized events {}", value),
         }

@@ -875,6 +875,34 @@ impl SuiContractClient {
             .multiple_pay_wal(address, amount, n)
             .await
     }
+
+    /// Adds a new quilt task. Returns true if the task was successfully added,
+    /// false if a task with the given ID already exists.
+    pub async fn add_quilt_task(
+        &self,
+        storage_node_cap: ObjectID,
+        task_id: ObjectID,
+    ) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .add_quilt_task(storage_node_cap, task_id)
+            .await
+    }
+
+    /// Updates the state of a quilt task.
+    pub async fn update_quilt_task_state(
+        &self,
+        storage_node_cap: ObjectID,
+        task_id: ObjectID,
+        new_state: u8,
+    ) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .update_quilt_task_state(storage_node_cap, task_id, new_state)
+            .await
+    }
 }
 
 struct SuiContractClientInner {
@@ -1461,6 +1489,38 @@ impl SuiContractClientInner {
         let mut pt_builder = self.transaction_builder()?;
         pt_builder.delete_blob(blob_object_id.into()).await?;
         let (ptb, _sui_cost) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Adds a new quilt task. Returns true if the task was successfully added,
+    /// false if a task with the given ID already exists.
+    pub async fn add_quilt_task(
+        &mut self,
+        storage_node_cap: ObjectID,
+        task_id: ObjectID,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .add_quilt_task(storage_node_cap.into(), task_id)
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Updates the state of a quilt task.
+    pub async fn update_quilt_task_state(
+        &mut self,
+        storage_node_cap: ObjectID,
+        task_id: ObjectID,
+        new_state: u8,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .update_quilt_task_state(storage_node_cap.into(), task_id, new_state)
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
         self.sign_and_send_ptb(ptb).await?;
         Ok(())
     }

@@ -17,7 +17,8 @@ use walrus::{
     messages,
     storage_accounting::{Self, FutureAccountingRingBuffer},
     storage_node::StorageNodeCap,
-    storage_resource::{Self, Storage}
+    storage_resource::{Self, Storage},
+    quilt::{Self, QuiltingTaskManager, QuiltingTask}
 };
 
 /// An upper limit for the maximum number of epochs ahead for which a blob can be registered.
@@ -663,28 +664,32 @@ public(package) fun delete_deny_listed_blob(
 
 // === Quilting ===
 
-public(package) fun add_quilt_task(self: &mut SystemStateInnerV1, leader_index: u16, task_id: u256): bool {
-    let added = self.quilting_task_manager.add_task(leader_index, task_id);
+public(package) fun add_quilt_task(
+    self: &mut SystemStateInnerV1, 
+    cap: &mut StorageNodeCap,
+    task_id: u256
+): bool {
+    let added = self.quilting_task_manager.add_task(cap.node_id(), task_id);
     if (added) {
-        events::emit_quilt_task_init(task_id, self.epoch(), leader_index);
+        events::emit_quilt_task_init(task_id, self.epoch(), cap.node_id());
     };
     added
 }
 
-public(package) fun remove_quilt_task(self: &mut SystemStateInnerV1, task_id: u256): bool {
+public(package) fun remove_quilt_task(
+    self: &mut SystemStateInnerV1, 
+    task_id: u256
+): bool {
     self.quilting_task_manager.remove_task(task_id)
 }
 
-public(package) fun update_quilt_task_state(self: &mut SystemStateInnerV1, task_id: u256, new_state: u8): bool {
-    self.quilting_task_manager.update_task_state(task_id, new_state)
-}
-
-public(package) fun set_blobs_to_quilt_task(self: &mut SystemStateInnerV1, task_id: u256, blobs: vector<u256>): bool {
-    let added = self.quilting_task_manager.set_blobs_to_task(task_id, blobs);
-    if (added) {
-        events::emit_quilt_blobs_selected(task_id, self.epoch(), leader_index, blobs)
-    };
-    added
+public(package) fun update_quilt_task_state(
+    self: &mut SystemStateInnerV1, 
+    cap: &mut StorageNodeCap,
+    task_id: u256, 
+    new_state: u8
+): bool {
+    self.quilting_task_manager.update_task_state(cap.node_id(), task_id, new_state)
 }
 
 // === Testing ===

@@ -22,9 +22,9 @@ const QUILT_STATE_SUCCESS: u8 = 3;
 const QUILT_STATE_ERROR: u8 = 4;
 
 /// Represents a quilting task with its metadata and state
-struct QuiltingTask has store, drop {
-    /// Index of the quilter shard that is the leader for this task
-    leader_index: u16,
+public struct QuiltingTask has store, drop {
+    /// ID of the quilter shard that is the leader for this task
+    leader_id: ID,
     /// Unique identifier for the task
     task_id: u256,
     /// Current state of the quilting process
@@ -47,12 +47,15 @@ public(package) fun new(ctx: &mut TxContext): QuiltingTaskManager {
 }
 
 /// Add a new quilting task. Returns false if at capacity.
-public(package) fun add_task(self: &mut QuiltingTaskManager, leader_index: u16, task_id: u256): bool {
-    if (vec_map::size(&self.tasks) >= MAX_TASKS) {
+public(package) fun add_task(self: &mut QuiltingTaskManager, leader_id: ID, task_id: u256): bool {
+    if (vec_map::size(&self.tasks) >= 1) {
+        return false
+    };
+    if (vec_map::contains(&self.tasks, &task_id)) {
         return false
     };
     let task = QuiltingTask {
-        leader_index,
+        leader_id,
         task_id,
         state: QUILT_STATE_INIT,
         blobs: vector::empty()
@@ -71,20 +74,14 @@ public(package) fun remove_task(self: &mut QuiltingTaskManager, task_id: u256): 
 }
 
 /// Update state of an existing task. Returns false if task doesn't exist.
-public(package) fun update_task_state(self: &mut QuiltingTaskManager, task_id: u256, new_state: u8): bool {
+public(package) fun update_task_state(self: &mut QuiltingTaskManager, leader_id: ID, task_id: u256, new_state: u8): bool {
     if (!vec_map::contains(&self.tasks, &task_id)) {
         return false
     };
     let task = vec_map::get_mut(&mut self.tasks, &task_id);
+    if (task.leader_id != leader_id) {
+        return false
+    };
     task.state = new_state;
-    true
-}
-
-public(package) fun set_blobs_to_task(self: &mut QuiltingTaskManager, task_id: u256, blobs: vector<u256>) {
-    if (!vec_map::contains(&self.tasks, &task_id)) {
-        return false
-    };
-    let task = vec_map::get_mut(&mut self.tasks, &task_id);
-    task.blobs = blobs;
     true
 }

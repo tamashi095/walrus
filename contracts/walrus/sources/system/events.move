@@ -123,13 +123,13 @@ public struct ContractUpgradeQuorumReached has copy, drop {
 public struct QuiltTaskInit has copy, drop {
     quilt_task_id: u256,
     epoch: u32,
-    leader_shard_index: u16,
+    leader_id: ID,
 }
 
 public struct QuiltBlobSelected has copy, drop {
     quilt_task_id: u256,
     epoch: u32,
-    leader_shard_index: u16,
+    leader_id: ID,
     blobs: vector<u256>,
 }
 
@@ -234,10 +234,10 @@ public(package) fun emit_contract_upgrade_quorum_reached(epoch: u32, package_dig
     event::emit(ContractUpgradeQuorumReached { epoch, package_digest })
 }
 
-public(package) fun emit_quilt_task_init(quilt_task_id: u256, epoch: u32, leader_shard_index: u16) {
-    event::emit(QuiltTaskInit { quilt_task_id, epoch, leader_shard_index })
+public(package) fun emit_quilt_task_init(quilt_task_id: u256, epoch: u32, leader_id: ID) {
+    event::emit(QuiltTaskInit { quilt_task_id, epoch, leader_id })
 }
 
-public(package) fun emit_quilt_blobs_selected(quilt_task_id: u256, epoch: u32, leader_index: u16, blobs: vector<u256>) {  
-    event::emit(QuiltBlobSelected { quilt_task_id, epoch, leader_index, blobs })
+public(package) fun emit_quilt_blobs_selected(quilt_task_id: u256, epoch: u32, leader_id: ID, blobs: vector<u256>) {  
+    event::emit(QuiltBlobSelected { quilt_task_id, epoch, leader_id, blobs })
 }

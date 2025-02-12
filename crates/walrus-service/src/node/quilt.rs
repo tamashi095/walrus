@@ -3,25 +3,22 @@
 
 mod error;
 mod quilt_factory;
-use walrus_core::Epoch;
+use walrus_core::{Epoch, QuiltTaskId, BlobId};
 use sui_types::base_types::ObjectID;
-use walrus_core::BlobId;
 use walrus_core::ShardIndex;
-use uuid::Uuid;
 use anyhow::Result;
 use serde::{Serialize, Deserialize};
 use std::path::PathBuf;
 use quilt_factory::Quilt;
-
 /// Represents a quilting task with its metadata and state
 #[derive(Debug, Serialize, Deserialize)]
 struct QuiltingTask {
     /// Unique identifier for the task
-    id: Uuid,
+    id: QuiltTaskId,
     /// Epoch this quilting task belongs to
     epoch: Epoch,
-    /// Index of the quilter shard processing this task
-    quilter_shard_index: ShardIndex,
+    /// ID of the quilter shard processing this task
+    leader_id: ObjectID,
     /// Current state of the quilting process
     state: QuiltingState,
     /// List of blob IDs to be quilted
