@@ -240,6 +240,7 @@ pub mod staking {
     contract_ident!(fn staking::set_network_address);
     contract_ident!(fn staking::set_network_public_key);
     contract_ident!(fn staking::set_next_public_key);
+    contract_ident!(fn staking::reset_next_public_key);
     contract_ident!(fn staking::set_commission_receiver);
     contract_ident!(fn staking::set_governance_authorized);
     contract_ident!(fn staking::set_storage_price_vote);
@@ -283,6 +284,14 @@ pub mod storage_node {
     contract_ident!(struct storage_node::StorageNodeCap);
     contract_ident!(fn storage_node::create_storage_node_info);
 }
+/// Module for tags corresponding to the Move module `metadata`.
+pub mod metadata {
+    use super::*;
+
+    contract_ident!(struct metadata::Metadata);
+    contract_ident!(fn metadata::new);
+    contract_ident!(fn metadata::insert_or_update);
+}
 
 /// Module for tags corresponding to the Move module `blob`.
 pub mod blob {
@@ -290,6 +299,10 @@ pub mod blob {
 
     contract_ident!(struct blob::Blob);
     contract_ident!(fn blob::burn);
+    contract_ident!(fn blob::add_metadata);
+    contract_ident!(fn blob::take_metadata);
+    contract_ident!(fn blob::insert_or_update_metadata_pair);
+    contract_ident!(fn blob::remove_metadata_pair);
 }
 
 /// Module for tags corresponding to the Move module `shared_blob`.

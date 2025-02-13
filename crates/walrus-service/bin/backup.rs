@@ -1,27 +1,38 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-//! Walrus Backup Node entry point.
+//! Walrus Backup Nodes entry points.
 
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tokio_util::sync::CancellationToken;
 use walrus_service::{
-    backup::{start_backup_node, BackupNodeConfig},
-    node::events::event_processor_runtime::EventProcessorRuntime,
-    utils::{self, load_from_yaml, version, MetricsAndLoggingRuntime},
+    backup::{
+        run_backup_database_migrations,
+        start_backup_fetcher,
+        start_backup_orchestrator,
+        BackupConfig,
+        VERSION,
+    },
+    common::utils::MetricsAndLoggingRuntime,
+    utils::load_from_yaml,
 };
 
-const VERSION: &str = version!();
-
-/// Manage and run a Walrus backup node.
+/// Manage and run Walrus backup nodes
 #[derive(Parser)]
 #[clap(rename_all = "kebab-case")]
 #[clap(name = env!("CARGO_BIN_NAME"))]
 #[clap(version = VERSION)]
 #[derive(Debug)]
 struct Args {
+    #[clap(long, short, help = "Specify the config file path to use")]
+    config: PathBuf,
+    #[clap(
+        long,
+        short,
+        help = "Override the metrics address to use (ie: 127.0.0.1:9184)"
+    )]
+    metrics_address: Option<std::net::SocketAddr>,
     #[command(subcommand)]
     command: BackupCommands,
 }
@@ -29,64 +40,45 @@ struct Args {
 #[derive(Subcommand, Debug, Clone)]
 #[clap(rename_all = "kebab-case")]
 enum BackupCommands {
-    /// Run a backup node with the provided configuration.
-    Run { config_path: PathBuf },
+    /// Run a backup orchestrator with the provided configuration.
+    RunOrchestrator,
+    /// Run a backup fetcher with the provided configuration.
+    RunFetcher,
 }
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+fn exit_process_on_return(result: anyhow::Result<()>, context: &str) {
+    if let Err(error) = result {
+        tracing::error!(?error, context, "encountered error");
+    }
+    tracing::error!(context, "exited prematurely");
+    std::process::exit(1);
+}
+
+fn main() {
     let args = Args::parse();
-
-    if !matches!(args.command, BackupCommands::Run { .. }) {
-        utils::init_tracing_subscriber()?;
+    let mut config: BackupConfig = load_from_yaml(&args.config).expect("loading config from yaml");
+    if let Some(metrics_address) = args.metrics_address {
+        config.metrics_address = metrics_address;
     }
 
-    match args.command {
-        BackupCommands::Run { config_path } => {
-            commands::run_backup_node(load_from_yaml(config_path)?).await?
-        }
-    };
-    Ok(())
-}
+    let rt = tokio::runtime::Runtime::new().expect("creating tokio runtime");
+    let _guard = rt.enter();
 
-mod commands {
-    use super::*;
+    let metrics_runtime = MetricsAndLoggingRuntime::new(config.metrics_address, None)
+        .expect("starting metrics runtime");
 
-    pub(super) async fn run_backup_node(config: BackupNodeConfig) -> anyhow::Result<()> {
-        let metrics_runtime = MetricsAndLoggingRuntime::new(config.metrics_address, None)?;
-        let registry_clone = metrics_runtime.registry.clone();
-        tokio::spawn(async move {
-            registry_clone
-                .register(mysten_metrics::uptime_metric(
-                    "walrus_backup_node",
-                    VERSION,
-                    "walrus",
-                ))
-                .unwrap();
-        });
+    // Run migrations before starting the backup node.
+    run_backup_database_migrations(&config);
 
-        tracing::info!(version = VERSION, "Walrus backup binary version");
-        tracing::info!(
-            metrics_address = %config.metrics_address, "started Prometheus HTTP endpoint",
-        );
-
-        utils::export_build_info(&metrics_runtime.registry, VERSION);
-
-        let cancel_token = CancellationToken::new();
-
-        let event_manager = EventProcessorRuntime::start_async(
-            config.sui.clone(),
-            config.event_processor_config.clone(),
-            &config.backup_storage_path,
-            &metrics_runtime.registry,
-            cancel_token.child_token(),
+    rt.block_on(async move {
+        exit_process_on_return(
+            match args.command {
+                BackupCommands::RunOrchestrator => {
+                    start_backup_orchestrator(config, &metrics_runtime).await
+                }
+                BackupCommands::RunFetcher => start_backup_fetcher(config, &metrics_runtime).await,
+            },
+            "backup node",
         )
-        .await?;
-
-        let ret = start_backup_node(metrics_runtime.registry.clone(), event_manager, config).await;
-        if let Err(err) = ret.as_ref() {
-            tracing::error!("backup node exited with an error [{:?}]", err);
-        }
-        ret
-    }
+    });
 }

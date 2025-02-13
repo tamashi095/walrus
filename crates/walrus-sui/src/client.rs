@@ -51,9 +51,16 @@ use walrus_utils::backoff::ExponentialBackoffConfig;
 use crate::{
     contracts,
     types::{
-        move_errors::MoveExecutionError,
-        move_structs::{Authorized, EpochState, SharedBlob, StorageNode},
-        Blob,
+        move_errors::{BlobError, MoveExecutionError},
+        move_structs::{
+            Authorized,
+            Blob,
+            BlobAttribute,
+            BlobWithAttribute,
+            EpochState,
+            SharedBlob,
+            StorageNode,
+        },
         BlobEvent,
         Committee,
         ContractEvent,
@@ -762,6 +769,90 @@ impl SuiContractClient {
             .await
     }
 
+    /// Adds attribute to a blob object.
+    ///
+    /// If attribute does not exist, it is created with the given key-value pairs.
+    /// If attribute already exists, an error is returned unless `force` is true.
+    /// If `force` is true, the attribute is updated with the given key-value pairs.
+    pub async fn add_blob_attribute(
+        &mut self,
+        blob_obj_id: ObjectID,
+        blob_attribute: BlobAttribute,
+        force: bool,
+    ) -> SuiClientResult<()> {
+        let mut inner = self.inner.lock().await;
+        match inner.add_blob_attribute(blob_obj_id, &blob_attribute).await {
+            Ok(()) => Ok(()),
+            Err(SuiClientError::TransactionExecutionError(MoveExecutionError::Blob(
+                BlobError::EDuplicateMetadata(_),
+            ))) if force => {
+                inner
+                    .insert_or_update_blob_attribute_pairs(blob_obj_id, blob_attribute.iter())
+                    .await
+            }
+            Err(e) => Err(e),
+        }
+    }
+
+    /// Removes the attribute dynamic field from a blob object.
+    ///
+    /// If attribute does not exist, an error is returned.
+    pub async fn remove_blob_attribute(&mut self, blob_obj_id: ObjectID) -> SuiClientResult<()> {
+        self.inner
+            .lock()
+            .await
+            .remove_blob_attribute(blob_obj_id)
+            .await
+    }
+
+    /// Inserts or updates a key-value pairs in the blob's attribute.
+    ///
+    /// If the key already exists, its value is updated.
+    /// If attribute does not exist, an error is returned.
+    pub async fn insert_or_update_blob_attribute_pairs<I, T>(
+        &mut self,
+        blob_obj_id: ObjectID,
+        pairs: I,
+    ) -> SuiClientResult<()>
+    where
+        I: IntoIterator<Item = (T, T)>,
+        T: Into<String>,
+    {
+        self.inner
+            .lock()
+            .await
+            .insert_or_update_blob_attribute_pairs(blob_obj_id, pairs)
+            .await
+    }
+
+    /// Removes key-value pairs from the blob's attribute.
+    ///
+    /// If any key does not exist, an error is returned.
+    pub async fn remove_blob_attribute_pairs<I, T>(
+        &mut self,
+        blob_obj_id: ObjectID,
+        keys: I,
+    ) -> SuiClientResult<()>
+    where
+        I: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        self.inner
+            .lock()
+            .await
+            .remove_blob_attribute_pairs(blob_obj_id, keys)
+            .await
+    }
+
+    /// Returns a mutable reference to the wallet.
+    ///
+    /// This is mainly useful for deployment code where a wallet is used to provide
+    /// gas coins to the storage nodes and client, while also being used for staking
+    /// operations.
+    pub fn wallet_mut(&mut self) -> &mut WalletContext {
+        &mut self.inner.get_mut().wallet
+    }
+
     /// Sends `n` WAL coins of `amount` to the specified `address`.
     #[cfg(any(test, feature = "test-utils"))]
     pub async fn multiple_pay_wal(
@@ -800,6 +891,68 @@ impl SuiContractClientInner {
             read_client,
             gas_budget,
         })
+    }
+
+    /// Adds attribute to a blob object.
+    pub async fn add_blob_attribute(
+        &mut self,
+        blob_obj_id: ObjectID,
+        blob_attribute: &BlobAttribute,
+    ) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .add_blob_attribute(blob_obj_id.into(), blob_attribute.clone())
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Removes the attribute dynamic field from a blob object.
+    pub async fn remove_blob_attribute(&mut self, blob_obj_id: ObjectID) -> SuiClientResult<()> {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder.remove_blob_attribute(blob_obj_id.into()).await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Inserts or updates a key-value pair in the blob's attribute.
+    pub async fn insert_or_update_blob_attribute_pairs<I, T>(
+        &mut self,
+        blob_obj_id: ObjectID,
+        pairs: I,
+    ) -> SuiClientResult<()>
+    where
+        I: IntoIterator<Item = (T, T)>,
+        T: Into<String>,
+    {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .insert_or_update_blob_attribute_pairs(blob_obj_id.into(), pairs)
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
+    }
+
+    /// Removes key-value pairs from the blob's attribute.
+    pub async fn remove_blob_attribute_pairs<I, T>(
+        &mut self,
+        blob_obj_id: ObjectID,
+        keys: I,
+    ) -> SuiClientResult<()>
+    where
+        I: IntoIterator<Item = T>,
+        T: AsRef<str>,
+    {
+        let mut pt_builder = self.transaction_builder()?;
+        pt_builder
+            .remove_blob_attribute_pairs(blob_obj_id.into(), keys)
+            .await?;
+        let (ptb, _) = pt_builder.finish().await?;
+        self.sign_and_send_ptb(ptb).await?;
+        Ok(())
     }
 
     /// Returns the contained [`SuiReadClient`].
@@ -1750,6 +1903,20 @@ impl ReadClient for SuiContractClient {
 
     async fn get_storage_nodes_by_ids(&self, node_ids: &[ObjectID]) -> Result<Vec<StorageNode>> {
         self.read_client.get_storage_nodes_by_ids(node_ids).await
+    }
+
+    async fn get_blob_attribute(
+        &self,
+        blob_obj_id: ObjectID,
+    ) -> SuiClientResult<Option<BlobAttribute>> {
+        self.read_client.get_blob_attribute(blob_obj_id).await
+    }
+
+    async fn get_blob_with_attribute(
+        &self,
+        blob_obj_id: ObjectID,
+    ) -> SuiClientResult<BlobWithAttribute> {
+        self.read_client.get_blob_with_attribute(blob_obj_id).await
     }
 
     async fn epoch_state(&self) -> SuiClientResult<EpochState> {
