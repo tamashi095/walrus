@@ -12,6 +12,7 @@ use retry_client::RetriableSuiClient;
 use sui_sdk::{
     rpc_types::{
         Coin,
+        DryRunTransactionBlockResponse,
         SuiExecutionStatus,
         SuiObjectDataOptions,
         SuiTransactionBlockEffectsAPI,
@@ -850,6 +851,8 @@ impl SuiContractClientInner {
                 .await?;
         }
         let (ptb, _sui_cost) = pt_builder.finish().await?;
+        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
+        println!("Dry run register_blobs: {:?}", temp_dry_run);
         let res = self.sign_and_send_ptb(ptb).await?;
         let blob_obj_ids = get_created_sui_object_ids_by_type(
             &res,
@@ -895,6 +898,9 @@ impl SuiContractClientInner {
                 .await?;
         }
         let (ptb, _sui_cost) = pt_builder.finish().await?;
+        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
+        println!("Dry run reserve_and_register: {:?}", temp_dry_run);
+
         let res = self.sign_and_send_ptb(ptb).await?;
         let blob_obj_ids = get_created_sui_object_ids_by_type(
             &res,
@@ -946,6 +952,10 @@ impl SuiContractClientInner {
         }
 
         let (ptb, _sui_cost) = pt_builder.finish().await?;
+
+        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
+        println!("Dry run certify_blobs: {:?}", temp_dry_run);
+
         let res = self.sign_and_send_ptb(ptb).await?;
 
         if !res.errors.is_empty() {
@@ -1318,6 +1328,15 @@ impl SuiContractClientInner {
             .await
     }
 
+    /// Dry runs a Sui programmable transaction block.
+    pub async fn dry_run_ptb(
+        &mut self,
+        programmable_transaction: ProgrammableTransaction,
+    ) -> Result<i64> {
+        let res = self.dry_run_ptb_inner(programmable_transaction, 0).await?;
+        Ok(res.effects.gas_cost_summary().net_gas_usage())
+    }
+
     /// Signs and sends a programmable transaction with an additional gas coin balance.
     ///
     /// This is useful for transactions that use sui in the transaction which is split off
@@ -1343,6 +1362,51 @@ impl SuiContractClientInner {
     ) -> SuiClientResult<SuiTransactionBlockResponse> {
         self.sign_and_send_ptb_inner(programmable_transaction, 0, minimum_gas_coin_balance)
             .await
+    }
+
+    /// Contains all the logic needed to dry run a Sui programmable transaction block.
+    ///
+    /// This includes: getting the current gas price, gas budget, and instantiating a client to dry
+    /// run the whole transaction.
+    async fn dry_run_ptb_inner(
+        &mut self,
+        programmable_transaction: ProgrammableTransaction,
+        min_gas_coin_balance: u64,
+    ) -> Result<DryRunTransactionBlockResponse> {
+        let gas_price = self.wallet.get_reference_gas_price().await?;
+
+        let wallet_address = self.wallet.active_address()?;
+
+        // Estimate the gas budget unless explicitly set.
+        let gas_budget = if let Some(budget) = self.gas_budget {
+            budget
+        } else {
+            let tx_kind =
+                TransactionKind::ProgrammableTransaction(programmable_transaction.clone());
+            self.read_client
+                .sui_client()
+                .estimate_gas_budget(wallet_address, tx_kind, gas_price)
+                .await?
+        };
+
+        let transaction = TransactionData::new_programmable(
+            wallet_address,
+            self.get_compatible_gas_coins(min_gas_coin_balance).await?,
+            programmable_transaction,
+            gas_budget,
+            gas_price,
+        );
+        // Await the future to get the SuiClient.
+        let client = self.wallet.get_client().await?;
+
+        // Now you can call read_api() on the actual client.
+        let response = client
+            .read_api()
+            .dry_run_transaction_block(transaction)
+            .await?;
+
+        // Return the response wrapped in Ok.
+        Ok(response)
     }
 
     async fn sign_and_send_ptb_inner(
