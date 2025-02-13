@@ -4,7 +4,13 @@
 //! Client to call Walrus move functions from rust.
 
 use core::fmt;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    io::{self, Write},
+    process,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::{anyhow, Context, Result};
 use contract_config::ContractConfig;
@@ -851,8 +857,6 @@ impl SuiContractClientInner {
                 .await?;
         }
         let (ptb, _sui_cost) = pt_builder.finish().await?;
-        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
-        println!("Dry run register_blobs: {:?}", temp_dry_run);
         let res = self.sign_and_send_ptb(ptb).await?;
         let blob_obj_ids = get_created_sui_object_ids_by_type(
             &res,
@@ -898,8 +902,6 @@ impl SuiContractClientInner {
                 .await?;
         }
         let (ptb, _sui_cost) = pt_builder.finish().await?;
-        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
-        println!("Dry run reserve_and_register: {:?}", temp_dry_run);
 
         let res = self.sign_and_send_ptb(ptb).await?;
         let blob_obj_ids = get_created_sui_object_ids_by_type(
@@ -952,9 +954,6 @@ impl SuiContractClientInner {
         }
 
         let (ptb, _sui_cost) = pt_builder.finish().await?;
-
-        let temp_dry_run = self.dry_run_ptb(ptb.clone()).await?;
-        println!("Dry run certify_blobs: {:?}", temp_dry_run);
 
         let res = self.sign_and_send_ptb(ptb).await?;
 
@@ -1324,8 +1323,25 @@ impl SuiContractClientInner {
         &mut self,
         programmable_transaction: ProgrammableTransaction,
     ) -> SuiClientResult<SuiTransactionBlockResponse> {
-        self.sign_and_send_ptb_inner(programmable_transaction, 0, 0)
-            .await
+        let res = self.dry_run_ptb(programmable_transaction.clone()).await;
+        io::stdout().flush().unwrap();
+        println!(
+            "Dry run: a Sui PTB will be executed that will cost {:?} MIST",
+            res?
+        );
+        print!("Would you like to continue? (Y/n): ");
+        io::stdout().flush().unwrap();
+        let mut input = String::new();
+        io::stdin().read_line(&mut input).unwrap();
+        if input.trim().eq_ignore_ascii_case("y") {
+            println!("Continuing...");
+            // Sign and execute the PTB as initially.
+            self.sign_and_send_ptb_inner(programmable_transaction, 0, 0)
+                .await
+        } else {
+            println!("Operation aborted.");
+            process::exit(0);
+        }
     }
 
     /// Dry runs a Sui programmable transaction block.
