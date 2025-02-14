@@ -335,6 +335,7 @@ impl SuiContractClient {
         contract_config: &ContractConfig,
         backoff_config: ExponentialBackoffConfig,
         gas_budget: Option<u64>,
+        dry_run: bool,
     ) -> SuiClientResult<Self> {
         let read_client = Arc::new(
             SuiReadClient::new(
@@ -343,7 +344,7 @@ impl SuiContractClient {
             )
             .await?,
         );
-        Self::new_with_read_client(wallet, gas_budget, read_client)
+        Self::new_with_read_client(wallet, gas_budget, read_client, dry_run)
     }
 
     /// Constructor for [`SuiContractClient`] with an existing [`SuiReadClient`].
@@ -351,6 +352,7 @@ impl SuiContractClient {
         mut wallet: WalletContext,
         gas_budget: Option<u64>,
         read_client: Arc<SuiReadClient>,
+        dry_run: bool,
     ) -> SuiClientResult<Self> {
         let wallet_address = wallet.active_address()?;
         Ok(Self {
@@ -358,6 +360,7 @@ impl SuiContractClient {
                 wallet,
                 read_client.clone(),
                 gas_budget,
+                dry_run
             )?),
             read_client,
             wallet_address,
@@ -877,6 +880,7 @@ struct SuiContractClientInner {
     /// The gas budget used by the client. If not set, the client will use a dry run to estimate
     /// the required gas budget.
     gas_budget: Option<u64>,
+    dry_run: bool,
 }
 
 impl SuiContractClientInner {
@@ -885,11 +889,13 @@ impl SuiContractClientInner {
         wallet: WalletContext,
         read_client: Arc<SuiReadClient>,
         gas_budget: Option<u64>,
+        dry_run: bool,
     ) -> SuiClientResult<Self> {
         Ok(Self {
             wallet,
             read_client,
             gas_budget,
+            dry_run
         })
     }
 
@@ -1476,6 +1482,10 @@ impl SuiContractClientInner {
         &mut self,
         programmable_transaction: ProgrammableTransaction,
     ) -> SuiClientResult<SuiTransactionBlockResponse> {
+        if !self.dry_run {
+            return self.sign_and_send_ptb_inner(programmable_transaction, 0, 0)
+                .await
+        }
         let res = self.dry_run_ptb(programmable_transaction.clone()).await;
         io::stdout().flush().unwrap();
         println!(

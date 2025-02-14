@@ -2275,6 +2275,7 @@ pub mod test_cluster {
                     &contract_config,
                     ExponentialBackoffConfig::default(),
                     None,
+                    false
                 )
             })
             .await?;

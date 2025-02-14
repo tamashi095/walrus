@@ -81,6 +81,8 @@ pub mod metrics;
 
 mod refill;
 pub use refill::{RefillHandles, Refiller};
+use crate::client::responses::DryRunOutput;
+
 mod multiplexer;
 
 /// The maximum number of retries for an operation that is stopped because of a committee change.
