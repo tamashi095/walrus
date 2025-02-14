@@ -472,7 +472,7 @@ impl ClientCommandRunner {
         let mut outputs = Vec::with_capacity(files.len());
 
         for file in files {
-            let blob = read_blob_from_file(&file)?;
+            let blob = read_blob_from_file(file)?;
             let (_, metadata) = client
                 .encode_pairs_and_metadata(&blob, &MultiProgress::new())
                 .await?;
