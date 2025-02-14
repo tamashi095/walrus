@@ -394,7 +394,7 @@ pub async fn deploy_walrus_contract(
             &contract_config,
             ExponentialBackoffConfig::default(),
             gas_budget,
-            false
+            false,
         )
         .await?;
 

@@ -360,7 +360,7 @@ impl SuiContractClient {
                 wallet,
                 read_client.clone(),
                 gas_budget,
-                dry_run
+                dry_run,
             )?),
             read_client,
             wallet_address,
@@ -895,7 +895,7 @@ impl SuiContractClientInner {
             wallet,
             read_client,
             gas_budget,
-            dry_run
+            dry_run,
         })
     }
 
@@ -1483,8 +1483,9 @@ impl SuiContractClientInner {
         programmable_transaction: ProgrammableTransaction,
     ) -> SuiClientResult<SuiTransactionBlockResponse> {
         if !self.dry_run {
-            return self.sign_and_send_ptb_inner(programmable_transaction, 0, 0)
-                .await
+            return self
+                .sign_and_send_ptb_inner(programmable_transaction, 0, 0)
+                .await;
         }
         let res = self.dry_run_ptb(programmable_transaction.clone()).await;
         io::stdout().flush().unwrap();

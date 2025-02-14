@@ -409,9 +409,8 @@ impl ClientCommandRunner {
     ) -> Result<()> {
         epoch_arg.exactly_one_is_some()?;
 
-        let client = get_contract_client(
-            self.config?, self.wallet, self.gas_budget, &None, dry_run
-        ).await?;
+        let client =
+            get_contract_client(self.config?, self.wallet, self.gas_budget, &None, dry_run).await?;
 
         let system_object = client.sui_client().read_client.get_system_object().await?;
         let epochs_ahead =
@@ -731,7 +730,7 @@ impl ClientCommandRunner {
             self.wallet,
             self.gas_budget,
             &args.daemon_args.blocklist,
-            false
+            false,
         )
         .await?;
         ClientDaemon::new_daemon(
@@ -761,9 +760,8 @@ impl ClientCommandRunner {
         // Check that the target is valid.
         target.exactly_one_is_some()?;
 
-        let client = get_contract_client(
-            self.config?, self.wallet, self.gas_budget, &None, false
-        ).await?;
+        let client =
+            get_contract_client(self.config?, self.wallet, self.gas_budget, &None, false).await?;
         let file = target.file.clone();
         let object_id = target.object_id;
 
@@ -857,9 +855,8 @@ impl ClientCommandRunner {
                 .zip(amounts.into_iter())
                 .collect::<Vec<_>>()
         };
-        let client = get_contract_client(
-            self.config?, self.wallet, self.gas_budget, &None, false
-        ).await?;
+        let client =
+            get_contract_client(self.config?, self.wallet, self.gas_budget, &None, false).await?;
         let staked_wal = client.stake_with_node_pools(&node_ids_with_amounts).await?;
         StakeOutput { staked_wal }.print_output(self.json)
     }
@@ -894,7 +891,8 @@ impl ClientCommandRunner {
                 or as a command-line argument.\n\
                 Note that this command is only available on Testnet.",
             )?;
-        let client = get_contract_client(config, self.wallet, self.gas_budget, &None, false).await?;
+        let client =
+            get_contract_client(config, self.wallet, self.gas_budget, &None, false).await?;
         tracing::info!(
             "exchanging {} for WAL using exchange object {exchange_id}",
             HumanReadableMist::from(amount)

@@ -97,7 +97,9 @@ pub async fn get_contract_client(
     blocklist_path: &Option<PathBuf>,
     dry_run: bool,
 ) -> Result<Client<SuiContractClient>> {
-    let sui_client = config.new_contract_client(wallet?, gas_budget, dry_run).await?;
+    let sui_client = config
+        .new_contract_client(wallet?, gas_budget, dry_run)
+        .await?;
 
     let refresh_handle = config
         .refresh_config

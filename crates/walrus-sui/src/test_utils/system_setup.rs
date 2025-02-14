@@ -65,12 +65,22 @@ pub async fn publish_with_default_system(
 
     // Create admin contract client
     let admin_contract_client = system_context
-        .new_contract_client(admin_wallet, ExponentialBackoffConfig::default(), None, false)
+        .new_contract_client(
+            admin_wallet,
+            ExponentialBackoffConfig::default(),
+            None,
+            false,
+        )
         .await?;
 
     // Initialize node contract client
     let contract_client = system_context
-        .new_contract_client(node_wallet, ExponentialBackoffConfig::default(), None, false)
+        .new_contract_client(
+            node_wallet,
+            ExponentialBackoffConfig::default(),
+            None,
+            false,
+        )
         .await?;
 
     register_committee_and_stake(
@@ -113,7 +123,14 @@ impl SystemContext {
         dry_run: bool,
     ) -> Result<SuiContractClient, SuiClientError> {
         let contract_config = self.contract_config();
-        SuiContractClient::new(wallet, &contract_config, backoff_config, gas_budget, dry_run).await
+        SuiContractClient::new(
+            wallet,
+            &contract_config,
+            backoff_config,
+            gas_budget,
+            dry_run,
+        )
+        .await
     }
 
     /// Returns the contract config for the system.

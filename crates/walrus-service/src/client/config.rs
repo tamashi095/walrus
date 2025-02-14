@@ -74,7 +74,7 @@ impl Config {
             &self.contract_config,
             self.backoff_config().clone(),
             gas_budget,
-            dry_run
+            dry_run,
         )
         .await
     }
