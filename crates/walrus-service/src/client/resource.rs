@@ -142,6 +142,19 @@ impl RegisterBlobOp {
     pub fn is_certify_and_extend(&self) -> bool {
         matches!(self, RegisterBlobOp::ReuseAndExtendNonCertified { .. })
     }
+
+    /// Returns the number of epochs extended if the operation contains an extension.
+    pub fn epochs_extended(&self) -> Option<EpochCount> {
+        match self {
+            RegisterBlobOp::ReuseAndExtend {
+                epochs_extended, ..
+            }
+            | RegisterBlobOp::ReuseAndExtendNonCertified {
+                epochs_extended, ..
+            } => Some(*epochs_extended),
+            _ => None,
+        }
+    }
 }
 
 /// The result of a store operation.
@@ -575,7 +588,7 @@ mod tests {
     }
     fn test_price_computation(
         encoded_length: u64,
-        epochs_ahead: u32,
+        epochs_ahead: EpochCount,
         storage_and_write_prices: (u64, u64),
         scratch_and_reuse_costs: (u64, u64),
     ) {

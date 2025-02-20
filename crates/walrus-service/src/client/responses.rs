@@ -34,6 +34,7 @@ use walrus_core::{
     metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
     BlobId,
     Epoch,
+    EpochCount,
     NetworkPublicKey,
     PublicKey,
     ShardIndex,
@@ -315,7 +316,7 @@ impl InfoOutput {
 pub(crate) struct InfoEpochOutput {
     pub(crate) current_epoch: Epoch,
     pub(crate) epoch_duration: Duration,
-    pub(crate) max_epochs_ahead: u32,
+    pub(crate) max_epochs_ahead: EpochCount,
 }
 
 impl InfoEpochOutput {
@@ -669,7 +670,7 @@ pub struct FundSharedBlobOutput {
 /// The output of the `walrus extend` command.
 pub struct ExtendBlobOutput {
     /// The number of epochs extended by.
-    pub epochs_ahead: u32,
+    pub epochs_extended: EpochCount,
 }
 
 #[derive(Debug, Serialize)]

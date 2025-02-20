@@ -1066,6 +1066,7 @@ async fn test_extend_owned_blobs() -> TestResult {
     let _ = tracing_subscriber::fmt::try_init();
     let (_sui_cluster_handle, _cluster, client) = test_cluster::default_setup().await?;
 
+    let current_epoch = client.as_ref().sui_client().current_epoch().await?;
     let blob = walrus_test_utils::random_data(314);
     let result = client
         .as_ref()
@@ -1077,16 +1078,11 @@ async fn test_extend_owned_blobs() -> TestResult {
             PostStoreAction::Keep,
         )
         .await?;
-    let (end_epoch, blob_object_id) = {
-        let BlobStoreResult::NewlyCreated { blob_object, .. } = result
-            .into_iter()
-            .next()
-            .expect("expect one blob store result")
-        else {
-            panic!("expect newly stored blob")
-        };
-        (blob_object.storage.end_epoch, blob_object.id)
+    let BlobStoreResult::NewlyCreated { blob_object, .. } = result[0].clone() else {
+        panic!("expect newly stored blob")
     };
+    let (end_epoch, blob_object_id) = (blob_object.storage.end_epoch, blob_object.id);
+    assert_eq!(end_epoch, current_epoch + 1);
 
     // Extend it by 5 epochs.
     client
@@ -1095,13 +1091,40 @@ async fn test_extend_owned_blobs() -> TestResult {
         .extend_blob(blob_object_id, 5)
         .await?;
 
-    let blob: Blob = client
+    let extended_blob_object: Blob = client
         .as_ref()
         .sui_client()
         .sui_client()
         .get_sui_object(blob_object_id)
         .await?;
-    assert_eq!(blob.storage.end_epoch, end_epoch + 5);
+    assert_eq!(extended_blob_object.storage.end_epoch, end_epoch + 5);
+
+    // Store it again with a longer lifetime, should extend it correctly.
+    let result = client
+        .as_ref()
+        .reserve_and_store_blobs(
+            &[blob.as_slice()],
+            20,
+            StoreWhen::NotStored,
+            BlobPersistence::Permanent,
+            PostStoreAction::Keep,
+        )
+        .await?;
+    let BlobStoreResult::NewlyCreated {
+        blob_object: second_store_blob_object,
+        resource_operation,
+        ..
+    } = result[0].clone()
+    else {
+        panic!("unexpected result")
+    };
+    assert_eq!(second_store_blob_object.id, blob_object_id);
+    assert_eq!(
+        second_store_blob_object.storage.end_epoch,
+        current_epoch + 20
+    );
+    assert!(resource_operation.is_extend());
+
     Ok(())
 }
 
