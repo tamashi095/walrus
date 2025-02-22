@@ -1378,7 +1378,7 @@ async_param_test! {
         keep: (PostStoreAction::Keep, 4, 0),
         transfer: (
             PostStoreAction::TransferTo(
-                SuiAddress::from_bytes(TARGET_ADDRESS).expect("valid address")
+                SuiAddress::from_bytes(TARGET_ADDRESS).expect("valid address"),
             ),
             0,
             4

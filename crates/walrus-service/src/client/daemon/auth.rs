@@ -60,6 +60,12 @@ pub struct Claim {
     /// The maximum size of the blob that can be stored, in bytes.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_size: Option<u64>,
+
+    /// The exact size of the blob that can be stored, in bytes.
+    /// If both `size` and `max_size` are present, this is considered a configuration mistake
+    /// and the claim is rejected.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 impl Claim {
@@ -109,11 +115,15 @@ impl Claim {
         &self,
         query: &PublisherQuery,
         auth_config: &AuthConfig,
-        body_size_hint: u64,
+        body_size_hint: http_body::SizeHint,
     ) -> Result<(), PublisherAuthError> {
         // The expiration check is always performed.
         if self.check_expiring_sec(auth_config) {
             return Err(PublisherAuthError::InvalidExpiration);
+        }
+
+        if self.max_size.is_some() && self.size.is_some() {
+            return Err(PublisherAuthError::InvalidSize);
         }
 
         // If verify_upload is disabled, skip the rest of the checks.
@@ -121,14 +131,37 @@ impl Claim {
             return Ok(());
         }
 
-        if let Some(max_size) = self.max_size {
-            if body_size_hint > max_size {
+        if let Some(body_size_upper_hint) = body_size_hint.upper() {
+            if let Some(max_size) = self.max_size {
+                if body_size_upper_hint > max_size {
+                    tracing::debug!(
+                        max_size,
+                        body_size_upper_hint,
+                        "upload with body size greater than max_size"
+                    );
+                    return Err(PublisherAuthError::SizeIncorrect);
+                }
+            }
+            if let Some(size) = self.size {
+                if body_size_upper_hint < size {
+                    tracing::debug!(
+                        size,
+                        body_size_upper_hint,
+                        "body does not match the size specified in the JWT (upper hint mismatch)"
+                    );
+                    return Err(PublisherAuthError::SizeIncorrect);
+                }
+            }
+        }
+        let body_size_lower_hint = body_size_hint.lower();
+        if let Some(size) = self.size {
+            if body_size_lower_hint > 0 && body_size_lower_hint > size {
                 tracing::debug!(
-                    max_size = max_size,
-                    body_size_hint = body_size_hint,
-                    "upload with body size greater than max_size"
+                    size,
+                    body_size_lower_hint,
+                    "body does not match the size specified in the JWT (lower hint mismatch)"
                 );
-                return Err(PublisherAuthError::MaxSizeExceeded);
+                return Err(PublisherAuthError::SizeIncorrect);
             }
         }
 
@@ -225,7 +258,7 @@ pub async fn verify_jwt_claim(
     bearer: Authorization<Bearer>,
     auth_config: &AuthConfig,
     token_cache: &CacheHandle<String>,
-    body_size_hint: u64,
+    body_size_hint: http_body::SizeHint,
 ) -> Result<(), Response<Body>> {
     let mut validation = if auth_config.decoding_key.is_some() {
         auth_config
@@ -299,6 +332,11 @@ pub enum PublisherAuthError {
     #[rest_api_error(reason = "INVALID_EPOCHS", status = ApiStatusCode::FailedPrecondition)]
     InvalidEpochs,
 
+    /// Misuse size, max-size field of the token to restrict upload
+    #[error("misuse size, max-size field of the token to restrict upload")]
+    #[rest_api_error(reason = "INVALID_SIZE", status = ApiStatusCode::FailedPrecondition)]
+    InvalidSize,
+
     /// Epochs is above the maximum allowed.
     #[error("the epochs field in the query is above the maximum allowed")]
     #[rest_api_error(reason = "EPOCHS_ABOVE_MAX", status = ApiStatusCode::FailedPrecondition)]
@@ -314,10 +352,10 @@ pub enum PublisherAuthError {
     #[rest_api_error(reason = "MISSING_SEND_OBJECT_TO", status = ApiStatusCode::FailedPrecondition)]
     MissingSendObjectTo,
 
-    /// The size of the body is above the maximum allowed.
-    #[error("the size of the body is above the maximum allowed.")]
-    #[rest_api_error(reason = "MAX_SIZE_EXCEEDED", status = ApiStatusCode::FailedPrecondition)]
-    MaxSizeExceeded,
+    /// The size of the body is incorrect
+    #[error("the size of the body is incorrect")]
+    #[rest_api_error(reason = "SIZE_INCORRECT", status = ApiStatusCode::FailedPrecondition)]
+    SizeIncorrect,
 
     /// The signature on the token has expired.
     #[error("the signature on the token has expired: {0}")]
@@ -726,7 +764,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn verify_body_size() {
+    async fn verify_body_size_with_max_size() {
         let claim = Claim {
             jti: "test".to_string(),
             iat: None,
@@ -772,7 +810,88 @@ mod tests {
                     ),
                     correct_auth_header(token),
                     // Small body is ok.
-                    Some(Body::from(vec![42; 10])),
+                    Some(Body::from(vec![42; 5])),
+                ),
+                StatusCode::OK,
+            ),
+            (
+                RequestHeadersAndData::new(
+                    &format!(
+                        "/v1/blobs?epochs=1&send_object_to={}",
+                        SuiAddress::from_bytes(ADDRESS).expect("valid address")
+                    ),
+                    correct_auth_header(other_token),
+                    // No body is ok.
+                    None,
+                ),
+                StatusCode::OK,
+            ),
+        ];
+
+        execute_requests(&router, requests).await;
+    }
+
+    #[tokio::test]
+    async fn verify_body_size_with_exact_size() {
+        let claim = Claim {
+            jti: "test".to_string(),
+            iat: None,
+            exp: FAR_EXP,
+            send_object_to: Some(SuiAddress::from_bytes(ADDRESS).expect("valid address")),
+            epochs: Some(1),
+            max_size: None,
+            size: Some(1000),
+            ..Default::default()
+        };
+        let (router, token, encode_key) = setup_router_and_token(
+            // Expiring sec.
+            0,
+            // Verify upload.
+            true,
+            // Use secret.
+            true,
+            claim.clone(),
+        );
+
+        let mut other_claim = claim;
+        // Need to change the JTI to avoid the replay suppression.
+        other_claim.jti = "other".to_string();
+        other_claim.size = None;
+        let other_token = encode(&Header::default(), &other_claim, &encode_key).unwrap();
+
+        let requests = vec![
+            (
+                RequestHeadersAndData::new(
+                    &format!(
+                        "/v1/blobs?epochs=1&send_object_to={}",
+                        SuiAddress::from_bytes(ADDRESS).expect("valid address")
+                    ),
+                    correct_auth_header(token.clone()),
+                    // Big body fails.
+                    Some(Body::from(vec![42; 1001])),
+                ),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                RequestHeadersAndData::new(
+                    &format!(
+                        "/v1/blobs?epochs=1&send_object_to={}",
+                        SuiAddress::from_bytes(ADDRESS).expect("valid address")
+                    ),
+                    correct_auth_header(token.clone()),
+                    // Small body fails.
+                    Some(Body::from(vec![42; 999])),
+                ),
+                StatusCode::BAD_REQUEST,
+            ),
+            (
+                RequestHeadersAndData::new(
+                    &format!(
+                        "/v1/blobs?epochs=1&send_object_to={}",
+                        SuiAddress::from_bytes(ADDRESS).expect("valid address")
+                    ),
+                    correct_auth_header(token),
+                    Some(Body::from(vec![42; 1000])),
                 ),
                 StatusCode::OK,
             ),
