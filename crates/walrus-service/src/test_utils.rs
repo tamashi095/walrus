@@ -1403,7 +1403,7 @@ impl SystemContractService for StubContractService {
     }
 
     fn current_epoch(&self) -> Epoch {
-        unimplemented!("stub service does not store the epoch")
+        1
     }
 
     async fn fixed_system_parameters(&self) -> Result<FixedSystemParameters, anyhow::Error> {
@@ -1437,6 +1437,10 @@ impl SystemContractService for StubContractService {
         _node_capability_object_id: Option<ObjectID>,
     ) -> Result<StorageNodeCap, SuiClientError> {
         Ok(self.node_capability_object.clone())
+    }
+
+    async fn get_system_object_version(&self) -> Result<u64, SuiClientError> {
+        Ok(1)
     }
 }
 
@@ -2093,6 +2097,10 @@ where
             .inner
             .get_node_capability_object(node_capability_object_id)
             .await
+    }
+
+    async fn get_system_object_version(&self) -> Result<u64, SuiClientError> {
+        self.as_ref().inner.get_system_object_version().await
     }
 }
 
