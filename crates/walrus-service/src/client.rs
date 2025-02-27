@@ -385,6 +385,7 @@ impl<T: ReadClient> Client<T> {
             match func().await {
                 Ok(result) => return Ok(result),
                 Err(error) => {
+                    tracing::info!("ZZZZZ write blob error {:?}", error);
                     if error.may_be_caused_by_epoch_change() {
                         tracing::warn!(
                             %error,
@@ -729,8 +730,14 @@ impl Client<SuiContractClient> {
             "storing {} sliver pairs with metadata",
             pairs_and_metadata.len()
         );
+
         let status_start_timer = Instant::now();
         let committees = self.get_committees().await?;
+
+        tracing::info!(
+            "ZZZZZ current committees {:?}",
+            committees.write_committee()
+        );
 
         // Retrieve the blob status, checking if the committee has changed in the meantime.
         // This operation can be safely interrupted as it does not require a wallet.
@@ -1194,6 +1201,11 @@ impl<T> Client<T> {
     ) -> ClientResult<ConfirmationCertificate> {
         tracing::info!(blob_id = %metadata.blob_id(), "starting to send data to storage nodes");
         let committees = self.get_committees().await?;
+        tracing::info!(
+            blob_id = %metadata.blob_id(),
+            "ZZZZZ send_blob_data_and_get_certificate current committees {:?}",
+            committees.write_committee()
+        );
         let mut pairs_per_node = self
             .pairs_per_node(metadata.blob_id(), pairs, &committees)
             .await;

@@ -1387,8 +1387,12 @@ impl StorageNode {
         let committees = self.inner.committee_service.active_committees();
         assert!(event.epoch <= committees.epoch());
 
+        tracing::info!("ZZZZZ node existing shard {:?}", &storage.existing_shards());
+
         let shard_diff =
             ShardDiff::diff_previous(&committees, &storage.existing_shards(), public_key);
+
+        tracing::info!("ZZZZZ node epoch change shard diff {:?}", shard_diff);
 
         for shard_id in &shard_diff.lost {
             let Some(shard_storage) = storage.shard_storage(*shard_id) else {
@@ -1600,9 +1604,18 @@ impl StorageNodeInner {
     ) -> Result<Arc<ShardStorage>, ShardNotAssigned> {
         let shard_index =
             sliver_pair_index.to_shard_index(self.encoding_config.n_shards(), blob_id);
-        self.storage
-            .shard_storage(shard_index)
-            .ok_or(ShardNotAssigned(shard_index, self.current_epoch()))
+        let sss = self.storage.shard_storage(shard_index);
+        if sss.is_none() {
+            tracing::info!(
+                "ZZZZZ shard not assigned get_shard_for_sliver_pair {:?} {:?}",
+                shard_index,
+                self.current_epoch()
+            );
+        }
+        sss.ok_or(ShardNotAssigned(shard_index, self.current_epoch()))
+        // self.storage
+        //     .shard_storage(shard_index)
+        //     .ok_or(ShardNotAssigned(shard_index, self.current_epoch()))
     }
 
     fn init_gauges(&self) -> Result<(), TypedStoreError> {
@@ -1681,6 +1694,11 @@ impl StorageNodeInner {
             .context("Unable to retrieve shard status")?;
 
         if !shard_status.is_owned_by_node() {
+            tracing::info!(
+                "ZZZZZ shard not assigned {:?} {:?}",
+                shard_storage.id(),
+                self.current_epoch()
+            );
             return Err(ShardNotAssigned(shard_storage.id(), self.current_epoch()).into());
         }
 

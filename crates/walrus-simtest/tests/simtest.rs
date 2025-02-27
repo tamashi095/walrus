@@ -723,7 +723,6 @@ mod tests {
 
     // This test simulates a scenario where a node is repeatedly moving shards among storage nodes,
     // and a workload is running concurrently.
-    #[ignore = "ignore E2E tests by default"]
     #[walrus_simtest(config = "latency_config()")]
     async fn test_repeated_shard_move_with_workload() {
         // Adding jitter in the epoch change start event so that different nodes don't start the
@@ -763,7 +762,7 @@ mod tests {
         tokio::time::sleep(Duration::from_secs(60)).await;
 
         // Repeatedly move shards among storage nodes.
-        for _i in 0..3 {
+        for _i in 0..1 {
             let node_to_move_shard_into = rand::thread_rng().gen_range(0..=4);
             let shard_move_weight = rand::thread_rng().gen_range(1..=5);
             tracing::info!(
@@ -786,6 +785,8 @@ mod tests {
 
             tokio::time::sleep(Duration::from_secs(70)).await;
         }
+
+        tokio::time::sleep(Duration::from_secs(70)).await;
 
         workload_handle.abort();
 

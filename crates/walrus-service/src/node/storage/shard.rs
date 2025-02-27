@@ -85,6 +85,7 @@ impl Display for ShardStatus {
 
 impl ShardStatus {
     pub fn is_owned_by_node(&self) -> bool {
+        tracing::info!("ZZZZZ shard status {:?}", self);
         self != &ShardStatus::LockedToMove
     }
 
