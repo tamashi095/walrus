@@ -46,6 +46,17 @@ pub enum VerificationError {
     UnencodedLengthTooLarge,
 }
 
+/// Metadata associated with a quilt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuiltMetadata {
+    /// The ID of the quilt.
+    pub quilt_id: BlobId,
+    /// The metadata of the quilt.
+    pub quilt_blob_metadata: VerifiedBlobMetadataWithId,
+    /// The IDs of the blobs in the quilt.
+    pub blobs: Vec<BlobId>,
+}
+
 /// [`BlobMetadataWithId`] that has been verified with [`UnverifiedBlobMetadataWithId::verify`].
 ///
 /// This ensures the following properties:

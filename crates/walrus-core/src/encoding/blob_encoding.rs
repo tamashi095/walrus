@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{vec, vec::Vec};
+use alloc::{borrow::ToOwned, vec, vec::Vec};
 use core::{cmp, marker::PhantomData, num::NonZeroU16, slice::Chunks};
 
 use fastcrypto::hash::Blake2b256;
@@ -29,6 +29,84 @@ use crate::{
     SliverIndex,
     SliverPairIndex,
 };
+
+pub struct QuiltEncoder<'a> {
+    blobs: &'a [&'a [u8]],
+    config: EncodingConfigEnum<'a>,
+    span: Span,
+    symbol_size: NonZeroU16,
+}
+
+// impl<'a> QuiltEncoder<'a> {
+//     pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
+//         let symbol_size = utils::compute_symbol_size_from_usize(
+//         blob.len(),
+//             config.source_symbols_per_blob(),
+//         )?;
+//         let n_rows = config.n_source_symbols::<Primary>().get().into();
+//         let n_columns = config.n_source_symbols::<Secondary>().get().into();
+
+//         Ok(Self {
+//             blobs,
+//             config,
+//             span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+//             symbol_size,
+//         })
+//     }
+// }
+
+/// Finds the minimum length needed to store blobs in a fixed number of columns.
+/// Each blob must be stored in consecutive columns.
+///
+/// # Arguments
+/// * `blobs` - Slice of blob lengths
+/// * `nc` - Number of columns available
+///
+/// # Returns
+/// * `Option<usize>` - The minimum length needed, or None if impossible
+fn find_min_column_size(blobs: &[usize], nc: usize, base: usize) -> Option<usize> {
+    // If any blob requires more columns than available, it's impossible
+    if blobs.len() > nc {
+        return None;
+    }
+
+    let min_len = blobs.iter().sum::<usize>().div_ceil(nc);
+    let mut min_size = (min_len - 1) / base + 1;
+    let max_len = blobs.iter().max().expect("blobs not empty").to_owned();
+    let mut max_size = (max_len - 1) / base + 1;
+    // while min_size <= max_size {
+    //     tracing::info!("Trying size: {}", min_size);
+    //     if can_fit(blobs, nc, min_size) {
+    //         return Some(min_size);
+    //     }
+    //     min_size += base;
+    // }
+
+    while min_size < max_size {
+        let mid = (min_size + max_size) / 2;
+        if can_fit(blobs, nc, mid * base) {
+            max_size = mid;
+        } else {
+            min_size = mid + 1;
+        }
+    }
+
+    // TODO(heliu): Disapllow exceeding max_size.
+    Some(min_size * base)
+}
+
+fn can_fit(blobs: &[usize], nc: usize, length: usize) -> bool {
+    let mut used_cols = 0;
+    for &blob in blobs {
+        let cur = (blob - 1) / length + 1;
+        if used_cols + cur > nc {
+            return false;
+        }
+        used_cols += cur;
+    }
+    tracing::info!("Can fit: {}, length: {}", used_cols, length);
+    true
+}
 
 /// Struct to perform the full blob encoding.
 #[derive(Debug)]
@@ -663,6 +741,7 @@ impl<'a, D: Decoder, E: EncodingAxis> BlobDecoder<'a, D, E> {
 
 #[cfg(test)]
 mod tests {
+    use tracing_subscriber;
     use walrus_test_utils::{param_test, random_data, random_subset};
 
     use super::*;
@@ -889,5 +968,43 @@ mod tests {
 
         assert_eq!(blob, blob_dec);
         assert_eq!(metadata_enc, metadata_dec);
+    }
+
+    fn min_required_columns(blobs: &[usize], length: usize) -> usize {
+        if length == 0 {
+            return usize::MAX;
+        }
+        let mut used_cols = 0;
+        for &blob in blobs {
+            used_cols += (blob - 1) / length + 1;
+        }
+        used_cols
+    }
+
+    param_test! {
+        test_find_min_length: [
+            not_fit: (&[2, 1, 2, 1], 3, 3, None),
+            single_large_blob: (&[1000, 1, 1], 4, 7, Some(504)),
+            // empty_input: (&[], 3, 1, Some(0)),
+            single_small_blob: (&[1], 3, 2, Some(2)),
+            impossible_case: (&[15, 8, 4], 4, 2, Some(8)),
+            perfect_fit: (&[2, 2, 2], 3, 1, Some(2)),
+            with_empty_columns: (&[5, 5, 5], 5, 1, Some(5)),
+            with_many_columns: (&[25, 35, 45], 200, 1, Some(1))
+        ]
+    }
+    fn test_find_min_length(blobs: &[usize], nc: usize, base: usize, expected: Option<usize>) {
+        // Initialize tracing subscriber for this test
+        let _guard = tracing_subscriber::fmt().try_init();
+        let res = find_min_column_size(blobs, nc, base);
+        tracing::info!("res: {:?}", res);
+        assert_eq!(res, expected);
+        if let Some(min_size) = res {
+            assert!(min_required_columns(blobs, min_size) <= nc);
+            assert!(min_size % base == 0);
+            assert!(min_required_columns(blobs, min_size - base) > nc);
+        } else {
+            assert!(min_required_columns(blobs, base) > nc);
+        }
     }
 }
