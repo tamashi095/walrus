@@ -33,6 +33,7 @@ use crate::{
 pub struct QuiltEncoder<'a> {
     // blobs: &'a [&'a [u8]],
     rows: Vec<Vec<u8>>,
+    blob_ids: Vec<BlobId>,
     config: EncodingConfigEnum<'a>,
     symbol_size: NonZeroU16,
     /// The number of rows of the message matrix.
@@ -47,26 +48,42 @@ pub struct QuiltEncoder<'a> {
 }
 
 impl<'a> QuiltEncoder<'a> {
-        pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
-            let n_rows = config.n_source_symbols::<Primary>().get().into();
-            let n_columns = config.n_source_symbols::<Secondary>().get().into();
+    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
+        let n_rows = config.n_source_symbols::<Primary>().get().into();
+        let n_columns = config.n_source_symbols::<Secondary>().get().into();
 
-            let rows = Self::construct_quilt_blob(blobs, n_columns, n_rows)?;
-            // let symbol_size = utils::compute_symbol_size_from_usize(
-            //     blobs.iter().map(|b| b.len()).sum(),
-            //     config.source_symbols_per_blob(),
-            // )?;
-            Ok(Self {
-                rows,
-                config,
-                symbol_size: NonZeroU16::new(1).unwrap(),
-                n_rows,
-                n_columns,
-                span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+        // 1. Compute blob_ids and create mapping
+        let mut blob_with_ids: Vec<_> = blobs
+            .iter()
+            .map(|&blob| {
+                let encoder = BlobEncoder::new(config.clone(), blob).unwrap();
+                let metadata = encoder.compute_metadata();
+                (blob, *metadata.blob_id())
             })
-        }
+            .collect();
 
-    pub fn construct_quilt_blob(blobs: &'a [&'a [u8]], n_columns: usize, n_rows: usize) -> Result<Vec<Vec<u8>>, DataTooLargeError> {
+        // 2. Sort blobs based on their blob_ids
+        blob_with_ids.sort_by_key(|(_, id)| *id);
+
+        // 3. Create sorted_blobs vector
+        let sorted_blobs: Vec<&[u8]> = blob_with_ids.iter().map(|(blob, _)| *blob).collect();
+
+        // Store blob_ids in order and construct matrix with sorted blobs
+        let blob_ids = blob_with_ids.into_iter().map(|(_, id)| id).collect();
+        let rows = Self::construct_quilt_blob(&sorted_blobs, n_columns, n_rows)?;
+
+        Ok(Self {
+            rows,
+            blob_ids,
+            config,
+            symbol_size: NonZeroU16::new(1).unwrap(),
+            n_rows,
+            n_columns,
+            span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+        })
+    }
+
+    pub fn construct_quilt_blob(blobs: &[&[u8]], n_columns: usize, n_rows: usize) -> Result<Vec<Vec<u8>>, DataTooLargeError> {
         tracing::info!("Constructing quilt blob with n_columns: {}, n_rows: {}", n_columns, n_rows);
         let blob_sizes = blobs.iter().map(|b| b.len()).collect::<Vec<_>>();
         let Some(column_size) = find_min_column_size(&blob_sizes, n_columns, n_rows, usize::MAX) else {
@@ -102,6 +119,10 @@ impl<'a> QuiltEncoder<'a> {
     pub fn get_rows(&self) -> &[&[u8]] {
         let rows: Vec<&[u8]> = self.rows.iter().map(|row| row.as_slice()).collect();
         Box::leak(rows.into_boxed_slice())
+    }
+
+    pub fn get_blob_ids(&self) -> &[BlobId] {
+        &self.blob_ids
     }
 }
 
@@ -1067,5 +1088,7 @@ mod tests {
         let encoder = QuiltEncoder::new(config_enum, &blobs).unwrap();
         let rows = encoder.get_rows();
         tracing::info!("Rows: {:?}", rows);
+        let blob_ids = encoder.get_blob_ids();
+        tracing::info!("Blob IDs: {:?}", blob_ids);
     }
 }
