@@ -1,7 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{borrow::ToOwned, vec, vec::Vec};
+use alloc::{borrow::ToOwned, vec, vec::Vec, boxed::Box};
 use core::{cmp, marker::PhantomData, num::NonZeroU16, slice::Chunks};
 
 use fastcrypto::hash::Blake2b256;
@@ -31,71 +31,118 @@ use crate::{
 };
 
 pub struct QuiltEncoder<'a> {
-    blobs: &'a [&'a [u8]],
+    // blobs: &'a [&'a [u8]],
+    rows: Vec<Vec<u8>>,
     config: EncodingConfigEnum<'a>,
-    span: Span,
     symbol_size: NonZeroU16,
+    /// The number of rows of the message matrix.
+    ///
+    /// Stored as a `usize` for convenience, but guaranteed to be non-zero.
+    n_rows: usize,
+    /// The number of columns of the message matrix.
+    ///
+    /// Stored as a `usize` for convenience, but guaranteed to be non-zero.
+    n_columns: usize,
+    span: Span,
 }
 
-// impl<'a> QuiltEncoder<'a> {
-//     pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
-//         let symbol_size = utils::compute_symbol_size_from_usize(
-//         blob.len(),
-//             config.source_symbols_per_blob(),
-//         )?;
-//         let n_rows = config.n_source_symbols::<Primary>().get().into();
-//         let n_columns = config.n_source_symbols::<Secondary>().get().into();
+impl<'a> QuiltEncoder<'a> {
+        pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
+            let n_rows = config.n_source_symbols::<Primary>().get().into();
+            let n_columns = config.n_source_symbols::<Secondary>().get().into();
 
-//         Ok(Self {
-//             blobs,
-//             config,
-//             span: tracing::span!(Level::ERROR, "QuiltEncoder"),
-//             symbol_size,
-//         })
-//     }
-// }
+            let rows = Self::construct_quilt_blob(blobs, n_columns, n_rows)?;
+            // let symbol_size = utils::compute_symbol_size_from_usize(
+            //     blobs.iter().map(|b| b.len()).sum(),
+            //     config.source_symbols_per_blob(),
+            // )?;
+            Ok(Self {
+                rows,
+                config,
+                symbol_size: NonZeroU16::new(1).unwrap(),
+                n_rows,
+                n_columns,
+                span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+            })
+        }
+
+    pub fn construct_quilt_blob(blobs: &'a [&'a [u8]], n_columns: usize, n_rows: usize) -> Result<Vec<Vec<u8>>, DataTooLargeError> {
+        tracing::info!("Constructing quilt blob with n_columns: {}, n_rows: {}", n_columns, n_rows);
+        let blob_sizes = blobs.iter().map(|b| b.len()).collect::<Vec<_>>();
+        let Some(column_size) = find_min_column_size(&blob_sizes, n_columns, n_rows, usize::MAX) else {
+            tracing::info!("Impossible to fit blobs in nc columns now");
+            return Err(DataTooLargeError);
+        };
+        tracing::info!("Column size: {}", column_size);
+        // Initialize matrix as rows
+        let mut rows = vec![vec![0u8; n_columns]; column_size];
+        let mut current_col = 0;
+        
+        // Fill each blob into consecutive columns
+        for &blob in blobs {
+            let cols_needed = (blob.len() - 1) / column_size + 1;
+            tracing::info!("Blob: {:?}, Cols needed: {}", blob, cols_needed);
+            if current_col + cols_needed > n_columns {
+                return Err(DataTooLargeError);
+            }
+            
+            // Copy blob data into columns
+            for (i, &byte) in blob.iter().enumerate() {
+                let row = i % column_size;
+                let col = current_col + (i / column_size);
+                rows[row][col] = byte;
+            }
+            
+            current_col += cols_needed;
+        }
+        
+        Ok(rows)
+    }
+
+    pub fn get_rows(&self) -> &[&[u8]] {
+        let rows: Vec<&[u8]> = self.rows.iter().map(|row| row.as_slice()).collect();
+        Box::leak(rows.into_boxed_slice())
+    }
+}
 
 /// Finds the minimum length needed to store blobs in a fixed number of columns.
 /// Each blob must be stored in consecutive columns.
 ///
 /// # Arguments
-/// * `blobs` - Slice of blob lengths
-/// * `nc` - Number of columns available
+/// * `blobs` - Slice of blob lengths.
+/// * `nc` - Number of columns available.
+/// * `base` - Base of the encoding, the column size must be a multiple of this.
 ///
 /// # Returns
-/// * `Option<usize>` - The minimum length needed, or None if impossible
-fn find_min_column_size(blobs: &[usize], nc: usize, base: usize) -> Option<usize> {
+/// * `Option<usize>` - The minimum length needed, or None if impossible.
+fn find_min_column_size(blobs: &[usize], nc: usize, base: usize, max_size: usize) -> Option<usize> {
     // If any blob requires more columns than available, it's impossible
+    tracing::info!("Blobs: {:?}, nc: {}", blobs, nc);
     if blobs.len() > nc {
+        tracing::info!("Impossible to fit blobs in nc columns");
         return None;
     }
 
     let min_len = blobs.iter().sum::<usize>().div_ceil(nc);
-    let mut min_size = (min_len - 1) / base + 1;
+    let mut min_val = (min_len - 1) / base + 1;
     let max_len = blobs.iter().max().expect("blobs not empty").to_owned();
-    let mut max_size = (max_len - 1) / base + 1;
-    // while min_size <= max_size {
-    //     tracing::info!("Trying size: {}", min_size);
-    //     if can_fit(blobs, nc, min_size) {
-    //         return Some(min_size);
-    //     }
-    //     min_size += base;
-    // }
+    let mut max_val = (max_len - 1) / base + 1;
 
-    while min_size < max_size {
-        let mid = (min_size + max_size) / 2;
+    while min_val < max_val {
+        tracing::info!("min_val: {}, max_val: {}", min_val, max_val);
+        let mid = (min_val + max_val) / 2;
         if can_fit(blobs, nc, mid * base) {
-            max_size = mid;
+            max_val = mid;
         } else {
-            min_size = mid + 1;
+            min_val = mid + 1;
         }
     }
 
-    // TODO(heliu): Disapllow exceeding max_size.
-    Some(min_size * base)
+    Some(min_val * base).filter(|&size| size * nc <= max_size)
 }
 
 fn can_fit(blobs: &[usize], nc: usize, length: usize) -> bool {
+    tracing::info!("Blobs: {:?}, nc: {}, length: {}", blobs, nc, length);
     let mut used_cols = 0;
     for &blob in blobs {
         let cur = (blob - 1) / length + 1;
@@ -996,7 +1043,7 @@ mod tests {
     fn test_find_min_length(blobs: &[usize], nc: usize, base: usize, expected: Option<usize>) {
         // Initialize tracing subscriber for this test
         let _guard = tracing_subscriber::fmt().try_init();
-        let res = find_min_column_size(blobs, nc, base);
+        let res = find_min_column_size(blobs, nc, base, usize::MAX);
         tracing::info!("res: {:?}", res);
         assert_eq!(res, expected);
         if let Some(min_size) = res {
@@ -1006,5 +1053,19 @@ mod tests {
         } else {
             assert!(min_required_columns(blobs, base) > nc);
         }
+    }
+
+    #[test]
+    fn test_quilt_encoder_rows() {
+        let _guard = tracing_subscriber::fmt().try_init();
+        let blobs = vec![
+            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+            &[5, 68, 3][..],
+        ];
+        let config = RaptorQEncodingConfig::new_for_test(2, 3, 7);
+        let config_enum = EncodingConfigEnum::RaptorQ(&config);
+        let encoder = QuiltEncoder::new(config_enum, &blobs).unwrap();
+        let rows = encoder.get_rows();
+        tracing::info!("Rows: {:?}", rows);
     }
 }
