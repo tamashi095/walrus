@@ -1,10 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{borrow::ToOwned, vec, vec::Vec, boxed::Box};
-use core::{cmp, marker::PhantomData, num::NonZeroU16, slice::Chunks};
+use alloc::{borrow::ToOwned, format, string::String, vec, vec::Vec};
+use core::{cmp, fmt, marker::PhantomData, num::NonZeroU16, slice::Chunks};
 
 use fastcrypto::hash::Blake2b256;
+use hex;
+use serde::{Deserialize, Serialize};
 use tracing::{Level, Span};
 
 use super::{
@@ -24,105 +26,276 @@ use super::{
 use crate::{
     encoding::config::EncodingConfigTrait as _,
     merkle::{leaf_hash, MerkleTree},
-    metadata::{SliverPairMetadata, VerifiedBlobMetadataWithId},
+    metadata::{QuiltBlock, SliverPairMetadata, VerifiedBlobMetadataWithId},
     BlobId,
     SliverIndex,
     SliverPairIndex,
 };
 
+/// Data layout of a quilt.
+#[derive(Default, Serialize, Deserialize)]
+pub struct Quilt {
+    pub data: Vec<Vec<u8>>,
+    pub blocks: Vec<QuiltBlock>,
+    pub symbol_size: usize,
+}
+
+impl Quilt {
+    pub fn get_blob(&self, index: usize) -> Option<Vec<u8>> {
+        if index >= self.blocks.len() {
+            return None;
+        }
+        let block = &self.blocks[index];
+        let start = if index == 0 {
+            0
+        } else {
+            self.blocks[index - 1].end_index as usize
+        };
+        let end = block.end_index as usize;
+        let mut blob = vec![0u8; block.unencoded_length as usize];
+
+        let mut written = 0;
+        for col in start..end {
+            for row in &self.data {
+                let remaining = blob.len() - written;
+                if remaining == 0 {
+                    break;
+                }
+                let chunk_size = cmp::min(self.symbol_size, remaining);
+                blob[written..written + chunk_size].copy_from_slice(
+                    &row[col * self.symbol_size..col * self.symbol_size + chunk_size],
+                );
+                written += chunk_size;
+            }
+        }
+        Some(blob)
+    }
+
+    pub fn get_blob_by_id(&self, id: BlobId) -> Option<Vec<u8>> {
+        let index = self
+            .blocks
+            .iter()
+            .enumerate()
+            .find(|(_, block)| block.blob_id == id)
+            .map(|(i, _)| i);
+        index.and_then(|i| self.get_blob(i))
+    }
+}
+
+impl fmt::Debug for Quilt {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut ds = f.debug_struct("Quilt");
+
+        // Add newline before data field
+        ds.field(
+            "\ndata", // <-- Added newline here
+            &format_args!(
+                "\n{:#?}",
+                DebugMatrix {
+                    rows: &self.data,
+                    symbol_size: self.symbol_size
+                }
+            ),
+        );
+
+        // Format blocks with newline
+        ds.field(
+            "blocks",
+            &format_args!("\n{:#?}", DebugBlocks(&self.blocks)),
+        );
+
+        ds.field("symbol_size", &self.symbol_size).finish()?;
+
+        // Add final newline after entire struct
+        writeln!(f)
+    }
+}
+
+struct DebugMatrix<'a> {
+    rows: &'a [Vec<u8>],
+    symbol_size: usize,
+}
+
+impl fmt::Debug for DebugMatrix<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        for (i, row) in self.rows.iter().enumerate() {
+            let entries = row
+                .chunks(self.symbol_size)
+                .map(|chunk| format!("0x{}", hex::encode(chunk)))
+                .collect::<Vec<_>>();
+            list.entry(&DebugRow {
+                index: i,
+                entries: &entries,
+            });
+        }
+        list.finish()?;
+        writeln!(f)
+    }
+}
+
+struct DebugRow<'a> {
+    index: usize,
+    entries: &'a [String],
+}
+
+impl fmt::Debug for DebugRow<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let hex_width = self.entries.first().map_or(4, |e| e.len());
+        let entries_per_line = 200 / (hex_width + 2); // +2 for ", " separator
+
+        write!(f, "\nRow {:0>2}:\n", self.index)?;
+        for (i, entry) in self.entries.iter().enumerate() {
+            if i % entries_per_line == 0 {
+                if i > 0 {
+                    writeln!(f)?;
+                }
+                write!(f, "    ")?;
+            }
+
+            // Pad entries to fixed width for alignment
+            write!(f, "{:width$}", entry, width = hex_width)?;
+
+            if i < self.entries.len() - 1 {
+                write!(f, ", ")?;
+            }
+
+            // Add truncation indicator
+            if i == 5 && self.entries.len() > 8 {
+                write!(f, "... (+{} more)", self.entries.len() - i - 1)?;
+                break;
+            }
+        }
+        Ok(())
+    }
+}
+
+struct DebugBlocks<'a>(&'a [QuiltBlock]);
+
+impl fmt::Debug for DebugBlocks<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut list = f.debug_list();
+        for block in self.0 {
+            list.entry(&format_args!(
+                "\nQuiltBlock {{\n    blob_id: {:x?},\n    unencoded_length: {},\
+                \n    end_index: {},\n    desc: {:?}\n}}",
+                block.blob_id, block.unencoded_length, block.end_index, block.desc
+            ));
+        }
+        list.finish()?;
+        writeln!(f)
+    }
+}
+
+/// Encodes a set of blobs into a single quilt blob.
 pub struct QuiltEncoder<'a> {
-    // blobs: &'a [&'a [u8]],
-    rows: Vec<Vec<u8>>,
-    blob_ids: Vec<BlobId>,
+    /// The quilt data.
+    blobs: &'a [&'a [u8]],
     config: EncodingConfigEnum<'a>,
-    symbol_size: NonZeroU16,
-    /// The number of rows of the message matrix.
-    ///
-    /// Stored as a `usize` for convenience, but guaranteed to be non-zero.
-    n_rows: usize,
-    /// The number of columns of the message matrix.
-    ///
-    /// Stored as a `usize` for convenience, but guaranteed to be non-zero.
-    n_columns: usize,
     span: Span,
 }
 
 impl<'a> QuiltEncoder<'a> {
-    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Result<Self, DataTooLargeError> {
-        let n_rows = config.n_source_symbols::<Primary>().get().into();
-        let n_columns = config.n_source_symbols::<Secondary>().get().into();
+    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Self {
+        Self {
+            blobs,
+            config,
+            span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+        }
+    }
 
-        // 1. Compute blob_ids and create mapping
-        let mut blob_with_ids: Vec<_> = blobs
+    /// Constructs a quilt from a set of blobs.
+    pub fn construct_quilt(&self) -> Result<Quilt, DataTooLargeError> {
+        let n_rows = self.config.n_source_symbols::<Primary>().get().into();
+        let n_columns = self.config.n_source_symbols::<Secondary>().get().into();
+        tracing::info!(
+            "Constructing quilt blob with n_columns: {}, n_rows: {}",
+            n_columns,
+            n_rows
+        );
+
+        // 1. Compute blob_ids and create mapping.
+        let mut blob_with_ids: Vec<_> = self
+            .blobs
             .iter()
             .map(|&blob| {
-                let encoder = BlobEncoder::new(config.clone(), blob).unwrap();
+                let encoder = BlobEncoder::new(self.config.clone(), blob).unwrap();
                 let metadata = encoder.compute_metadata();
                 (blob, *metadata.blob_id())
             })
             .collect();
 
-        // 2. Sort blobs based on their blob_ids
+        // 2. Sort blobs based on their blob_ids.
         blob_with_ids.sort_by_key(|(_, id)| *id);
 
-        // 3. Create sorted_blobs vector
-        let sorted_blobs: Vec<&[u8]> = blob_with_ids.iter().map(|(blob, _)| *blob).collect();
-
-        // Store blob_ids in order and construct matrix with sorted blobs
-        let blob_ids = blob_with_ids.into_iter().map(|(_, id)| id).collect();
-        let rows = Self::construct_quilt_blob(&sorted_blobs, n_columns, n_rows)?;
-
-        Ok(Self {
-            rows,
-            blob_ids,
-            config,
-            symbol_size: NonZeroU16::new(1).unwrap(),
-            n_rows,
-            n_columns,
-            span: tracing::span!(Level::ERROR, "QuiltEncoder"),
-        })
-    }
-
-    pub fn construct_quilt_blob(blobs: &[&[u8]], n_columns: usize, n_rows: usize) -> Result<Vec<Vec<u8>>, DataTooLargeError> {
-        tracing::info!("Constructing quilt blob with n_columns: {}, n_rows: {}", n_columns, n_rows);
-        let blob_sizes = blobs.iter().map(|b| b.len()).collect::<Vec<_>>();
-        let Some(column_size) = find_min_column_size(&blob_sizes, n_columns, n_rows, usize::MAX) else {
-            tracing::info!("Impossible to fit blobs in nc columns now");
+        let blob_sizes = blob_with_ids
+            .iter()
+            .map(|(b, _)| b.len())
+            .collect::<Vec<_>>();
+        let Some(symbol_size) = compute_symbol_size(&blob_sizes, n_columns, n_rows, usize::MAX)
+        else {
+            tracing::error!("Impossible to fit blobs in {} columns.", n_columns);
             return Err(DataTooLargeError);
         };
-        tracing::info!("Column size: {}", column_size);
-        // Initialize matrix as rows
-        let mut rows = vec![vec![0u8; n_columns]; column_size];
+        tracing::info!("Symbol size: {}", symbol_size);
+        let symbol_size = cmp::max(
+            symbol_size,
+            self.config.encoding_type().required_alignment() as usize,
+        );
+
+        // Initialize matrix as rows.
+        let mut rows = vec![vec![0u8; symbol_size * n_columns]; n_rows];
+        let mut quilt_blocks = Vec::new();
         let mut current_col = 0;
-        
-        // Fill each blob into consecutive columns
-        for &blob in blobs {
-            let cols_needed = (blob.len() - 1) / column_size + 1;
-            tracing::info!("Blob: {:?}, Cols needed: {}", blob, cols_needed);
-            if current_col + cols_needed > n_columns {
+
+        // Fill each blob into consecutive columns.
+        for (blob, blob_id) in &blob_with_ids {
+            let mut cur = current_col;
+            let cols_needed = blob.len().div_ceil(symbol_size * n_rows);
+            tracing::info!(
+                "Blob: {:?} needs {} columns, current_col: {}",
+                blob_id,
+                cols_needed,
+                cur
+            );
+            if cur + cols_needed > n_columns {
                 return Err(DataTooLargeError);
             }
-            
-            // Copy blob data into columns
-            for (i, &byte) in blob.iter().enumerate() {
-                let row = i % column_size;
-                let col = current_col + (i / column_size);
-                rows[row][col] = byte;
+
+            // Copy blob data into columns.
+            let mut row = 0;
+            let mut offset = 0;
+            while offset < blob.len() {
+                let end = cmp::min(offset + symbol_size, blob.len());
+                let chunk = &blob[offset..end];
+
+                // Bulk copy the chunk into the current row
+                rows[row][cur * symbol_size..cur * symbol_size + chunk.len()]
+                    .copy_from_slice(chunk);
+
+                row = (row + 1) % n_rows;
+                if row == 0 {
+                    cur += 1;
+                }
+                offset += symbol_size;
             }
-            
+
             current_col += cols_needed;
+
+            // Create QuiltBlock for this blob.
+            quilt_blocks.push(QuiltBlock {
+                blob_id: *blob_id,
+                unencoded_length: blob.len() as u64,
+                end_index: current_col as u16,
+                desc: None,
+            });
         }
-        
-        Ok(rows)
-    }
 
-    pub fn get_rows(&self) -> &[&[u8]] {
-        let rows: Vec<&[u8]> = self.rows.iter().map(|row| row.as_slice()).collect();
-        Box::leak(rows.into_boxed_slice())
-    }
-
-    pub fn get_blob_ids(&self) -> &[BlobId] {
-        &self.blob_ids
+        Ok(Quilt {
+            data: rows,
+            blocks: quilt_blocks,
+            symbol_size,
+        })
     }
 }
 
@@ -136,30 +309,35 @@ impl<'a> QuiltEncoder<'a> {
 ///
 /// # Returns
 /// * `Option<usize>` - The minimum length needed, or None if impossible.
-fn find_min_column_size(blobs: &[usize], nc: usize, base: usize, max_size: usize) -> Option<usize> {
+fn compute_symbol_size(
+    blobs: &[usize],
+    nc: usize,
+    nr: usize,
+    max_quilt_size: usize,
+) -> Option<usize> {
     // If any blob requires more columns than available, it's impossible
-    tracing::info!("Blobs: {:?}, nc: {}", blobs, nc);
+    tracing::info!("Blobs: {:?}, nc: {}, nr: {}", blobs, nc, nr);
     if blobs.len() > nc {
         tracing::info!("Impossible to fit blobs in nc columns");
         return None;
     }
 
     let min_len = blobs.iter().sum::<usize>().div_ceil(nc);
-    let mut min_val = (min_len - 1) / base + 1;
+    let mut min_val = (min_len - 1) / nr + 1;
     let max_len = blobs.iter().max().expect("blobs not empty").to_owned();
-    let mut max_val = (max_len - 1) / base + 1;
+    let mut max_val = (max_len - 1) / nr + 1;
 
     while min_val < max_val {
         tracing::info!("min_val: {}, max_val: {}", min_val, max_val);
         let mid = (min_val + max_val) / 2;
-        if can_fit(blobs, nc, mid * base) {
+        if can_fit(blobs, nc, mid * nr) {
             max_val = mid;
         } else {
             min_val = mid + 1;
         }
     }
 
-    Some(min_val * base).filter(|&size| size * nc <= max_size)
+    Some(min_val).filter(|&size| size * nc * nr <= max_quilt_size)
 }
 
 fn can_fit(blobs: &[usize], nc: usize, length: usize) -> bool {
@@ -814,7 +992,7 @@ mod tests {
 
     use super::*;
     use crate::{
-        encoding::{EncodingConfig, RaptorQEncodingConfig},
+        encoding::{EncodingConfig, RaptorQEncodingConfig, ReedSolomonEncodingConfig},
         metadata::{BlobMetadataApi as _, UnverifiedBlobMetadataWithId},
         EncodingType,
     };
@@ -1052,43 +1230,158 @@ mod tests {
     param_test! {
         test_find_min_length: [
             not_fit: (&[2, 1, 2, 1], 3, 3, None),
-            single_large_blob: (&[1000, 1, 1], 4, 7, Some(504)),
+            single_large_blob: (&[1000, 1, 1], 4, 7, Some(72)),
             // empty_input: (&[], 3, 1, Some(0)),
-            single_small_blob: (&[1], 3, 2, Some(2)),
-            impossible_case: (&[15, 8, 4], 4, 2, Some(8)),
+            single_small_blob: (&[1], 3, 2, Some(1)),
+            impossible_case: (&[15, 8, 4], 4, 2, Some(4)),
             perfect_fit: (&[2, 2, 2], 3, 1, Some(2)),
             with_empty_columns: (&[5, 5, 5], 5, 1, Some(5)),
             with_many_columns: (&[25, 35, 45], 200, 1, Some(1))
         ]
     }
-    fn test_find_min_length(blobs: &[usize], nc: usize, base: usize, expected: Option<usize>) {
+    fn test_find_min_length(blobs: &[usize], nc: usize, nr: usize, expected: Option<usize>) {
         // Initialize tracing subscriber for this test
         let _guard = tracing_subscriber::fmt().try_init();
-        let res = find_min_column_size(blobs, nc, base, usize::MAX);
+        let res = compute_symbol_size(blobs, nc, nr, usize::MAX);
         tracing::info!("res: {:?}", res);
         assert_eq!(res, expected);
         if let Some(min_size) = res {
-            assert!(min_required_columns(blobs, min_size) <= nc);
-            assert!(min_size % base == 0);
-            assert!(min_required_columns(blobs, min_size - base) > nc);
-        } else {
-            assert!(min_required_columns(blobs, base) > nc);
+            assert!(min_required_columns(blobs, min_size * nr) <= nc);
+            assert!(min_required_columns(blobs, min_size * nr - nr) > nc);
         }
     }
 
     #[test]
     fn test_quilt_encoder_rows() {
         let _guard = tracing_subscriber::fmt().try_init();
+        tracing::info!("Starting test_quilt_encoder_rows");
         let blobs = vec![
             &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-            &[5, 68, 3][..],
+            &[5, 68, 3, 2, 5][..],
+            &[5, 68, 3, 2, 5, 6, 78, 8][..],
         ];
-        let config = RaptorQEncodingConfig::new_for_test(2, 3, 7);
+        let config = RaptorQEncodingConfig::new_for_test(3, 5, 7);
         let config_enum = EncodingConfigEnum::RaptorQ(&config);
-        let encoder = QuiltEncoder::new(config_enum, &blobs).unwrap();
-        let rows = encoder.get_rows();
-        tracing::info!("Rows: {:?}", rows);
-        let blob_ids = encoder.get_blob_ids();
-        tracing::info!("Blob IDs: {:?}", blob_ids);
+
+        // Calculate blob IDs first
+        let blob_ids: Vec<BlobId> = blobs
+            .iter()
+            .map(|blob| {
+                let encoder =
+                    BlobEncoder::new(config_enum.clone(), blob).expect("Should create encoder");
+                *encoder.compute_metadata().blob_id()
+            })
+            .collect();
+
+        let encoder = QuiltEncoder::new(config_enum, &blobs);
+        let quilt = encoder
+            .construct_quilt()
+            .expect("should be able to construct quilt");
+        tracing::info!("Quilt: {:?}", quilt);
+
+        // Verify each blob using its ID
+        for (original_blob, blob_id) in blobs.iter().zip(blob_ids) {
+            let retrieved_blob = quilt
+                .get_blob_by_id(blob_id)
+                .expect("Should find blob by ID");
+            assert_eq!(&retrieved_blob, original_blob);
+        }
+    }
+
+    param_test! {
+        test_quilt_encoder: [
+            case_0: (
+                vec![
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                    &[5, 68, 3, 2, 5][..],
+                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                ],
+                3, 5, 7
+            ),
+            case_0_random_order: (
+                vec![
+                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                    &[5, 68, 3, 2, 5][..],
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                ],
+                3, 5, 7
+            ),
+            case_1: (
+                vec![
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                    &[5, 68, 3, 2, 5][..],
+                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                ],
+                3, 5, 7
+            ),
+            case_1_random_order: (
+                vec![
+                    &[5, 68, 3, 2, 5][..],
+                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                ],
+                3, 5, 7
+            ),
+            case_2: (
+                vec![
+                    &[1, 3][..],
+                    &[255u8; 1024][..],  // large blob
+                    &[1, 2, 3][..],
+                ],
+                4, 8, 12
+            ),
+            case_3: (
+                vec![
+                    &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
+                ],
+                3, 5, 7
+            ),
+        ]
+    }
+    fn test_quilt_encoder(
+        blobs: Vec<&[u8]>,
+        source_symbols_primary: u16,
+        source_symbols_secondary: u16,
+        n_shards: u16,
+    ) {
+        let raptorq_config = RaptorQEncodingConfig::new_for_test(
+            source_symbols_primary,
+            source_symbols_secondary,
+            n_shards,
+        );
+        let reed_solomon_config = ReedSolomonEncodingConfig::new_for_test(
+            source_symbols_primary,
+            source_symbols_secondary,
+            n_shards,
+        );
+
+        test_construct_quilt(blobs.clone(), EncodingConfigEnum::RaptorQ(&raptorq_config));
+        test_construct_quilt(blobs, EncodingConfigEnum::ReedSolomon(&reed_solomon_config));
+    }
+
+    fn test_construct_quilt(blobs: Vec<&[u8]>, config: EncodingConfigEnum) {
+        let _guard = tracing_subscriber::fmt().try_init();
+
+        // Calculate blob IDs
+        let blob_ids: Vec<BlobId> = blobs
+            .iter()
+            .map(|blob| {
+                let encoder =
+                    BlobEncoder::new(config.clone(), blob).expect("Should create encoder");
+                *encoder.compute_metadata().blob_id()
+            })
+            .collect();
+
+        let encoder = QuiltEncoder::new(config, &blobs);
+        let quilt = encoder.construct_quilt().expect("Should construct quilt");
+        tracing::info!("Quilt: {:?}", quilt);
+
+        // Verify each blob
+        for (original_blob, blob_id) in blobs.iter().zip(blob_ids) {
+            let retrieved_blob = quilt
+                .get_blob_by_id(blob_id)
+                .expect("Should find blob by ID");
+            assert_eq!(&retrieved_blob, original_blob, "Mismatch in encoded blob");
+        }
     }
 }

@@ -46,6 +46,25 @@ pub enum VerificationError {
     UnencodedLengthTooLarge,
 }
 
+/// Represents a blob quilted into a single quilt blob.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuiltBlock {
+    /// The blob_id of the quilted blob.
+    pub blob_id: BlobId,
+    /// The unencoded length of the blob.
+    pub unencoded_length: u64,
+    /// The end index of the block.
+    pub end_index: u16,
+    /// The description of the block.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub desc: Option<[u8; Self::LENGTH]>,
+}
+
+impl QuiltBlock {
+    /// The length of the description.
+    pub const LENGTH: usize = 32;
+}
+
 /// Metadata associated with a quilt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltMetadata {
@@ -54,7 +73,7 @@ pub struct QuiltMetadata {
     /// The metadata of the quilt.
     pub quilt_blob_metadata: VerifiedBlobMetadataWithId,
     /// The IDs of the blobs in the quilt.
-    pub blobs: Vec<BlobId>,
+    pub blocks: Vec<QuiltBlock>,
 }
 
 /// [`BlobMetadataWithId`] that has been verified with [`UnverifiedBlobMetadataWithId::verify`].
