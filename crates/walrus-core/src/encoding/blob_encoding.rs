@@ -242,10 +242,8 @@ impl<'a> QuiltEncoder<'a> {
             return Err(DataTooLargeError);
         };
         tracing::info!("Symbol size: {}", symbol_size);
-        let symbol_size = cmp::max(
-            symbol_size,
-            self.config.encoding_type().required_alignment() as usize,
-        );
+        let required_alignment = self.config.encoding_type().required_alignment() as usize;
+        let symbol_size = symbol_size.div_ceil(required_alignment) * required_alignment;
 
         let row_size = symbol_size * n_columns;
         let mut data = vec![0u8; row_size * n_rows];
@@ -302,14 +300,15 @@ impl<'a> QuiltEncoder<'a> {
         })
     }
 
-    // pub fn encode(&self) -> Result<Vec<SliverPair>, DataTooLargeError> {
-    //     let quilt = self.construct_quilt().expect("should be able to construct quilt");
-    //     let quilt_slices: Vec<&[u8]> = quilt.data.iter().map(|v| v.as_slice()).collect();
-    //     let quilt_slices_ref = quilt_slices.as_slice();
+    pub fn encode(&self) -> Result<Vec<SliverPair>, DataTooLargeError> {
+        let quilt = self
+            .construct_quilt()
+            .expect("should be able to construct quilt");
 
-    //     let encoder = BlobEncoder::new(self.config.clone(), quilt_slices_ref)?;
-    //     encoder.encode()
-    // }
+        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())?;
+        assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
+        Ok(encoder.encode())
+    }
 }
 
 /// Finds the minimum length needed to store blobs in a fixed number of columns.
@@ -1374,6 +1373,7 @@ mod tests {
 
     fn test_construct_quilt(blobs: Vec<&[u8]>, config: EncodingConfigEnum) {
         let _guard = tracing_subscriber::fmt().try_init();
+        let nr = config.n_source_symbols::<Primary>().get() as usize;
 
         // Calculate blob IDs
         let blob_ids: Vec<BlobId> = blobs
@@ -1395,6 +1395,21 @@ mod tests {
                 .get_blob_by_id(blob_id)
                 .expect("Should find blob by ID");
             assert_eq!(&retrieved_blob, original_blob, "Mismatch in encoded blob");
+        }
+
+        let sliver_pairs = encoder.encode().expect("Should encode");
+
+        let row_size = quilt.row_size;
+
+        // Verify primary source slivers match quilt data
+        for (i, sliver) in sliver_pairs.iter().take(nr).enumerate() {
+            let expected_row = &quilt.data[i * row_size..(i + 1) * row_size];
+            assert_eq!(
+                sliver.primary.symbols.data(),
+                expected_row,
+                "Row {} mismatch in primary sliver",
+                i
+            );
         }
     }
 }
