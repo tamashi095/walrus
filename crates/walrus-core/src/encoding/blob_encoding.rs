@@ -35,7 +35,8 @@ use crate::{
 /// Data layout of a quilt.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Quilt {
-    pub data: Vec<Vec<u8>>,
+    pub data: Vec<u8>,
+    pub row_size: usize,
     pub blocks: Vec<QuiltBlock>,
     pub symbol_size: usize,
 }
@@ -46,25 +47,26 @@ impl Quilt {
             return None;
         }
         let block = &self.blocks[index];
-        let start = if index == 0 {
+        let start_col = if index == 0 {
             0
         } else {
             self.blocks[index - 1].end_index as usize
         };
-        let end = block.end_index as usize;
+        let end_col = block.end_index as usize;
         let mut blob = vec![0u8; block.unencoded_length as usize];
 
         let mut written = 0;
-        for col in start..end {
-            for row in &self.data {
+        for col in start_col..end_col {
+            for row in 0..(self.data.len() / self.row_size) {
                 let remaining = blob.len() - written;
                 if remaining == 0 {
                     break;
                 }
                 let chunk_size = cmp::min(self.symbol_size, remaining);
-                blob[written..written + chunk_size].copy_from_slice(
-                    &row[col * self.symbol_size..col * self.symbol_size + chunk_size],
-                );
+                let start_idx = row * self.row_size + col * self.symbol_size;
+                let end_idx = start_idx + chunk_size;
+
+                blob[written..written + chunk_size].copy_from_slice(&self.data[start_idx..end_idx]);
                 written += chunk_size;
             }
         }
@@ -92,7 +94,8 @@ impl fmt::Debug for Quilt {
             &format_args!(
                 "\n{:#?}",
                 DebugMatrix {
-                    rows: &self.data,
+                    data: &self.data,
+                    row_size: self.row_size,
                     symbol_size: self.symbol_size
                 }
             ),
@@ -112,14 +115,15 @@ impl fmt::Debug for Quilt {
 }
 
 struct DebugMatrix<'a> {
-    rows: &'a [Vec<u8>],
+    data: &'a [u8],
+    row_size: usize,
     symbol_size: usize,
 }
 
 impl fmt::Debug for DebugMatrix<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut list = f.debug_list();
-        for (i, row) in self.rows.iter().enumerate() {
+        for (i, row) in self.data.chunks(self.row_size).enumerate() {
             let entries = row
                 .chunks(self.symbol_size)
                 .map(|chunk| format!("0x{}", hex::encode(chunk)))
@@ -243,8 +247,8 @@ impl<'a> QuiltEncoder<'a> {
             self.config.encoding_type().required_alignment() as usize,
         );
 
-        // Initialize matrix as rows.
-        let mut rows = vec![vec![0u8; symbol_size * n_columns]; n_rows];
+        let row_size = symbol_size * n_columns;
+        let mut data = vec![0u8; row_size * n_rows];
         let mut quilt_blocks = Vec::new();
         let mut current_col = 0;
 
@@ -268,10 +272,9 @@ impl<'a> QuiltEncoder<'a> {
             while offset < blob.len() {
                 let end = cmp::min(offset + symbol_size, blob.len());
                 let chunk = &blob[offset..end];
+                let dest_idx = row * row_size + cur * symbol_size;
 
-                // Bulk copy the chunk into the current row
-                rows[row][cur * symbol_size..cur * symbol_size + chunk.len()]
-                    .copy_from_slice(chunk);
+                data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
 
                 row = (row + 1) % n_rows;
                 if row == 0 {
@@ -292,11 +295,21 @@ impl<'a> QuiltEncoder<'a> {
         }
 
         Ok(Quilt {
-            data: rows,
+            data,
+            row_size,
             blocks: quilt_blocks,
             symbol_size,
         })
     }
+
+    // pub fn encode(&self) -> Result<Vec<SliverPair>, DataTooLargeError> {
+    //     let quilt = self.construct_quilt().expect("should be able to construct quilt");
+    //     let quilt_slices: Vec<&[u8]> = quilt.data.iter().map(|v| v.as_slice()).collect();
+    //     let quilt_slices_ref = quilt_slices.as_slice();
+
+    //     let encoder = BlobEncoder::new(self.config.clone(), quilt_slices_ref)?;
+    //     encoder.encode()
+    // }
 }
 
 /// Finds the minimum length needed to store blobs in a fixed number of columns.
