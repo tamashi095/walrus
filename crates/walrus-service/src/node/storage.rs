@@ -24,7 +24,7 @@ use typed_store::{
 };
 use walrus_core::{
     messages::{SyncShardRequest, SyncShardResponse},
-    metadata::{BlobMetadata, VerifiedBlobMetadataWithId},
+    metadata::{BlobMetadata, QuiltMetadata, VerifiedBlobMetadataWithId},
     BlobId,
     Epoch,
     ShardIndex,
@@ -103,6 +103,15 @@ impl Display for NodeStatus {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+struct QuiltKey {
+    pub blob_id: BlobId,
+    pub obj_id: ObjectID,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Hash)]
+struct QuiltBlockKey(BlobId, BlobId);
+
 /// Storage backing a [`StorageNode`][crate::node::StorageNode].
 ///
 /// Enables storing blob metadata, which is shared across all shards. The method
@@ -112,6 +121,8 @@ pub struct Storage {
     database: Arc<RocksDB>,
     node_status: DBMap<(), NodeStatus>,
     metadata: DBMap<BlobId, BlobMetadata>,
+    quilt_metadata: DBMap<QuiltKey, QuiltMetadata>,
+    quilt_block_metadata: DBMap<QuiltBlockKey, QuiltMetadata>,
     blob_info: BlobInfoTable,
     event_cursor: EventCursorTable,
     shards: Arc<RwLock<HashMap<ShardIndex, Arc<ShardStorage>>>>,
@@ -121,6 +132,8 @@ pub struct Storage {
 impl Storage {
     const NODE_STATUS_COLUMN_FAMILY_NAME: &'static str = "node_status";
     const METADATA_COLUMN_FAMILY_NAME: &'static str = "metadata";
+    const QUILT_METADATA_COLUMN_FAMILY_NAME: &'static str = "quilt_metadata";
+    const QUILT_BLOCK_METADATA_COLUMN_FAMILY_NAME: &'static str = "quilt_block_metadata";
 
     /// Opens the storage database located at the specified path, creating the database if absent.
     pub fn open(
@@ -156,6 +169,10 @@ impl Storage {
 
         let (node_status_cf_name, node_status_options) = Self::node_status_options(&db_config);
         let (metadata_cf_name, metadata_options) = Self::metadata_options(&db_config);
+        let (quilt_metadata_cf_name, quilt_metadata_options) =
+            Self::quilt_metadata_options(&db_config);
+        let (quilt_block_metadata_cf_name, quilt_block_metadata_options) =
+            Self::quilt_block_metadata_options(&db_config);
         let blob_info_column_families = BlobInfoTable::options(&db_config);
         let (event_cursor_cf_name, event_cursor_options) = EventCursorTable::options(&db_config);
 
@@ -166,6 +183,8 @@ impl Storage {
                 (node_status_cf_name, node_status_options),
                 (metadata_cf_name, metadata_options),
                 (event_cursor_cf_name, event_cursor_options),
+                (quilt_metadata_cf_name, quilt_metadata_options),
+                (quilt_block_metadata_cf_name, quilt_block_metadata_options),
             ])
             .chain(blob_info_column_families)
             .collect::<Vec<_>>();
@@ -194,6 +213,20 @@ impl Storage {
             false,
         )?;
 
+        let quilt_metadata = DBMap::reopen(
+            &database,
+            Some(quilt_metadata_cf_name),
+            &ReadWriteOptions::default(),
+            false,
+        )?;
+
+        let quilt_block_metadata = DBMap::reopen(
+            &database,
+            Some(quilt_block_metadata_cf_name),
+            &ReadWriteOptions::default(),
+            false,
+        )?;
+
         let event_cursor = EventCursorTable::reopen(&database)?;
         let blob_info = BlobInfoTable::reopen(&database)?;
         let shards = Arc::new(RwLock::new(
@@ -210,6 +243,8 @@ impl Storage {
             database,
             node_status,
             metadata,
+            quilt_metadata,
+            quilt_block_metadata,
             blob_info,
             event_cursor,
             shards,
@@ -373,6 +408,18 @@ impl Storage {
         batch.write()
     }
 
+    fn put_quilt_metadata(
+        &self,
+        key: &QuiltKey,
+        metadata: &QuiltMetadata,
+    ) -> Result<(), TypedStoreError> {
+        let mut batch = self.quilt_metadata.batch();
+        batch.insert_batch(&self.quilt_metadata, [(key, metadata)])?;
+        // self.blob_info
+        //     .set_metadata_stored(&mut batch, &key.blob_id, true)?;
+        batch.write()
+    }
+
     /// Returns the blob info for `blob_id`.
     #[tracing::instrument(skip_all)]
     pub fn get_blob_info(&self, blob_id: &BlobId) -> Result<Option<BlobInfo>, TypedStoreError> {
@@ -489,6 +536,13 @@ impl Storage {
         Ok(())
     }
 
+    fn get_quilt_metadata(
+        &self,
+        quilt_key: &QuiltKey,
+    ) -> Result<Option<QuiltMetadata>, TypedStoreError> {
+        self.quilt_metadata.get(quilt_key)
+    }
+
     /// Deletes the slivers on all shards for the provided [`BlobId`].
     fn delete_slivers(&self, batch: &mut DBBatch, blob_id: &BlobId) -> Result<(), TypedStoreError> {
         for shard in self.existing_shard_storages() {
@@ -538,6 +592,20 @@ impl Storage {
         (
             Self::METADATA_COLUMN_FAMILY_NAME,
             db_config.metadata().to_options(),
+        )
+    }
+
+    fn quilt_metadata_options(db_config: &DatabaseConfig) -> (&'static str, Options) {
+        (
+            Self::QUILT_METADATA_COLUMN_FAMILY_NAME,
+            db_config.quilt_metadata().to_options(),
+        )
+    }
+
+    fn quilt_block_metadata_options(db_config: &DatabaseConfig) -> (&'static str, Options) {
+        (
+            Self::QUILT_BLOCK_METADATA_COLUMN_FAMILY_NAME,
+            db_config.quilt_block_metadata().to_options(),
         )
     }
 
@@ -757,6 +825,33 @@ pub(crate) mod tests {
         let retrieved = storage.get_metadata(blob_id)?;
 
         assert_eq!(retrieved, Some(expected));
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn can_write_then_read_quilt_metadata() -> TestResult {
+        let _guard = tracing_subscriber::fmt().try_init();
+        let storage = empty_storage();
+        let storage = storage.as_ref();
+        let quilt_metadata = walrus_core::test_utils::quilt_metadata();
+        let blob_id = quilt_metadata.blob_id();
+        // storage.update_blob_info(0, &BlobCertified::for_testing(*blob_id).into())?;
+        let quilt_key = QuiltKey {
+            blob_id: *blob_id,
+            obj_id: ObjectID::random(),
+        };
+        let second_quilt_key = QuiltKey {
+            blob_id: *blob_id,
+            obj_id: ObjectID::random(),
+        };
+
+        storage.put_quilt_metadata(&quilt_key, &quilt_metadata)?;
+        let retrieved = storage.get_quilt_metadata(&quilt_key)?;
+        assert_eq!(retrieved, Some(quilt_metadata.clone()));
+
+        let empty_retrieved = storage.get_quilt_metadata(&second_quilt_key)?;
+        assert!(empty_retrieved.is_none());
 
         Ok(())
     }

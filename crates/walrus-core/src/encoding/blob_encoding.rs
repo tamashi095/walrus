@@ -182,7 +182,7 @@ impl fmt::Debug for DebugBlocks<'_> {
         for block in self.0 {
             list.entry(&format_args!(
                 "\nQuiltBlock {{\n    blob_id: {:x?},\n    unencoded_length: {},\
-                \n    end_index: {},\n    desc: {:?}\n}}",
+                \n    end_index: {}\n    desc: {:?}\n}}",
                 block.blob_id, block.unencoded_length, block.end_index, block.desc
             ));
         }

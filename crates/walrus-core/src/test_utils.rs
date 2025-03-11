@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Utility functions for tests.
 
-use alloc::{vec, vec::Vec};
+use alloc::{string::ToString, vec, vec::Vec};
 use core::num::NonZeroU16;
 
 use fastcrypto::traits::{KeyPair, Signer as _};
@@ -22,6 +22,8 @@ use crate::{
     messages::SignedMessage,
     metadata::{
         BlobMetadata,
+        QuiltBlock,
+        QuiltMetadata,
         SliverPairMetadata,
         UnverifiedBlobMetadataWithId,
         VerifiedBlobMetadataWithId,
@@ -172,6 +174,28 @@ pub fn verified_blob_metadata() -> VerifiedBlobMetadataWithId {
         BlobId::from_sliver_pair_metadata(&metadata),
         metadata,
     )
+}
+
+/// Returns an arbitrary quilt metadata object.
+pub fn quilt_metadata() -> QuiltMetadata {
+    QuiltMetadata {
+        quilt_id: random_blob_id(),
+        quilt_blob_metadata: blob_metadata(),
+        blocks: vec![
+            QuiltBlock {
+                blob_id: random_blob_id(),
+                unencoded_length: 100,
+                end_index: 100,
+                desc: Some("test".to_string()),
+            },
+            QuiltBlock {
+                blob_id: random_blob_id(),
+                unencoded_length: 100,
+                end_index: 100,
+                desc: Some("test".to_string()),
+            },
+        ],
+    }
 }
 
 /// Tuple containing an [`EncodingConfig`], [`VerifiedBlobMetadataWithId`], a

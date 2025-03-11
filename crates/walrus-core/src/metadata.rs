@@ -3,7 +3,7 @@
 
 //! Metadata associated with a Blob and stored by storage nodes.
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec};
 use core::num::NonZeroU16;
 
 use enum_dispatch::enum_dispatch;
@@ -56,8 +56,7 @@ pub struct QuiltBlock {
     /// The end index of the block.
     pub end_index: u16,
     /// The description of the block.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub desc: Option<[u8; Self::LENGTH]>,
+    pub desc: Option<String>,
 }
 
 impl QuiltBlock {
@@ -71,9 +70,27 @@ pub struct QuiltMetadata {
     /// The ID of the quilt.
     pub quilt_id: BlobId,
     /// The metadata of the quilt.
-    pub quilt_blob_metadata: VerifiedBlobMetadataWithId,
+    pub quilt_blob_metadata: BlobMetadata,
     /// The IDs of the blobs in the quilt.
     pub blocks: Vec<QuiltBlock>,
+}
+
+impl QuiltMetadata {
+    pub fn new(
+        quilt_id: BlobId,
+        quilt_blob_metadata: BlobMetadata,
+        blocks: Vec<QuiltBlock>,
+    ) -> Self {
+        Self {
+            quilt_id,
+            quilt_blob_metadata,
+            blocks,
+        }
+    }
+
+    pub fn blob_id(&self) -> &BlobId {
+        &self.quilt_id
+    }
 }
 
 /// [`BlobMetadataWithId`] that has been verified with [`UnverifiedBlobMetadataWithId::verify`].
