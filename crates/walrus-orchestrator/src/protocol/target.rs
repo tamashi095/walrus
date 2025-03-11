@@ -8,6 +8,7 @@ use std::{
     time::Duration,
 };
 
+use eyre::ensure;
 use serde::{Deserialize, Serialize};
 use walrus_core::ShardIndex;
 use walrus_service::{
@@ -42,76 +43,30 @@ impl ShardsAllocation {
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-pub struct ProtocolNodeParameters {
-    #[serde(default = "default_node_parameters::default_sui_network")]
-    sui_network: SuiNetwork,
-    #[serde(default = "ShardsAllocation::default")]
-    shards_allocation: ShardsAllocation,
-    #[serde(default = "default_node_parameters::default_contract_dir")]
-    contract_dir: PathBuf,
-    #[serde(default = "config::defaults::rest_api_port")]
-    rest_api_port: u16,
-    #[serde(default = "config::defaults::metrics_port")]
-    metrics_port: u16,
-    #[serde(default = "config::defaults::polling_interval")]
-    event_polling_interval: Duration,
-}
-
-impl Default for ProtocolNodeParameters {
-    fn default() -> Self {
-        Self {
-            sui_network: default_node_parameters::default_sui_network(),
-            shards_allocation: ShardsAllocation::default(),
-            contract_dir: default_node_parameters::default_contract_dir(),
-            rest_api_port: config::defaults::rest_api_port(),
-            metrics_port: config::defaults::metrics_port(),
-            event_polling_interval: config::defaults::polling_interval(),
-        }
-    }
-}
-
-impl Debug for ProtocolNodeParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.shards_allocation.number_of_shards())
-    }
-}
-
-impl Display for ProtocolNodeParameters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let n_shards = self.shards_allocation.number_of_shards();
-        write!(f, "{:?} ({n_shards} shards)", self.sui_network)
-    }
-}
-
-mod default_node_parameters {
-    use std::path::PathBuf;
-
-    use walrus_sui::utils::SuiNetwork;
-
-    pub fn default_sui_network() -> SuiNetwork {
-        SuiNetwork::Testnet
-    }
-
-    pub fn default_contract_dir() -> PathBuf {
-        PathBuf::from("./contracts")
-    }
-}
-
-impl ProtocolParameters for ProtocolNodeParameters {}
-
 #[derive(Clone, Serialize, Deserialize, Debug)]
 pub struct ProtocolClientParameters {
-    target_load: u64,
-    blob_size: usize,
+    client_config_path: PathBuf,
+    wallet_paths: Vec<PathBuf>,
+    write_load: u64,
+    read_load: u64,
+    min_size_log2: usize,
+    max_size_log2: usize,
+    tasks: usize,
     metrics_port: u16,
 }
 
 impl Default for ProtocolClientParameters {
     fn default() -> Self {
         Self {
-            target_load: 2,
-            blob_size: 10_000,
+            client_config_path: PathBuf::from(
+                "./crates/walrus-orchestrator/assets/client_config.yaml",
+            ),
+            wallet_paths: vec![],
+            write_load: 60,
+            read_load: 60,
+            min_size_log2: 23,
+            max_size_log2: 24,
+            tasks: 10,
             metrics_port: 9584,
         }
     }
@@ -119,7 +74,11 @@ impl Default for ProtocolClientParameters {
 
 impl Display for ProtocolClientParameters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "load: {} writes/s", self.target_load)
+        write!(
+            f,
+            "load: {} writes/min, {} reads/min, 2^{}~2^{} bytes",
+            self.write_load, self.read_load, self.min_size_log2, self.max_size_log2
+        )
     }
 }
 
@@ -142,109 +101,46 @@ impl ProtocolCommands for TargetProtocol {
     where
         I: Iterator<Item = &'a Instance>,
     {
-        // Create an admin wallet locally to setup the Walrus smart contract.
-        let ips = instances.map(|x| x.main_ip).collect::<Vec<_>>();
-
-        let testbed_config = testbed::deploy_walrus_contract(DeployTestbedContractParameters {
-            working_dir: parameters.settings.working_dir.as_path(),
-            sui_network: parameters.node_parameters.sui_network.clone(),
-            contract_dir: parameters.node_parameters.contract_dir.clone(),
-            gas_budget: None,
-            host_addresses: ips.iter().map(|ip| ip.to_string()).collect(),
-            rest_api_port: parameters.node_parameters.rest_api_port,
-            storage_capacity: 1_000_000_000_000,
-            storage_price: 1,
-            write_price: 0,
-            deterministic_keys: true,
-            n_shards: NonZeroU16::new(
-                parameters
-                    .node_parameters
-                    .shards_allocation
-                    .number_of_shards() as u16,
-            )
-            .expect("number of shards must be non-zero"),
-            epoch_duration: Duration::from_secs(3600),
-            epoch_zero_duration: Duration::from_secs(0),
-            max_epochs_ahead: 104,
-            admin_wallet_path: None,
-            do_not_copy_contracts: false,
-            with_wal_exchange: true,
-            use_existing_wal_token: false,
-            with_subsidies: false,
-        })
-        .await
-        .expect("Failed to create Walrus contract");
-
-        // Generate a command to upload benchmark and testbed config to all instances.
-        let serialized_testbed_config =
-            serde_yaml::to_string(&testbed_config).expect("failed to serialize sui configs");
-        let testbed_config_path = parameters.settings.working_dir.join("testbed_config.yaml");
-        let upload_testbed_config_command = format!(
-            "echo -e '{serialized_testbed_config}' > {}",
-            testbed_config_path.display()
+        // Generate a command to upload the configs to all instances.
+        let client_config_source = &parameters.client_parameters.client_config_path;
+        let client_config =
+            std::fs::read_to_string(client_config_source).expect("failed to read client config");
+        let serialized_client_config =
+            serde_yaml::to_string(&client_config).expect("failed to serialize client config");
+        let client_config_destination = parameters.settings.working_dir.join("client_config.yaml");
+        let upload_client_config_command = format!(
+            "echo -e '{serialized_client_config}' > {}",
+            client_config_destination.display()
         );
 
-        // Generate a command to print all client and storage node configs on all instances.
-        let generate_config_command = [
-            &format!("./{BINARY_PATH}/walrus-node"),
-            "generate-dry-run-configs",
-            &format!(
-                "--working-dir {}",
-                parameters.settings.working_dir.display()
-            ),
-            &format!("--testbed-config-path {}", testbed_config_path.display()),
-            &format!("--metrics-port {}", parameters.node_parameters.metrics_port),
-        ]
-        .join(" ");
+        // Generate a client to upload one wallet per client.
+        if instances.collect::<Vec<_>>().len() <= parameters.client_parameters.wallet_paths.len() {
+            panic!("Not enough wallets for all instances");
+        }
+
+        let mut upload_wallet_commands = Vec::new();
+        for (i, wallet_path) in parameters.client_parameters.wallet_paths.iter().enumerate() {
+            let wallet = std::fs::read_to_string(wallet_path).expect("failed to read wallet");
+            let serialized_wallet =
+                serde_yaml::to_string(&wallet).expect("failed to serialize wallet");
+            let wallet_destination = parameters
+                .settings
+                .working_dir
+                .join(format!("wallet-{i}.yaml"));
+            let upload_wallet_command = format!(
+                "echo -e '{serialized_wallet}' > {}",
+                wallet_destination.display()
+            );
+            upload_wallet_commands.push(upload_wallet_command);
+        }
 
         // Output a single command to run on all machines.
-        [
-            "source $HOME/.cargo/env",
-            &upload_testbed_config_command,
-            &generate_config_command,
-        ]
-        .join(" && ")
-    }
-
-    fn node_command<I>(
-        &self,
-        instances: I,
-        parameters: &BenchmarkParameters,
-    ) -> Vec<(Instance, String)>
-    where
-        I: IntoIterator<Item = Instance>,
-    {
-        instances
-            .into_iter()
-            .enumerate()
-            .map(|(i, instance)| {
-                let working_dir = parameters.settings.working_dir.clone();
-                let node_config_name = format!(
-                    "{}.yaml",
-                    testbed::node_config_name_prefix(
-                        i as u16,
-                        NonZeroU16::new(parameters.nodes as u16).unwrap()
-                    )
-                );
-                let node_config_path = working_dir.join(node_config_name);
-
-                let run_command = [
-                    &format!("./{BINARY_PATH}/walrus-node"),
-                    "run",
-                    &format!("--config-path {}", node_config_path.display()),
-                    "--cleanup-storage",
-                ]
-                .join(" ");
-
-                let command = [
-                    "source $HOME/.cargo/env",
-                    "export RUST_LOG=INFO,walrus_service=DEBUG",
-                    &run_command,
-                ]
-                .join(" && ");
-                (instance, command)
-            })
-            .collect()
+        let mut command = vec![
+            "source $HOME/.cargo/env".to_string(),
+            upload_client_config_command,
+        ];
+        command.extend(upload_wallet_commands);
+        command.join(" && ")
     }
 
     fn client_command<I>(
@@ -256,32 +152,40 @@ impl ProtocolCommands for TargetProtocol {
         I: IntoIterator<Item = Instance>,
     {
         let clients: Vec<_> = instances.into_iter().collect();
-        let load_per_client = (parameters.load / clients.len()).max(1);
-        // Scale the number of "write clients" in the stress client proportionally with the load,
-        // making sure to have at least one.
-        let number_of_tasks = (load_per_client / 10).max(1);
+        let write_load_per_client =
+            (parameters.client_parameters.write_load as usize / clients.len()).max(1);
+        let read_load_per_client =
+            (parameters.client_parameters.read_load as usize / clients.len()).max(1);
 
         clients
             .into_iter()
-            .map(|instance| {
+            .enumerate()
+            .map(|(i, instance)| {
                 let working_dir = &parameters.settings.working_dir;
                 let client_config_path = working_dir.clone().join("client_config.yaml");
 
                 let run_command = [
                     format!("./{BINARY_PATH}/walrus-stress"),
-                    format!("--write-load {load_per_client}"),
-                    format!("--read-load {load_per_client}"),
+                    format!("--write-load {write_load_per_client}"),
+                    format!("--read-load {read_load_per_client}"),
                     format!("--config-path {}", client_config_path.display()),
-                    format!("--n-clients {number_of_tasks}"),
+                    format!(
+                        "--wallet-path {}",
+                        parameters.client_parameters.wallet_paths[i].display()
+                    ),
+                    format!("--n-clients {}", parameters.client_parameters.tasks),
                     format!(
                         "--metrics-port {}",
                         parameters.client_parameters.metrics_port
                     ),
                     format!(
-                        "--sui-network {}",
-                        parameters.node_parameters.sui_network.r#type()
+                        "--min_size_log2 {}",
+                        parameters.client_parameters.min_size_log2
                     ),
-                    format!("--blob-size {}", parameters.client_parameters.blob_size),
+                    format!(
+                        "--max_size_log2 {}",
+                        parameters.client_parameters.max_size_log2
+                    ),
                 ]
                 .join(" ");
 
@@ -298,29 +202,6 @@ impl ProtocolMetrics for TargetProtocol {
     const LATENCY_BUCKETS: &'static str = "latency_buckets";
     const LATENCY_SUM: &'static str = "latency_sum";
     const LATENCY_SQUARED_SUM: &'static str = "latency_squared_sum";
-
-    fn nodes_metrics_path<I>(
-        &self,
-        instances: I,
-        parameters: &BenchmarkParameters,
-    ) -> Vec<(Instance, String)>
-    where
-        I: IntoIterator<Item = Instance>,
-    {
-        instances
-            .into_iter()
-            .map(|instance| {
-                let metrics_port = parameters.node_parameters.metrics_port;
-                let metrics_address = testbed::metrics_socket_address(
-                    std::net::IpAddr::V4(instance.main_ip),
-                    metrics_port,
-                    None,
-                );
-                let metrics_path = format!("{metrics_address}/metrics",);
-                (instance, metrics_path)
-            })
-            .collect()
-    }
 
     fn clients_metrics_path<I>(
         &self,
