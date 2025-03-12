@@ -56,7 +56,7 @@ pub struct QuiltBlock {
     /// The end index of the block.
     pub end_index: u16,
     /// The description of the block.
-    pub desc: Option<String>,
+    pub desc: String,
 }
 
 impl QuiltBlock {

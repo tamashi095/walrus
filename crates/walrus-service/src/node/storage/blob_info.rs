@@ -20,7 +20,7 @@ use typed_store::{
     Map,
     TypedStoreError,
 };
-use walrus_core::{BlobId, Epoch};
+use walrus_core::{metadata::QuiltBlock, BlobId, Epoch};
 use walrus_sdk::api::{BlobStatus, DeletableCounts};
 use walrus_sui::types::{BlobCertified, BlobDeleted, BlobEvent, BlobRegistered, InvalidBlobId};
 
@@ -385,6 +385,7 @@ pub(super) enum BlobStatusChangeType {
     // INV: Can only be applied to a certified blob.
     Extend,
     Delete { was_certified: bool },
+    Noop,
 }
 
 impl BlobInfoMergeOperand {
@@ -660,6 +661,7 @@ impl ValidBlobInfoV1 {
                         );
                     }
                 }
+                BlobStatusChangeType::Noop => {}
             }
         } else {
             match change_type {
@@ -687,6 +689,7 @@ impl ValidBlobInfoV1 {
                         was_certified,
                     );
                 }
+                BlobStatusChangeType::Noop => {}
             }
         }
 
@@ -699,7 +702,9 @@ impl ValidBlobInfoV1 {
                 self.maybe_unset_initial_certified_epoch();
             }
             // Explicit matches to make sure we cover all cases.
-            BlobStatusChangeType::Register | BlobStatusChangeType::Extend => (),
+            BlobStatusChangeType::Register
+            | BlobStatusChangeType::Extend
+            | BlobStatusChangeType::Noop => (),
         }
     }
 
@@ -1213,6 +1218,7 @@ mod per_object_blob_info {
     pub(crate) struct PerObjectBlobInfoMergeOperand {
         pub change_type: BlobStatusChangeType,
         pub change_info: BlobStatusChangeInfo,
+        pub change_quilt_blocks: Vec<QuiltBlock>,
     }
 
     impl ToBytes for PerObjectBlobInfoMergeOperand {}
@@ -1231,6 +1237,7 @@ mod per_object_blob_info {
             Some(Self {
                 change_type,
                 change_info,
+                change_quilt_blocks: vec![],
             })
         }
     }
@@ -1295,6 +1302,8 @@ mod per_object_blob_info {
         pub event: EventID,
         /// Whether the blob has been deleted.
         pub deleted: bool,
+        /// The quilt structure of the blob.
+        pub quilt_blocks: Vec<QuiltBlock>,
     }
 
     impl PerObjectBlobInfoApi for PerObjectBlobInfoV1 {
@@ -1329,6 +1338,7 @@ mod per_object_blob_info {
             PerObjectBlobInfoMergeOperand {
                 change_type,
                 change_info,
+                change_quilt_blocks,
             }: PerObjectBlobInfoMergeOperand,
         ) -> Self {
             assert_eq!(self.blob_id, change_info.blob_id);
@@ -1360,7 +1370,9 @@ mod per_object_blob_info {
                     assert_eq!(self.certified_epoch.is_some(), was_certified);
                     self.deleted = true;
                 }
+                BlobStatusChangeType::Noop => {}
             }
+            self.quilt_blocks.extend(change_quilt_blocks);
             self
         }
 
@@ -1375,6 +1387,7 @@ mod per_object_blob_info {
                         end_epoch,
                         status_event,
                     },
+                change_quilt_blocks,
             } = operand
             else {
                 tracing::error!(
@@ -1391,6 +1404,7 @@ mod per_object_blob_info {
                 deletable,
                 event: status_event,
                 deleted: false,
+                quilt_blocks: vec![],
             })
         }
     }

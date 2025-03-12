@@ -1,7 +1,13 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{borrow::ToOwned, format, string::String, vec, vec::Vec};
+use alloc::{
+    borrow::ToOwned,
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::{cmp, fmt, marker::PhantomData, num::NonZeroU16, slice::Chunks};
 
 use fastcrypto::hash::Blake2b256;
@@ -194,13 +200,18 @@ impl fmt::Debug for DebugBlocks<'_> {
 /// Encodes a set of blobs into a single quilt blob.
 pub struct QuiltEncoder<'a> {
     /// The quilt data.
-    blobs: &'a [&'a [u8]],
+    blobs: &'a [BlobWithDesc<'a>],
     config: EncodingConfigEnum<'a>,
     span: Span,
 }
 
+pub struct BlobWithDesc<'a> {
+    blob: &'a [u8],
+    desc: &'a str,
+}
+
 impl<'a> QuiltEncoder<'a> {
-    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [&'a [u8]]) -> Self {
+    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [BlobWithDesc<'a>]) -> Self {
         Self {
             blobs,
             config,
@@ -218,23 +229,24 @@ impl<'a> QuiltEncoder<'a> {
             n_rows
         );
 
-        // 1. Compute blob_ids and create mapping.
+        // 1. Compute blob_ids and create mapping (updated for BlobWithDesc)
         let mut blob_with_ids: Vec<_> = self
             .blobs
             .iter()
-            .map(|&blob| {
-                let encoder = BlobEncoder::new(self.config.clone(), blob).unwrap();
+            .map(|blob_with_desc| {
+                let encoder = BlobEncoder::new(self.config.clone(), blob_with_desc.blob).unwrap();
                 let metadata = encoder.compute_metadata();
-                (blob, *metadata.blob_id())
+                (blob_with_desc, *metadata.blob_id())
             })
             .collect();
 
-        // 2. Sort blobs based on their blob_ids.
+        // 2. Sort blobs based on their blob_ids (unchanged)
         blob_with_ids.sort_by_key(|(_, id)| *id);
 
+        // 3. Calculate symbol size (updated blob access)
         let blob_sizes = blob_with_ids
             .iter()
-            .map(|(b, _)| b.len())
+            .map(|(b, _)| b.blob.len())
             .collect::<Vec<_>>();
         let Some(symbol_size) = compute_symbol_size(&blob_sizes, n_columns, n_rows, usize::MAX)
         else {
@@ -250,10 +262,10 @@ impl<'a> QuiltEncoder<'a> {
         let mut quilt_blocks = Vec::new();
         let mut current_col = 0;
 
-        // Fill each blob into consecutive columns.
-        for (blob, blob_id) in &blob_with_ids {
+        // 4. Data filling section (preserved with blob access updates)
+        for (blob_with_desc, blob_id) in &blob_with_ids {
             let mut cur = current_col;
-            let cols_needed = blob.len().div_ceil(symbol_size * n_rows);
+            let cols_needed = blob_with_desc.blob.len().div_ceil(symbol_size * n_rows);
             tracing::info!(
                 "Blob: {:?} needs {} columns, current_col: {}",
                 blob_id,
@@ -264,12 +276,12 @@ impl<'a> QuiltEncoder<'a> {
                 return Err(DataTooLargeError);
             }
 
-            // Copy blob data into columns.
+            // Copy blob data into columns (updated blob access)
             let mut row = 0;
             let mut offset = 0;
-            while offset < blob.len() {
-                let end = cmp::min(offset + symbol_size, blob.len());
-                let chunk = &blob[offset..end];
+            while offset < blob_with_desc.blob.len() {
+                let end = cmp::min(offset + symbol_size, blob_with_desc.blob.len());
+                let chunk = &blob_with_desc.blob[offset..end];
                 let dest_idx = row * row_size + cur * symbol_size;
 
                 data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
@@ -283,12 +295,12 @@ impl<'a> QuiltEncoder<'a> {
 
             current_col += cols_needed;
 
-            // Create QuiltBlock for this blob.
+            // Create QuiltBlock with description (new field)
             quilt_blocks.push(QuiltBlock {
                 blob_id: *blob_id,
-                unencoded_length: blob.len() as u64,
+                unencoded_length: blob_with_desc.blob.len() as u64,
                 end_index: current_col as u16,
-                desc: None,
+                desc: blob_with_desc.desc.to_string(),
             });
         }
 
@@ -1267,91 +1279,172 @@ mod tests {
     fn test_quilt_encoder_rows() {
         let _guard = tracing_subscriber::fmt().try_init();
         tracing::info!("Starting test_quilt_encoder_rows");
-        let blobs = vec![
-            &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-            &[5, 68, 3, 2, 5][..],
-            &[5, 68, 3, 2, 5, 6, 78, 8][..],
+
+        // Create BlobWithDesc directly with static strings.
+        let blobs_with_desc = &[
+            BlobWithDesc {
+                blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                desc: "test blob 0",
+            },
+            BlobWithDesc {
+                blob: &[5, 68, 3, 2, 5][..],
+                desc: "test blob 1",
+            },
+            BlobWithDesc {
+                blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                desc: "test blob 2",
+            },
         ];
+
         let config = RaptorQEncodingConfig::new_for_test(3, 5, 7);
         let config_enum = EncodingConfigEnum::RaptorQ(&config);
+        let nr = config.source_symbols_primary.get() as usize;
 
-        // Calculate blob IDs first
-        let blob_ids: Vec<BlobId> = blobs
+        // Calculate blob IDs directly from blobs_with_desc.
+        let blob_ids: Vec<BlobId> = blobs_with_desc
             .iter()
-            .map(|blob| {
-                let encoder =
-                    BlobEncoder::new(config_enum.clone(), blob).expect("Should create encoder");
+            .map(|blob_with_desc| {
+                let encoder = BlobEncoder::new(config_enum.clone(), blob_with_desc.blob)
+                    .expect("Should create encoder");
                 *encoder.compute_metadata().blob_id()
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config_enum, &blobs);
+        let encoder = QuiltEncoder::new(config_enum, blobs_with_desc);
         let quilt = encoder
             .construct_quilt()
             .expect("should be able to construct quilt");
         tracing::info!("Quilt: {:?}", quilt);
 
-        // Verify each blob using its ID
-        for (original_blob, blob_id) in blobs.iter().zip(blob_ids) {
+        // Verify each blob and its description.
+        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids) {
             let retrieved_blob = quilt
                 .get_blob_by_id(blob_id)
                 .expect("Should find blob by ID");
-            assert_eq!(&retrieved_blob, original_blob);
+
+            // Verify blob data matches
+            assert_eq!(
+                &retrieved_blob, blob_with_desc.blob,
+                "Mismatch in encoded blob"
+            );
+
+            // Verify description matches
+            let block = quilt
+                .blocks
+                .iter()
+                .find(|block| block.blob_id == blob_id)
+                .expect("Block should exist for this blob ID");
+
+            assert_eq!(
+                block.desc, blob_with_desc.desc,
+                "Mismatch in blob description"
+            );
+        }
+
+        let sliver_pairs = encoder.encode().expect("Should encode");
+
+        let row_size = quilt.row_size;
+
+        // Verify primary source slivers match quilt data.
+        for (i, sliver) in sliver_pairs.iter().take(nr).enumerate() {
+            let expected_row = &quilt.data[i * row_size..(i + 1) * row_size];
+            assert_eq!(
+                sliver.primary.symbols.data(),
+                expected_row,
+                "Row {} mismatch in primary sliver",
+                i
+            );
         }
     }
 
     param_test! {
         test_quilt_encoder: [
             case_0: (
-                vec![
-                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                    &[5, 68, 3, 2, 5][..],
-                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                &[
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
                 ],
                 3, 5, 7
             ),
             case_0_random_order: (
-                vec![
-                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                    &[5, 68, 3, 2, 5][..],
-                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                &[
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 2",
+                    },
                 ],
                 3, 5, 7
             ),
             case_1: (
-                vec![
-                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                    &[5, 68, 3, 2, 5][..],
-                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                &[
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
                 ],
                 3, 5, 7
             ),
             case_1_random_order: (
-                vec![
-                    &[5, 68, 3, 2, 5][..],
-                    &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                    &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                &[
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
                 ],
                 3, 5, 7
             ),
             case_2: (
-                vec![
-                    &[1, 3][..],
-                    &[255u8; 1024][..],  // large blob
-                    &[1, 2, 3][..],
+                &[
+                    BlobWithDesc { blob: &[1, 3][..], desc: "test blob 0" },
+                    BlobWithDesc { blob: &[255u8; 1024][..], desc: "test blob 1" },
+                    BlobWithDesc { blob: &[1, 2, 3][..], desc: "test blob 2" },
                 ],
                 4, 8, 12
             ),
             case_3: (
-                vec![
-                    &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
+                &[
+                    BlobWithDesc { blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..], desc: "test blob 0" },
                 ],
                 3, 5, 7
             ),
         ]
     }
     fn test_quilt_encoder(
-        blobs: Vec<&[u8]>,
+        blobs_with_desc: &[BlobWithDesc<'_>],
         source_symbols_primary: u16,
         source_symbols_secondary: u16,
         n_shards: u16,
@@ -1367,41 +1460,64 @@ mod tests {
             n_shards,
         );
 
-        test_construct_quilt(blobs.clone(), EncodingConfigEnum::RaptorQ(&raptorq_config));
-        test_construct_quilt(blobs, EncodingConfigEnum::ReedSolomon(&reed_solomon_config));
+        test_construct_quilt(
+            blobs_with_desc,
+            EncodingConfigEnum::RaptorQ(&raptorq_config),
+        );
+        test_construct_quilt(
+            blobs_with_desc,
+            EncodingConfigEnum::ReedSolomon(&reed_solomon_config),
+        );
     }
 
-    fn test_construct_quilt(blobs: Vec<&[u8]>, config: EncodingConfigEnum) {
+    fn test_construct_quilt(blobs_with_desc: &[BlobWithDesc<'_>], config: EncodingConfigEnum) {
         let _guard = tracing_subscriber::fmt().try_init();
         let nr = config.n_source_symbols::<Primary>().get() as usize;
 
-        // Calculate blob IDs
-        let blob_ids: Vec<BlobId> = blobs
+        // Calculate blob IDs directly from blobs_with_desc.
+        let blob_ids: Vec<BlobId> = blobs_with_desc
             .iter()
-            .map(|blob| {
-                let encoder =
-                    BlobEncoder::new(config.clone(), blob).expect("Should create encoder");
+            .map(|blob_with_desc| {
+                let encoder = BlobEncoder::new(config.clone(), blob_with_desc.blob)
+                    .expect("Should create encoder");
                 *encoder.compute_metadata().blob_id()
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config, &blobs);
+        let encoder = QuiltEncoder::new(config, blobs_with_desc);
         let quilt = encoder.construct_quilt().expect("Should construct quilt");
         tracing::info!("Quilt: {:?}", quilt);
 
-        // Verify each blob
-        for (original_blob, blob_id) in blobs.iter().zip(blob_ids) {
+        // Verify each blob and its description.
+        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids) {
             let retrieved_blob = quilt
                 .get_blob_by_id(blob_id)
                 .expect("Should find blob by ID");
-            assert_eq!(&retrieved_blob, original_blob, "Mismatch in encoded blob");
+
+            // Verify blob data matches
+            assert_eq!(
+                &retrieved_blob, blob_with_desc.blob,
+                "Mismatch in encoded blob"
+            );
+
+            // Verify description matches
+            let block = quilt
+                .blocks
+                .iter()
+                .find(|block| block.blob_id == blob_id)
+                .expect("Block should exist for this blob ID");
+
+            assert_eq!(
+                block.desc, blob_with_desc.desc,
+                "Mismatch in blob description"
+            );
         }
 
         let sliver_pairs = encoder.encode().expect("Should encode");
 
         let row_size = quilt.row_size;
 
-        // Verify primary source slivers match quilt data
+        // Verify primary source slivers match quilt data.
         for (i, sliver) in sliver_pairs.iter().take(nr).enumerate() {
             let expected_row = &quilt.data[i * row_size..(i + 1) * row_size];
             assert_eq!(

@@ -186,13 +186,13 @@ pub fn quilt_metadata() -> QuiltMetadata {
                 blob_id: random_blob_id(),
                 unencoded_length: 100,
                 end_index: 100,
-                desc: Some("test".to_string()),
+                desc: "test".to_string(),
             },
             QuiltBlock {
                 blob_id: random_blob_id(),
                 unencoded_length: 100,
                 end_index: 100,
-                desc: Some("test".to_string()),
+                desc: "test".to_string(),
             },
         ],
     }
