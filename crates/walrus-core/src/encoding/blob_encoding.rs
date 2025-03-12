@@ -32,7 +32,7 @@ use super::{
 use crate::{
     encoding::config::EncodingConfigTrait as _,
     merkle::{leaf_hash, MerkleTree},
-    metadata::{QuiltBlock, SliverPairMetadata, VerifiedBlobMetadataWithId},
+    metadata::{QuiltBlock, QuiltMetadata, SliverPairMetadata, VerifiedBlobMetadataWithId},
     BlobId,
     SliverIndex,
     SliverPairIndex,
@@ -79,12 +79,12 @@ impl Quilt {
         Some(blob)
     }
 
-    pub fn get_blob_by_id(&self, id: BlobId) -> Option<Vec<u8>> {
+    pub fn get_blob_by_id(&self, id: &BlobId) -> Option<Vec<u8>> {
         let index = self
             .blocks
             .iter()
             .enumerate()
-            .find(|(_, block)| block.blob_id == id)
+            .find(|(_, block)| block.blob_id == *id)
             .map(|(i, _)| i);
         index.and_then(|i| self.get_blob(i))
     }
@@ -313,6 +313,7 @@ impl<'a> QuiltEncoder<'a> {
     }
 
     pub fn encode(&self) -> Result<Vec<SliverPair>, DataTooLargeError> {
+        let _guard = self.span.enter();
         let quilt = self
             .construct_quilt()
             .expect("should be able to construct quilt");
@@ -320,6 +321,24 @@ impl<'a> QuiltEncoder<'a> {
         let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())?;
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
         Ok(encoder.encode())
+    }
+
+    pub fn encode_with_metadata(&self) -> (Vec<SliverPair>, QuiltMetadata) {
+        let _guard = self.span.enter();
+        tracing::debug!("starting to encode blob with metadata");
+        let quilt = self
+            .construct_quilt()
+            .expect("should be able to construct quilt");
+        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())
+            .expect("should be able to create encoder");
+        assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
+        let (sliver_pairs, metadata) = encoder.encode_with_metadata();
+        let quilt_metadata = QuiltMetadata::new(
+            metadata.blob_id().clone(),
+            metadata.metadata().clone(),
+            quilt.blocks,
+        );
+        (sliver_pairs, quilt_metadata)
     }
 }
 
@@ -1317,7 +1336,7 @@ mod tests {
         tracing::info!("Quilt: {:?}", quilt);
 
         // Verify each blob and its description.
-        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids) {
+        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
             let retrieved_blob = quilt
                 .get_blob_by_id(blob_id)
                 .expect("Should find blob by ID");
@@ -1332,7 +1351,7 @@ mod tests {
             let block = quilt
                 .blocks
                 .iter()
-                .find(|block| block.blob_id == blob_id)
+                .find(|block| block.blob_id == *blob_id)
                 .expect("Block should exist for this blob ID");
 
             assert_eq!(
@@ -1341,7 +1360,85 @@ mod tests {
             );
         }
 
-        let sliver_pairs = encoder.encode().expect("Should encode");
+        let (sliver_pairs, metadata) = encoder.encode_with_metadata();
+
+        // Format primary slivers as a 2D matrix (rows)
+        let mut primary_matrix = String::from("Primary Slivers Matrix (rows):\n");
+
+        // Add column headers
+        primary_matrix.push_str("     ");
+        for col_idx in 0..sliver_pairs[0].primary.symbols.data().len() {
+            primary_matrix.push_str(&format!("{:02} ", col_idx));
+        }
+        primary_matrix.push('\n');
+
+        // Add separator line
+        primary_matrix.push_str("    ");
+        for _ in 0..sliver_pairs[0].primary.symbols.data().len() {
+            primary_matrix.push_str("---");
+        }
+        primary_matrix.push('\n');
+
+        // Add each row with row number
+        for (row_idx, sliver_pair) in sliver_pairs.iter().enumerate() {
+            let primary_data = sliver_pair.primary.symbols.data();
+
+            // Add row number
+            primary_matrix.push_str(&format!("{:02}: ", row_idx));
+
+            // Format each byte in the row
+            for byte in primary_data {
+                primary_matrix.push_str(&format!("{:02x} ", byte));
+            }
+            primary_matrix.push('\n');
+        }
+
+        // Log the primary matrix
+        tracing::info!("\n{}", primary_matrix);
+
+        // Format secondary slivers as a 2D matrix (columns)
+        let mut secondary_matrix = String::from("Secondary Slivers Matrix (columns):\n");
+
+        // Add column headers
+        secondary_matrix.push_str("     ");
+        for col_idx in 0..sliver_pairs.len() {
+            secondary_matrix.push_str(&format!("{:02} ", col_idx));
+        }
+        secondary_matrix.push('\n');
+
+        // Add separator line
+        secondary_matrix.push_str("    ");
+        for _ in 0..sliver_pairs.len() {
+            secondary_matrix.push_str("---");
+        }
+        secondary_matrix.push('\n');
+
+        // Find the maximum length of any secondary sliver
+        let max_secondary_len = sliver_pairs
+            .iter()
+            .map(|pair| pair.secondary.symbols.data().len())
+            .max()
+            .unwrap_or(0);
+
+        // Add each row of the secondary slivers matrix with row number
+        for row_idx in 0..max_secondary_len {
+            // Add row number
+            secondary_matrix.push_str(&format!("{:02}: ", row_idx));
+
+            for sliver_pair in &sliver_pairs {
+                let secondary_data = sliver_pair.secondary.symbols.data();
+
+                // Format the byte at this position, or a placeholder if out of bounds
+                if row_idx < secondary_data.len() {
+                    secondary_matrix.push_str(&format!("{:02x} ", secondary_data[row_idx]));
+                } else {
+                    secondary_matrix.push_str("-- ");
+                }
+            }
+            secondary_matrix.push('\n');
+        }
+
+        // Log the secondary matrix
 
         let row_size = quilt.row_size;
 
@@ -1354,6 +1451,52 @@ mod tests {
                 "Row {} mismatch in primary sliver",
                 i
             );
+        }
+
+        // Sort QuiltBlocks by end_index to ensure we process them in order
+        let quilt_blocks = metadata.blocks.clone();
+        // quilt_blocks.sort_by_key(|block| block.end_index);
+
+        // Verify that each blob can be reconstructed from the secondary slivers
+        let mut prev_end_index = 0;
+
+        for quilt_block in quilt_blocks {
+            // Find the original blob with this blob_id for comparison
+            let original_blob = blobs_with_desc
+                .iter()
+                .zip(blob_ids.iter())
+                .find(|(_blob_with_desc, id)| *id == &quilt_block.blob_id)
+                .expect("Should find original blob")
+                .0
+                .blob;
+
+            // Extract the blob data from the secondary slivers
+            let mut reconstructed_data = Vec::new();
+
+            // Simply concatenate all secondary slivers from prev_end_index to end_index
+            let n_slivers = sliver_pairs.len();
+            for i in prev_end_index..quilt_block.end_index {
+                let idx = i as usize;
+                if idx < n_slivers {
+                    let secondary_data = sliver_pairs[n_slivers - 1 - idx].secondary.symbols.data();
+                    reconstructed_data.extend_from_slice(secondary_data);
+                }
+            }
+
+            // Truncate to unencoded_length if needed
+            if reconstructed_data.len() > quilt_block.unencoded_length as usize {
+                reconstructed_data.truncate(quilt_block.unencoded_length as usize);
+            }
+
+            // Verify the reconstructed blob matches the original
+            assert_eq!(
+                reconstructed_data, original_blob,
+                "Blob with ID {:?} could not be correctly reconstructed from secondary slivers",
+                quilt_block.blob_id
+            );
+
+            // Update prev_end_index for the next blob
+            prev_end_index = quilt_block.end_index;
         }
     }
 
@@ -1489,7 +1632,7 @@ mod tests {
         tracing::info!("Quilt: {:?}", quilt);
 
         // Verify each blob and its description.
-        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids) {
+        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
             let retrieved_blob = quilt
                 .get_blob_by_id(blob_id)
                 .expect("Should find blob by ID");
@@ -1504,7 +1647,7 @@ mod tests {
             let block = quilt
                 .blocks
                 .iter()
-                .find(|block| block.blob_id == blob_id)
+                .find(|block| block.blob_id == *blob_id)
                 .expect("Block should exist for this blob ID");
 
             assert_eq!(
@@ -1513,7 +1656,86 @@ mod tests {
             );
         }
 
-        let sliver_pairs = encoder.encode().expect("Should encode");
+        let (sliver_pairs, metadata) = encoder.encode_with_metadata();
+
+        // Format primary slivers as a 2D matrix (rows)
+        let mut primary_matrix = String::from("Primary Slivers Matrix (rows):\n");
+
+        // Add column headers
+        primary_matrix.push_str("     ");
+        for col_idx in 0..sliver_pairs[0].primary.symbols.data().len() {
+            primary_matrix.push_str(&format!("{:02} ", col_idx));
+        }
+        primary_matrix.push('\n');
+
+        // Add separator line
+        primary_matrix.push_str("    ");
+        for _ in 0..sliver_pairs[0].primary.symbols.data().len() {
+            primary_matrix.push_str("---");
+        }
+        primary_matrix.push('\n');
+
+        // Add each row with row number
+        for (row_idx, sliver_pair) in sliver_pairs.iter().enumerate() {
+            let primary_data = sliver_pair.primary.symbols.data();
+
+            // Add row number
+            primary_matrix.push_str(&format!("{:02}: ", row_idx));
+
+            // Format each byte in the row
+            for byte in primary_data {
+                primary_matrix.push_str(&format!("{:02x} ", byte));
+            }
+            primary_matrix.push('\n');
+        }
+
+        // Log the primary matrix
+        tracing::info!("\n{}", primary_matrix);
+
+        // Format secondary slivers as a 2D matrix (columns)
+        let mut secondary_matrix = String::from("Secondary Slivers Matrix (columns):\n");
+
+        // Add column headers
+        secondary_matrix.push_str("     ");
+        for col_idx in 0..sliver_pairs.len() {
+            secondary_matrix.push_str(&format!("{:02} ", col_idx));
+        }
+        secondary_matrix.push('\n');
+
+        // Add separator line
+        secondary_matrix.push_str("    ");
+        for _ in 0..sliver_pairs.len() {
+            secondary_matrix.push_str("---");
+        }
+        secondary_matrix.push('\n');
+
+        // Find the maximum length of any secondary sliver
+        let max_secondary_len = sliver_pairs
+            .iter()
+            .map(|pair| pair.secondary.symbols.data().len())
+            .max()
+            .unwrap_or(0);
+
+        // Add each row of the secondary slivers matrix with row number
+        for row_idx in 0..max_secondary_len {
+            // Add row number
+            secondary_matrix.push_str(&format!("{:02}: ", row_idx));
+
+            for sliver_pair in &sliver_pairs {
+                let secondary_data = sliver_pair.secondary.symbols.data();
+
+                // Format the byte at this position, or a placeholder if out of bounds
+                if row_idx < secondary_data.len() {
+                    secondary_matrix.push_str(&format!("{:02x} ", secondary_data[row_idx]));
+                } else {
+                    secondary_matrix.push_str("-- ");
+                }
+            }
+            secondary_matrix.push('\n');
+        }
+
+        // Log the secondary matrix
+        tracing::info!("\n{}", secondary_matrix);
 
         let row_size = quilt.row_size;
 
@@ -1526,6 +1748,54 @@ mod tests {
                 "Row {} mismatch in primary sliver",
                 i
             );
+        }
+
+        // Sort QuiltBlocks by end_index to ensure we process them in order
+        let mut quilt_blocks = metadata.blocks.clone();
+        quilt_blocks.sort_by_key(|block| block.end_index);
+
+        // Verify that each blob can be reconstructed from the secondary slivers
+        let mut prev_end_index = 0;
+
+        for quilt_block in quilt_blocks {
+            // Find the original blob with this blob_id for comparison
+            let original_blob = blobs_with_desc
+                .iter()
+                .zip(blob_ids.iter())
+                .find(|(_blob_with_desc, id)| *id == &quilt_block.blob_id)
+                .expect("Should find original blob")
+                .0
+                .blob;
+
+            // Extract the blob data from the secondary slivers
+            let mut reconstructed_data = Vec::new();
+
+            // Simply concatenate all secondary slivers from prev_end_index to end_index
+            for i in prev_end_index..quilt_block.end_index {
+                let idx = i as usize;
+                if idx < sliver_pairs.len() {
+                    let secondary_data = sliver_pairs[sliver_pairs.len() - 1 - idx]
+                        .secondary
+                        .symbols
+                        .data();
+                    reconstructed_data.extend_from_slice(secondary_data);
+                }
+            }
+
+            // Truncate to unencoded_length if needed
+            if reconstructed_data.len() > quilt_block.unencoded_length as usize {
+                reconstructed_data.truncate(quilt_block.unencoded_length as usize);
+            }
+
+            // Verify the reconstructed blob matches the original
+            assert_eq!(
+                reconstructed_data, original_blob,
+                "Blob with ID {:?} could not be correctly reconstructed from secondary slivers",
+                quilt_block.blob_id
+            );
+
+            // Update prev_end_index for the next blob
+            prev_end_index = quilt_block.end_index;
         }
     }
 }

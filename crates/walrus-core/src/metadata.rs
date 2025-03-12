@@ -82,8 +82,8 @@ impl QuiltMetadata {
         blocks: Vec<QuiltBlock>,
     ) -> Self {
         Self {
-            quilt_id,
-            quilt_blob_metadata,
+            quilt_id: quilt_id,
+            quilt_blob_metadata: quilt_blob_metadata,
             blocks,
         }
     }

@@ -22,7 +22,10 @@ use typed_store::{
 };
 use walrus_core::{metadata::QuiltBlock, BlobId, Epoch};
 use walrus_sdk::api::{BlobStatus, DeletableCounts};
-use walrus_sui::types::{BlobCertified, BlobDeleted, BlobEvent, BlobRegistered, InvalidBlobId};
+use walrus_sui::{
+    test_utils::event_id_for_testing,
+    types::{BlobCertified, BlobDeleted, BlobEvent, BlobRegistered, InvalidBlobId},
+};
 
 use self::per_object_blob_info::PerObjectBlobInfoMergeOperand;
 pub(crate) use self::per_object_blob_info::{PerObjectBlobInfo, PerObjectBlobInfoApi};
@@ -1303,6 +1306,7 @@ mod per_object_blob_info {
         /// Whether the blob has been deleted.
         pub deleted: bool,
         /// The quilt structure of the blob.
+        #[serde(default)]
         pub quilt_blocks: Vec<QuiltBlock>,
     }
 
@@ -1933,5 +1937,47 @@ mod tests {
             BlobInfoV1::Valid(blob_info).to_blob_status(epoch_expired),
             BlobStatus::Nonexistent,
         ));
+    }
+
+    #[test]
+    fn test_per_object_blob_info_compatibility() {
+        // Create a new struct with the current definition
+        let new_info = per_object_blob_info::PerObjectBlobInfoV1 {
+            blob_id: walrus_core::test_utils::blob_id_from_u64(42),
+            registered_epoch: 1,
+            certified_epoch: Some(2),
+            end_epoch: 10,
+            deletable: true,
+            event: event_id_for_testing(),
+            deleted: false,
+            quilt_blocks: vec![], // Empty vector
+        };
+
+        // Serialize the new struct
+        let serialized_new = bincode::serialize(&new_info).expect("Failed to serialize new struct");
+        println!("serialized_new: {:?}", serialized_new);
+
+        // Manually create the serialized format of the old struct by removing the quilt_blocks field
+        // In bincode format, the last field would be the quilt_blocks
+        // For an empty vector, it would be represented as a length of 0 (typically 1 byte)
+        // So we can remove the last byte which represents the empty vector length
+        let serialized_old = &serialized_new[..serialized_new.len() - 1];
+        println!("serialized_old: {:?}", serialized_old);
+
+        // Deserialize using the current struct definition
+        let deserialized_new: per_object_blob_info::PerObjectBlobInfoV1 =
+            bincode::deserialize(serialized_old).expect("Failed to deserialize into new struct");
+
+        // Verify fields match
+        assert_eq!(deserialized_new.blob_id, new_info.blob_id);
+        assert_eq!(deserialized_new.registered_epoch, new_info.registered_epoch);
+        assert_eq!(deserialized_new.certified_epoch, new_info.certified_epoch);
+        assert_eq!(deserialized_new.end_epoch, new_info.end_epoch);
+        assert_eq!(deserialized_new.deletable, new_info.deletable);
+        assert_eq!(deserialized_new.event, new_info.event);
+        assert_eq!(deserialized_new.deleted, new_info.deleted);
+
+        // The new field should be initialized with its default value (empty vector)
+        assert!(deserialized_new.quilt_blocks.is_empty());
     }
 }
