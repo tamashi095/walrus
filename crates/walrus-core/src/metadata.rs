@@ -62,7 +62,7 @@ pub struct QuiltBlock {
 
 /// A container quilt index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ContainerQuiltIndex {
+pub struct QuiltIndex {
     /// The structure of the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
@@ -176,6 +176,14 @@ impl<const V: bool> BlobMetadataWithId<V> {
     /// The associated [`BlobMetadata`].
     pub fn metadata(&self) -> &BlobMetadata {
         &self.metadata
+    }
+
+    /// The end index of the quilt.
+    pub fn quilt_index_end_index(&self) -> Option<u16> {
+        match &self.metadata {
+            BlobMetadata::V2(inner) => Some(inner.quilt_index_end_index),
+            BlobMetadata::V1(_) => None,
+        }
     }
 }
 
@@ -309,6 +317,24 @@ impl BlobMetadata {
             unencoded_length,
             hashes,
         })
+    }
+
+    /// Creates a new [`BlobMetadata`] with the given quilt index end index.
+    pub fn with_quilt_index_end_index(self, quilt_index_end_index: u16) -> BlobMetadata {
+        match self {
+            BlobMetadata::V1(inner) => BlobMetadata::new_with_quilt_info(
+                inner.encoding_type,
+                inner.unencoded_length,
+                inner.hashes,
+                quilt_index_end_index,
+            ),
+            BlobMetadata::V2(inner) => BlobMetadata::new_with_quilt_info(
+                inner.quilt_blob_metadata.encoding_type,
+                inner.quilt_blob_metadata.unencoded_length,
+                inner.quilt_blob_metadata.hashes,
+                quilt_index_end_index,
+            ),
+        }
     }
 
     /// Creates a new [`BlobMetadata`] with quilt information.

@@ -22,6 +22,7 @@ use super::{
     DecodingSymbol,
     DecodingVerificationError,
     EncodingAxis,
+    EncodingConfig,
     EncodingConfigEnum,
     Primary,
     Secondary,
@@ -33,8 +34,9 @@ use crate::{
     encoding::config::EncodingConfigTrait as _,
     merkle::{leaf_hash, MerkleTree},
     metadata::{
-        ContainerQuiltIndex,
+        BlobMetadata,
         QuiltBlock,
+        QuiltIndex,
         QuiltMetadata,
         SliverPairMetadata,
         VerifiedBlobMetadataWithId,
@@ -51,6 +53,7 @@ pub struct Quilt {
     pub row_size: usize,
     pub blocks: Vec<QuiltBlock>,
     pub symbol_size: usize,
+    pub quilt_index_end_index: Option<u16>,
 }
 
 impl Quilt {
@@ -315,9 +318,11 @@ impl<'a> QuiltEncoder<'a> {
             row_size,
             blocks: quilt_blocks,
             symbol_size,
+            quilt_index_end_index: None,
         })
     }
 
+    /// Constructs a quilt blob with a container quilt index.
     pub fn construct_container_quilt(&self) -> Result<Quilt, DataTooLargeError> {
         let n_rows = self.config.n_source_symbols::<Primary>().get().into();
         let n_columns = self.config.n_source_symbols::<Secondary>().get().into();
@@ -353,7 +358,7 @@ impl<'a> QuiltEncoder<'a> {
             .collect();
 
         // Create the container quilt index
-        let mut container_quilt_index = ContainerQuiltIndex { quilt_blocks };
+        let mut container_quilt_index = QuiltIndex { quilt_blocks };
 
         // Get just the serialized size without actually serializing
         let serialized_index_size = bcs::serialized_size(&container_quilt_index)
@@ -427,7 +432,8 @@ impl<'a> QuiltEncoder<'a> {
 
         // Create the final index data with size prefix
         let mut final_index_data = Vec::new();
-        final_index_data.extend_from_slice(&final_index_data_size.to_le_bytes()); // 8-byte size prefix
+        final_index_data.extend_from_slice(&final_index_data_size.to_le_bytes());
+        tracing::info!("final_index_data_size: {}", final_index_data_size);
         final_index_data.extend_from_slice(
             &bcs::to_bytes(&container_quilt_index).expect("Serialization should succeed"),
         );
@@ -465,6 +471,7 @@ impl<'a> QuiltEncoder<'a> {
             row_size,
             blocks: quilt_blocks,
             symbol_size,
+            quilt_index_end_index: Some(index_cols_needed as u16),
         })
     }
 
@@ -474,6 +481,16 @@ impl<'a> QuiltEncoder<'a> {
             .construct_quilt()
             .expect("should be able to construct quilt");
 
+        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())?;
+        assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
+        Ok(encoder.encode())
+    }
+
+    pub fn encode_with_quilt_index(&self) -> Result<Vec<SliverPair>, DataTooLargeError> {
+        let _guard = self.span.enter();
+        let quilt = self
+            .construct_container_quilt()
+            .expect("should be able to construct quilt");
         let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())?;
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
         Ok(encoder.encode())
@@ -492,6 +509,27 @@ impl<'a> QuiltEncoder<'a> {
         let quilt_metadata = QuiltMetadata::new(
             metadata.blob_id().clone(),
             metadata.metadata().clone(),
+            quilt.blocks,
+        );
+        (sliver_pairs, quilt_metadata)
+    }
+
+    pub fn encode_with_quilt_index_and_metadata(&self) -> (Vec<SliverPair>, QuiltMetadata) {
+        let _guard = self.span.enter();
+        tracing::debug!("starting to encode blob with metadata");
+        let quilt = self
+            .construct_container_quilt()
+            .expect("should be able to construct quilt");
+        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())
+            .expect("should be able to create encoder");
+        assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
+        let (sliver_pairs, metadata) = encoder.encode_with_metadata();
+        let quilt_metadata = QuiltMetadata::new(
+            metadata.blob_id().clone(),
+            metadata
+                .metadata()
+                .clone()
+                .with_quilt_index_end_index(quilt.quilt_index_end_index.unwrap()),
             quilt.blocks,
         );
         (sliver_pairs, quilt_metadata)
@@ -970,6 +1008,90 @@ impl<'a> ExpandedMessageMatrix<'a> {
             row.truncate(self.config.n_source_symbols::<Secondary>().get().into());
             sliver_pair.primary.symbols = row;
         }
+    }
+}
+
+/// A decoder for the quilt index.
+pub struct QuiltDecoder<'a> {
+    n_shards: NonZeroU16,
+    slivers: Vec<&'a SliverData<Secondary>>,
+}
+
+impl<'a> QuiltDecoder<'a> {
+    pub fn new(n_shards: NonZeroU16, slivers: &'a [&'a SliverData<Secondary>]) -> Self {
+        Self {
+            n_shards,
+            slivers: slivers.to_vec(),
+        }
+    }
+
+    pub fn decode_quilt_index(&self) -> Option<QuiltIndex> {
+        // Get the sliver index for the quilt index (index 0)
+        let index = SliverIndex(0);
+
+        // Find the secondary sliver with the matching index
+        let first_sliver = self.slivers.iter().find(|s| s.index == index)?;
+
+        // Check if the sliver has at least 8 bytes for the size prefix
+        if first_sliver.symbols.data().len() < 8 {
+            return None;
+        }
+
+        // Read the first 8 bytes to get the data size
+        let data_size = u64::from_le_bytes(
+            first_sliver.symbols.data()[0..8]
+                .try_into()
+                .expect("slice with incorrect length"),
+        );
+
+        tracing::info!("data_size: {}", data_size);
+        // Calculate how many slivers we need based on the data size
+        let sliver_size = first_sliver.symbols.data().len();
+        let total_size_needed = data_size as usize; // 8 bytes for prefix + data
+        let num_slivers_needed = total_size_needed.div_ceil(sliver_size); // Ceiling division
+
+        tracing::info!("num_slivers_needed: {}", num_slivers_needed);
+        // If we only need one sliver and it has enough data, use it directly
+        if num_slivers_needed == 1 && sliver_size >= total_size_needed {
+            return bcs::from_bytes(&first_sliver.symbols.data()[8..data_size as usize]).ok();
+        }
+
+        // Otherwise, we need to collect data from multiple slivers
+        let mut combined_data = Vec::with_capacity((data_size - 8) as usize);
+
+        // Add data from the first sliver (skipping the 8-byte size prefix)
+        combined_data.extend_from_slice(&first_sliver.symbols.data()[8..]);
+
+        // Find and add data from subsequent slivers
+        for i in 1..num_slivers_needed {
+            let next_index = SliverIndex(i as u16);
+            let next_sliver = self.slivers.iter().find(|s| s.index == next_index)?;
+
+            // Add data from this sliver
+            combined_data.extend_from_slice(next_sliver.symbols.data());
+
+            // Check if we have enough data
+            if combined_data.len() >= (data_size - 8) as usize {
+                break;
+            }
+        }
+
+        // Ensure we have enough data and truncate if necessary
+        if combined_data.len() < (data_size - 8) as usize {
+            return None; // Not enough data available
+        }
+
+        // Truncate to the exact size needed
+        combined_data.truncate((data_size - 8) as usize);
+
+        // Decode the QuiltIndex from the collected data
+        bcs::from_bytes(&combined_data).ok()
+    }
+
+    /// Adds slivers to the decoder.
+    fn add_slivers(mut self, slivers: &'a [&'a SliverData<Secondary>]) -> Self {
+        self.slivers.extend(slivers);
+        self
     }
 }
 
@@ -2069,7 +2191,6 @@ mod tests {
 
     fn construct_container_quilt(blobs_with_desc: &[BlobWithDesc<'_>], config: EncodingConfigEnum) {
         let _guard = tracing_subscriber::fmt().try_init();
-        let nr = config.n_source_symbols::<Primary>().get() as usize;
 
         // Calculate blob IDs directly from blobs_with_desc.
         let blob_ids: Vec<BlobId> = blobs_with_desc
@@ -2121,14 +2242,168 @@ mod tests {
         // First, read the first 8 bytes to get the data size
         let data_size = u64::from_le_bytes(quilt_index_blob[0..8].try_into().unwrap());
 
-        // Then, decode the ContainerQuiltIndex from the next data_size bytes
-        let container_quilt_index: ContainerQuiltIndex =
+        // Then, decode the QuiltIndex from the next data_size bytes
+        let container_quilt_index: QuiltIndex =
             bcs::from_bytes(&quilt_index_blob[8..(data_size as usize)])
-                .expect("Failed to decode ContainerQuiltIndex");
-        tracing::info!("ContainerQuiltIndex: {:?}", container_quilt_index);
+                .expect("Failed to decode QuiltIndex");
+        tracing::info!("QuiltIndex: {:?}", container_quilt_index);
         assert_eq!(
             container_quilt_index.quilt_blocks.len(),
             blobs_with_desc.len()
         );
+    }
+
+    param_test! {
+        test_quilt_decoder_with_quilt_index: [
+            case_0: (
+                &[
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
+                ],
+                3, 5, 7
+            ),
+            case_0_random_order: (
+                &[
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 2",
+                    },
+                ],
+                3, 5, 7
+            ),
+            case_1: (
+                &[
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
+                ],
+                3, 5, 7
+            ),
+            case_1_random_order: (
+                &[
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5][..],
+                        desc: "test blob 0",
+                    },
+                    BlobWithDesc {
+                        blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
+                        desc: "test blob 1",
+                    },
+                    BlobWithDesc {
+                        blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
+                        desc: "test blob 2",
+                    },
+                ],
+                3, 5, 7
+            ),
+            case_2: (
+                &[
+                    BlobWithDesc { blob: &[1, 3][..], desc: "test blob 0" },
+                    BlobWithDesc { blob: &[255u8; 1024][..], desc: "test blob 1" },
+                    BlobWithDesc { blob: &[1, 2, 3][..], desc: "test blob 2" },
+                ],
+                4, 8, 12
+            ),
+            case_3: (
+                &[
+                    BlobWithDesc { blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..], desc: "test blob 0" },
+                ],
+                3, 5, 7
+            ),
+        ]
+    }
+    fn test_quilt_decoder_with_quilt_index(
+        blobs_with_desc: &[BlobWithDesc<'_>],
+        source_symbols_primary: u16,
+        source_symbols_secondary: u16,
+        n_shards: u16,
+    ) {
+        let raptorq_config = RaptorQEncodingConfig::new_for_test(
+            source_symbols_primary,
+            source_symbols_secondary,
+            n_shards,
+        );
+        let reed_solomon_config = ReedSolomonEncodingConfig::new_for_test(
+            source_symbols_primary,
+            source_symbols_secondary,
+            n_shards,
+        );
+
+        quilt_decoder_with_quilt_index(
+            blobs_with_desc,
+            EncodingConfigEnum::RaptorQ(&raptorq_config),
+        );
+        quilt_decoder_with_quilt_index(
+            blobs_with_desc,
+            EncodingConfigEnum::ReedSolomon(&reed_solomon_config),
+        );
+    }
+
+    fn quilt_decoder_with_quilt_index(
+        blobs_with_desc: &[BlobWithDesc<'_>],
+        config: EncodingConfigEnum,
+    ) {
+        let _guard = tracing_subscriber::fmt().try_init();
+        let n_shards = config.n_shards();
+
+        // Calculate blob IDs directly from blobs_with_desc.
+        let blob_ids: Vec<BlobId> = blobs_with_desc
+            .iter()
+            .map(|blob_with_desc| {
+                let encoder = BlobEncoder::new(config.clone(), blob_with_desc.blob)
+                    .expect("Should create encoder");
+                *encoder.compute_metadata().blob_id()
+            })
+            .collect();
+
+        let encoder = QuiltEncoder::new(config, blobs_with_desc);
+        let quilt = encoder
+            .construct_container_quilt()
+            .expect("Should construct quilt");
+        tracing::info!("Quilt: {:?}", quilt);
+
+        let (sliver_pairs, quilt_metadata) = encoder.encode_with_quilt_index_and_metadata();
+        tracing::info!("Sliver pairs: {:?}", sliver_pairs);
+        tracing::info!("Quilt metadata: {:?}", quilt_metadata);
+        let slivers: Vec<&SliverData<Secondary>> = sliver_pairs
+            .iter()
+            .map(|sliver_pair| &sliver_pair.secondary)
+            .collect();
+
+        let mut decoder = QuiltDecoder::new(n_shards, &[]);
+        // decoder = decoder.add_slivers(&slivers);
+        let quilt_index = decoder.decode_quilt_index();
+        assert!(quilt_index.is_none());
+        decoder = decoder.add_slivers(&slivers);
+        let quilt_index = decoder.decode_quilt_index();
+        assert!(quilt_index.is_some());
+        tracing::info!("Quilt index: {:?}", quilt_index);
     }
 }
