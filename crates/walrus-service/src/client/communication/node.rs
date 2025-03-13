@@ -231,8 +231,6 @@ impl<W> NodeCommunication<'_, W> {
         self.to_node_result(1, sliver)
     }
 
-    
-
     /// Requests the status for a blob ID from the node.
     #[tracing::instrument(level = Level::TRACE, parent = &self.span, skip_all)]
     pub async fn get_blob_status(&self, blob_id: &BlobId) -> NodeResult<BlobStatus, NodeError> {
@@ -307,9 +305,10 @@ impl<W> NodeCommunication<'_, W> {
             walrus.sliver.type = ?target_type,
             "retrieving recovery symbols"
         );
-        
+
         let encoding_config = Arc::new(self.encoding_config.clone());
-        let result = self.client
+        let result = self
+            .client
             .list_and_verify_recovery_symbols(
                 filter,
                 metadata.clone(),
@@ -318,7 +317,7 @@ impl<W> NodeCommunication<'_, W> {
                 target_type,
             )
             .await;
-            
+
         // Weight is 1 since we're retrieving symbols for a single sliver
         self.to_node_result(1, result)
     }

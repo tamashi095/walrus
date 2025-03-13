@@ -20,7 +20,11 @@ use typed_store::{
     Map,
     TypedStoreError,
 };
-use walrus_core::{metadata::{QuiltMetadata, QuiltBlock}, BlobId, Epoch};
+use walrus_core::{
+    metadata::{QuiltBlock, QuiltMetadata},
+    BlobId,
+    Epoch,
+};
 use walrus_sdk::api::{BlobStatus, DeletableCounts};
 use walrus_sui::{
     test_utils::event_id_for_testing,

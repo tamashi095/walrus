@@ -442,7 +442,7 @@ mod tests {
             SyncShardMsg,
             SyncShardResponse,
         },
-        metadata::{UnverifiedBlobMetadataWithId, VerifiedBlobMetadataWithId, QuiltMetadata},
+        metadata::{QuiltMetadata, UnverifiedBlobMetadataWithId, VerifiedBlobMetadataWithId},
         BlobId,
         InconsistencyProof,
         PublicKey,

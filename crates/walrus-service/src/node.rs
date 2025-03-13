@@ -183,10 +183,7 @@ pub trait ServiceState {
         metadata: UnverifiedBlobMetadataWithId,
     ) -> Result<bool, StoreMetadataError>;
 
-    fn store_quilt_metadata(
-        &self,
-        metadata: QuiltMetadata,
-    ) -> Result<bool, StoreMetadataError>;
+    fn store_quilt_metadata(&self, metadata: QuiltMetadata) -> Result<bool, StoreMetadataError>;
 
     /// Returns whether the metadata is stored in the shard.
     fn metadata_status(
@@ -1875,10 +1872,7 @@ impl ServiceState for StorageNode {
         self.inner.store_metadata(metadata)
     }
 
-    fn store_quilt_metadata(
-        &self,
-        metadata: QuiltMetadata,
-    ) -> Result<bool, StoreMetadataError> {
+    fn store_quilt_metadata(&self, metadata: QuiltMetadata) -> Result<bool, StoreMetadataError> {
         self.inner.store_quilt_metadata(metadata)
     }
 
@@ -2051,10 +2045,7 @@ impl ServiceState for StorageNodeInner {
         Ok(true)
     }
 
-    fn store_quilt_metadata(
-        &self,
-        metadata: QuiltMetadata,
-    ) -> Result<bool, StoreMetadataError> {
+    fn store_quilt_metadata(&self, metadata: QuiltMetadata) -> Result<bool, StoreMetadataError> {
         let Some(blob_info) = self
             .storage
             .get_blob_info(metadata.blob_id())
@@ -2091,7 +2082,6 @@ impl ServiceState for StorageNodeInner {
         // self.metrics.metadata_stored_total.inc();
 
         Ok(true)
-
     }
 
     fn metadata_status(

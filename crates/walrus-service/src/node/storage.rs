@@ -408,10 +408,7 @@ impl Storage {
         batch.write()
     }
 
-    fn put_quilt_metadata(
-        &self,
-        metadata: &QuiltMetadata,
-    ) -> Result<(), TypedStoreError> {
+    fn put_quilt_metadata(&self, metadata: &QuiltMetadata) -> Result<(), TypedStoreError> {
         let mut batch = self.metadata.batch();
         batch.insert_batch(&self.metadata, [(metadata.blob_id(), metadata.metadata())])?;
         self.blob_info
