@@ -20,7 +20,7 @@ use typed_store::{
     Map,
     TypedStoreError,
 };
-use walrus_core::{metadata::QuiltBlock, BlobId, Epoch};
+use walrus_core::{metadata::{QuiltMetadata, QuiltBlock}, BlobId, Epoch};
 use walrus_sdk::api::{BlobStatus, DeletableCounts};
 use walrus_sui::{
     test_utils::event_id_for_testing,
@@ -162,6 +162,31 @@ impl BlobInfoTable {
                 &BlobInfoMergeOperand::MarkMetadataStored(metadata_stored).to_bytes(),
             )],
         )
+    }
+
+    pub fn set_metadata_stored_with_quilt_info<'a>(
+        &self,
+        batch: &'a mut DBBatch,
+        quilt_metadata: &QuiltMetadata,
+        metadata_stored: bool,
+    ) -> Result<&'a mut DBBatch, TypedStoreError> {
+        batch.partial_merge_batch(
+            &self.aggregate_blob_info,
+            [(
+                quilt_metadata.blob_id(),
+                &BlobInfoMergeOperand::MarkMetadataStored(metadata_stored).to_bytes(),
+            )],
+        )?;
+        // if let Some(obj_id) = quilt_metadata.obj_id() {
+        //     batch.partial_merge_batch(
+        //         &self.per_object_blob_info,
+        //         [(
+        //             obj_id,
+        //             &PerObjectBlobInfoMergeOperand::from_quilt_metadata(quilt_metadata).to_bytes(),
+        //         )],
+        //     )?;
+        // }
+        Ok(batch)
     }
 
     /// Returns an iterator over all blobs that were certified before the specified epoch in the

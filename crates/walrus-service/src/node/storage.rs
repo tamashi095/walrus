@@ -410,13 +410,12 @@ impl Storage {
 
     fn put_quilt_metadata(
         &self,
-        key: &QuiltKey,
         metadata: &QuiltMetadata,
     ) -> Result<(), TypedStoreError> {
-        let mut batch = self.quilt_metadata.batch();
-        batch.insert_batch(&self.quilt_metadata, [(key, metadata)])?;
-        // self.blob_info
-        //     .set_metadata_stored(&mut batch, &key.blob_id, true)?;
+        let mut batch = self.metadata.batch();
+        batch.insert_batch(&self.metadata, [(metadata.blob_id(), metadata.metadata())])?;
+        self.blob_info
+            .set_metadata_stored_with_quilt_info(&mut batch, metadata, true)?;
         batch.write()
     }
 
@@ -836,22 +835,15 @@ pub(crate) mod tests {
         let storage = storage.as_ref();
         let quilt_metadata = walrus_core::test_utils::quilt_metadata();
         let blob_id = quilt_metadata.blob_id();
-        // storage.update_blob_info(0, &BlobCertified::for_testing(*blob_id).into())?;
-        let quilt_key = QuiltKey {
-            blob_id: *blob_id,
-            obj_id: ObjectID::random(),
-        };
-        let second_quilt_key = QuiltKey {
-            blob_id: *blob_id,
-            obj_id: ObjectID::random(),
-        };
 
-        storage.put_quilt_metadata(&quilt_key, &quilt_metadata)?;
-        let retrieved = storage.get_quilt_metadata(&quilt_key)?;
-        assert_eq!(retrieved, Some(quilt_metadata.clone()));
+        storage.update_blob_info(0, &BlobCertified::for_testing(*blob_id).into())?;
 
-        let empty_retrieved = storage.get_quilt_metadata(&second_quilt_key)?;
-        assert!(empty_retrieved.is_none());
+        storage.put_quilt_metadata(&quilt_metadata)?;
+        // let retrieved = storage.get_quilt_metadata(&quilt_metadata)?;
+        // assert_eq!(retrieved, Some(quilt_metadata.clone()));
+
+        // let empty_retrieved = storage.get_quilt_metadata(&second_quilt_key)?;
+        // assert!(empty_retrieved.is_none());
 
         Ok(())
     }

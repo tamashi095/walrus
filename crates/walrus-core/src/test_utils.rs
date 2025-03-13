@@ -180,6 +180,7 @@ pub fn verified_blob_metadata() -> VerifiedBlobMetadataWithId {
 pub fn quilt_metadata() -> QuiltMetadata {
     QuiltMetadata {
         quilt_id: random_blob_id(),
+        obj_id: None,
         quilt_blob_metadata: blob_metadata(),
         blocks: vec![
             QuiltBlock {
