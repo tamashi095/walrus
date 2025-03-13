@@ -35,7 +35,7 @@ impl ModuleErrorDefs {
 
 fn main() {
     let out_dir = env::var_os("OUT_DIR").expect("OUT_DIR should be set automatically by cargo");
-    let contracts_dir = "../../contracts";
+    let contracts_dir = "contracts";
     let contracts_dir_path = Path::new(contracts_dir);
 
     if !(fs::exists(contracts_dir_path).is_ok_and(identity)) {
