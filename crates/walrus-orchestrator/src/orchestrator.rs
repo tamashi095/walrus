@@ -231,7 +231,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
 
     /// Configure the instances with the appropriate configuration files.
     pub async fn configure(&self, parameters: &BenchmarkParameters) -> TestbedResult<()> {
-        display::config("Deploying Walrus contract", "");
+        display::action("\nConfiguring instances");
 
         // Select instances to configure.
         let (instances, _) = self.select_instances(parameters)?;
@@ -242,12 +242,10 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             .genesis_command(instances.iter(), parameters)
             .await;
 
-        display::action("\nConfiguring instances");
-
         let id = "configure";
         let repo_name = self.settings.repository_name();
         let context = CommandContext::new()
-            .run_background(id.into())
+            // .run_background(id.into())
             .with_log_file(format!("~/{id}.log").into())
             .with_execute_from_path(repo_name.into());
 

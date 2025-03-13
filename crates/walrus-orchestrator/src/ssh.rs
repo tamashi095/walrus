@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
-    io::Read,
+    io::{Read, Write},
     net::SocketAddr,
     path::{Path, PathBuf},
     time::Duration,
@@ -418,6 +418,30 @@ impl SshConnection {
                 .map_err(|e| self.make_connection_error(e))
             {
                 Ok(..) => return Ok(content),
+                Err(e) => error = Some(e),
+            }
+        }
+        Err(error.unwrap())
+    }
+
+    /// Upload a file to the remote machines through scp.
+    #[allow(dead_code)]
+    pub fn upload<P: AsRef<Path>>(&self, path: P, content: &[u8]) -> SshResult<()> {
+        let size = content.len() as u64;
+        let mut error = None;
+        for _ in 0..self.retries + 1 {
+            let mut channel = match self.session.scp_send(path.as_ref(), 0o644, size, None) {
+                Ok(x) => x,
+                Err(e) => {
+                    error = Some(self.make_session_error(e));
+                    continue;
+                }
+            };
+            match channel
+                .write_all(content)
+                .map_err(|e| self.make_connection_error(e))
+            {
+                r @ Ok(..) => return r,
                 Err(e) => error = Some(e),
             }
         }
