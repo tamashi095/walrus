@@ -219,6 +219,20 @@ pub struct BlobWithDesc<'a> {
     desc: &'a str,
 }
 
+impl<'a> BlobWithDesc<'a> {
+    pub fn new(blob: &'a [u8], desc: &'a str) -> Self {
+        Self { blob, desc }
+    }
+
+    pub fn new_from_blob(blob: &'a [u8]) -> Self {
+        Self { blob, desc: "" }
+    }
+
+    pub fn len(&self) -> usize {
+        self.blob.len()
+    }
+}
+
 impl<'a> QuiltEncoder<'a> {
     pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [BlobWithDesc<'a>]) -> Self {
         Self {
@@ -514,14 +528,14 @@ impl<'a> QuiltEncoder<'a> {
         (sliver_pairs, quilt_metadata)
     }
 
-    pub fn encode_with_quilt_index_and_metadata(&self) -> (Vec<SliverPair>, QuiltMetadata) {
+    /// Encodes the blobs into a quilt and returns the slivers and metadata.
+    pub fn encode_with_quilt_index_and_metadata(
+        &self,
+    ) -> Result<(Vec<SliverPair>, QuiltMetadata), DataTooLargeError> {
         let _guard = self.span.enter();
         tracing::debug!("starting to encode blob with metadata");
-        let quilt = self
-            .construct_container_quilt()
-            .expect("should be able to construct quilt");
-        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())
-            .expect("should be able to create encoder");
+        let quilt = self.construct_container_quilt()?;
+        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())?;
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
         let (sliver_pairs, metadata) = encoder.encode_with_metadata();
         let quilt_metadata = QuiltMetadata::new(
@@ -532,7 +546,7 @@ impl<'a> QuiltEncoder<'a> {
                 .with_quilt_index_end_index(quilt.quilt_index_end_index.unwrap()),
             quilt.blocks,
         );
-        (sliver_pairs, quilt_metadata)
+        Ok((sliver_pairs, quilt_metadata))
     }
 }
 
@@ -2450,7 +2464,9 @@ mod tests {
             .expect("Should construct quilt");
         tracing::info!("Quilt: {:?}", quilt);
 
-        let (sliver_pairs, quilt_metadata) = encoder.encode_with_quilt_index_and_metadata();
+        let (sliver_pairs, quilt_metadata) = encoder
+            .encode_with_quilt_index_and_metadata()
+            .expect("Should encode with quilt index and metadata");
         tracing::info!("Sliver pairs: {:?}", sliver_pairs);
         tracing::info!("Quilt metadata: {:?}", quilt_metadata);
         let slivers: Vec<&SliverData<Secondary>> = sliver_pairs

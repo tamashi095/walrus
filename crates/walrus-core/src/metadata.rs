@@ -27,6 +27,9 @@ use crate::{
     SliverType,
 };
 
+/// The minimum number of blobs required to form a quilt.
+pub const MIN_BLOBS_PER_QUILT: u16 = 2;
+
 /// Errors returned by [`UnverifiedBlobMetadataWithId::verify`] when unable to verify the metadata.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum VerificationError {

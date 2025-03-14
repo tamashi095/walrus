@@ -22,15 +22,22 @@ use walrus_core::{
     bft,
     encoding::{
         BlobDecoderEnum,
+        BlobWithDesc,
         EncodingAxis,
         EncodingConfig,
         EncodingConfigTrait as _,
+        QuiltEncoder,
         SliverData,
         SliverPair,
     },
     ensure,
     messages::{BlobPersistenceType, ConfirmationCertificate, SignedStorageConfirmation},
-    metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
+    metadata::{
+        BlobMetadataApi as _,
+        QuiltMetadata,
+        VerifiedBlobMetadataWithId,
+        MIN_BLOBS_PER_QUILT,
+    },
     BlobId,
     EncodingType,
     Epoch,
@@ -679,6 +686,42 @@ impl Client<SuiContractClient> {
         }
 
         Ok(pairs_and_metadata)
+    }
+
+    /// Encodes multiple blobs into quilt blocks and metadata.
+    pub async fn encode_blobs_to_quilt_and_metadata<'a>(
+        &self,
+        blobs: &'a [BlobWithDesc<'a>],
+        encoding_type: EncodingType,
+    ) -> ClientResult<Option<(Vec<SliverPair>, QuiltMetadata)>> {
+        if blobs.len() < MIN_BLOBS_PER_QUILT as usize {
+            return Err(ClientError::from(ClientErrorKind::Other(
+                format!(
+                    "at least {} blobs are required to form a quilt",
+                    MIN_BLOBS_PER_QUILT
+                )
+                .into(),
+            )));
+        }
+
+        let total_blob_size = blobs.iter().map(|blob| blob.len()).sum::<usize>();
+        let max_total_blob_size = self.config().communication_config.max_total_blob_size;
+        if total_blob_size > max_total_blob_size {
+            return Err(ClientError::from(ClientErrorKind::Other(
+                format!(
+                    "total blob size {} exceeds the maximum limit of {}",
+                    total_blob_size, max_total_blob_size
+                )
+                .into(),
+            )));
+        }
+
+        let encoder = self.encoding_config.get_for_type(encoding_type);
+        let quilt_encoder = QuiltEncoder::new(encoder, &blobs);
+        let (slivers, metadata) = quilt_encoder
+            .encode_with_quilt_index_and_metadata()
+            .map_err(ClientError::other)?;
+        Ok(Some((slivers, metadata)))
     }
 
     async fn encode_pairs_and_metadata(
