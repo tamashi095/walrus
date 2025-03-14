@@ -586,6 +586,45 @@ impl Client<SuiContractClient> {
         .await
     }
 
+    /// Encodes the blob, reserves & registers the space on chain, and stores the slivers to the
+    /// storage nodes. Finally, the function aggregates the storage confirmations and posts the
+    /// [`ConfirmationCertificate`] on chain.
+    #[tracing::instrument(skip_all, fields(blob_id))]
+    pub async fn reserve_and_store_quilt<'a>(
+        &self,
+        blobs: &[BlobWithDesc<'a>],
+        encoding_type: EncodingType,
+        epochs_ahead: EpochCount,
+        store_when: StoreWhen,
+        persistence: BlobPersistence,
+        post_store: PostStoreAction,
+    ) -> ClientResult<(BlobStoreResult, QuiltMetadata)> {
+        let quilt_and_metadata = self
+            .encode_blobs_to_quilt_and_metadata(blobs, encoding_type)
+            .await?;
+        let Some((pairs, metadata)) = quilt_and_metadata else {
+            return Err(ClientError::from(ClientErrorKind::Other(
+                "Failed to encode blobs to quilt and metadata".into(),
+            )));
+        };
+
+        let verified_metadata = VerifiedBlobMetadataWithId::new_verified_unchecked(
+            *metadata.blob_id(),
+            metadata.metadata().clone(),
+        );
+        let pairs_and_metadata = (pairs, verified_metadata);
+        let store_results = self
+            .reserve_and_store_encoded_blobs(
+                &[pairs_and_metadata],
+                epochs_ahead,
+                store_when,
+                persistence,
+                post_store,
+            )
+            .await?;
+        Ok((store_results.first().unwrap().clone(), metadata))
+    }
+
     async fn encode_blobs_to_pairs_and_metadata_with_path(
         &self,
         blobs_with_paths: &[(PathBuf, Vec<u8>)],

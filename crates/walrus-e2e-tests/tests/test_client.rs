@@ -767,8 +767,16 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
     // Add a blob that is not deletable.
     let result = client
         .as_ref()
-        .encode_blobs_to_quilt_and_metadata(&blobs_with_desc, encoding_type)
+        .reserve_and_store_quilt(
+            &blobs_with_desc,
+            encoding_type,
+            2,
+            StoreWhen::Always,
+            BlobPersistence::Deletable,
+            PostStoreAction::Keep,
+        )
         .await?;
+    tracing::info!("result: {:?}", result);
 
     Ok(())
 }
