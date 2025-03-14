@@ -5,7 +5,7 @@
 //!
 //! Wraps the [`SuiClient`] to introduce retries.
 
-use std::{collections::BTreeMap, fmt::Debug, future::Future, str::FromStr};
+use std::{collections::BTreeMap, fmt::Debug, future::Future, str::FromStr, time::Duration};
 
 use futures::{future, stream, Stream, StreamExt};
 use rand::{
@@ -100,7 +100,7 @@ impl RetriableRpcError for anyhow::Error {
 impl RetriableRpcError for sui_sdk::error::Error {
     fn is_retriable_rpc_error(&self) -> bool {
         if let sui_sdk::error::Error::RpcError(rpc_error) = self {
-            let error_string = rpc_error.to_string();
+            let error_string: String = rpc_error.to_string();
             if RETRIABLE_RPC_ERRORS
                 .iter()
                 .any(|&s| error_string.contains(s))
@@ -200,7 +200,10 @@ impl RetriableSuiClient {
         rpc_address: S,
         backoff_config: ExponentialBackoffConfig,
     ) -> SuiClientResult<Self> {
-        let client = SuiClientBuilder::default().build(rpc_address).await?;
+        let client = SuiClientBuilder::default()
+            .request_timeout(Duration::from_secs(120))
+            .build(rpc_address)
+            .await?;
         Ok(Self::new(client, backoff_config))
     }
 

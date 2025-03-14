@@ -429,6 +429,8 @@ fn main() -> anyhow::Result<()> {
 }
 
 mod commands {
+    use std::time::Duration;
+
     use anyhow::anyhow;
     use config::{
         LoadsFromPath,
@@ -917,6 +919,7 @@ mod commands {
 
         // Create SuiClientSet
         let sui_client = SuiClientBuilder::default()
+            .request_timeout(Duration::from_secs(120))
             .build(&sui_rpc_url)
             .await
             .context("Failed to create Sui client")?;
