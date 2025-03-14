@@ -67,6 +67,16 @@ pub struct QuiltIndex {
     pub quilt_blocks: Vec<QuiltBlock>,
 }
 
+impl QuiltIndex {
+    pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Option<&QuiltBlock> {
+        self.quilt_blocks.iter().find(|block| &block.blob_id == id)
+    }
+
+    pub fn get_quilt_block_by_desc(&self, desc: &str) -> Option<&QuiltBlock> {
+        self.quilt_blocks.iter().find(|block| &block.desc == desc)
+    }
+}
+
 impl QuiltBlock {
     /// The length of the description.
     pub const LENGTH: usize = 32;

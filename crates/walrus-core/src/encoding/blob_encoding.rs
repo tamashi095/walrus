@@ -1104,14 +1104,25 @@ impl<'a> QuiltDecoder<'a> {
     }
 
     pub fn get_blob_by_id(&self, id: &BlobId) -> Option<Vec<u8>> {
+        self.get_block_by_predicate(|block| &block.blob_id == id)
+    }
+
+    pub fn get_blob_by_desc(&self, desc: &str) -> Option<Vec<u8>> {
+        self.get_block_by_predicate(|block| &block.desc == desc)
+    }
+
+    fn get_block_by_predicate<F>(&self, predicate: F) -> Option<Vec<u8>>
+    where
+        F: Fn(&QuiltBlock) -> bool,
+    {
         let quilt_index = self.get_quilt_index()?;
 
-        // Find the block with matching ID
+        // Find the block matching the predicate
         let (block_idx, block) = quilt_index
             .quilt_blocks
             .iter()
             .enumerate()
-            .find(|(_, block)| &block.blob_id == id)?;
+            .find(|(_, block)| predicate(block))?;
 
         // Determine start index (0 for first block, previous block's end_index otherwise)
         let start_idx = if block_idx == 0 {
@@ -2458,6 +2469,8 @@ mod tests {
 
         for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
             let blob = decoder.get_blob_by_id(blob_id);
+            assert_eq!(blob, Some(blob_with_desc.blob.to_vec()));
+            let blob = decoder.get_blob_by_desc(blob_with_desc.desc);
             assert_eq!(blob, Some(blob_with_desc.blob.to_vec()));
         }
     }
