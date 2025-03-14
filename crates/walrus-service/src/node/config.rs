@@ -145,7 +145,7 @@ pub struct StorageNodeConfig {
     #[serde(default, skip_serializing_if = "defaults::is_default")]
     pub disable_event_blob_writer: bool,
     /// The commission rate of the storage node, in basis points.
-    #[serde(default)]
+    #[serde(default = "defaults::commission_rate")]
     pub commission_rate: u16,
     /// The parameters for the staking pool.
     pub voting_params: VotingParams,
@@ -161,6 +161,10 @@ pub struct StorageNodeConfig {
     /// The capability object ID of the storage node.
     #[serde(default, skip_serializing_if = "defaults::is_none")]
     pub storage_node_cap: Option<ObjectID>,
+    /// The number of uncertified blobs before the node will reset the local
+    /// state in event blob writer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub num_uncertified_blob_threshold: Option<u32>,
 }
 
 impl Default for StorageNodeConfig {
@@ -185,7 +189,7 @@ impl Default for StorageNodeConfig {
             event_processor_config: Default::default(),
             use_legacy_event_provider: false,
             disable_event_blob_writer: Default::default(),
-            commission_rate: 0,
+            commission_rate: defaults::commission_rate(),
             voting_params: VotingParams {
                 storage_price: defaults::storage_price(),
                 write_price: defaults::write_price(),
@@ -196,6 +200,7 @@ impl Default for StorageNodeConfig {
             metadata: Default::default(),
             config_synchronizer: Default::default(),
             storage_node_cap: None,
+            num_uncertified_blob_threshold: None,
         }
     }
 }
@@ -682,12 +687,17 @@ pub mod defaults {
 
     /// The default vote for the storage price.
     pub fn storage_price() -> u64 {
-        100
+        100_000
     }
 
     /// The default vote for the write price.
     pub fn write_price() -> u64 {
-        2000
+        20_000
+    }
+
+    /// The default commission rate in basis points.
+    pub fn commission_rate() -> u16 {
+        6000
     }
 
     /// Configure the default push interval for metrics.
@@ -814,7 +824,7 @@ impl LoadsFromPath for NetworkKeyPair {
             .context(format!("unable to read key from '{}'", path.display()))?;
 
         NetworkKeyPair::from_pkcs8_pem(&file_contents)
-            .inspect(|_| tracing::info!("loaded network private key in PKCS#8 format"))
+            .inspect(|_| tracing::debug!("loaded network private key in PKCS#8 format"))
             .or_else(|error| {
                 tracing::debug!(
                     ?error,
@@ -823,7 +833,7 @@ impl LoadsFromPath for NetworkKeyPair {
 
                 NetworkKeyPair::from_str(&file_contents)
                     .inspect(|_| {
-                        tracing::info!("loaded network private key in tagged format");
+                        tracing::debug!("loaded network private key in tagged format");
                     })
                     .map_err(|error2| {
                         anyhow!(
@@ -1234,7 +1244,7 @@ mod tests {
             network_key_pair: PathOrInPlace::InPlace(test_utils::network_key_pair()),
             voting_params: new_voting_params,
             metadata: new_metadata,
-            commission_rate: 100,
+            commission_rate: 1000,
             ..Default::default()
         }
     }
