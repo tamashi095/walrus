@@ -1015,6 +1015,8 @@ impl<'a> ExpandedMessageMatrix<'a> {
 pub struct QuiltDecoder<'a> {
     n_shards: NonZeroU16,
     slivers: Vec<&'a SliverData<Secondary>>,
+    quilt_index: Option<QuiltIndex>,
+    start_index: u16,
 }
 
 impl<'a> QuiltDecoder<'a> {
@@ -1022,10 +1024,15 @@ impl<'a> QuiltDecoder<'a> {
         Self {
             n_shards,
             slivers: slivers.to_vec(),
+            quilt_index: None,
+            start_index: 0,
         }
     }
 
-    pub fn decode_quilt_index(&self) -> Option<QuiltIndex> {
+    /// Decodes the quilt index from the provided slivers.
+    pub fn decode_quilt_index(&mut self) -> Option<&QuiltIndex> {
+        // Get the sliver index for the quilt index (index 0)
+
         // Get the sliver index for the quilt index (index 0)
         let index = SliverIndex(0);
 
@@ -1049,12 +1056,7 @@ impl<'a> QuiltDecoder<'a> {
         let sliver_size = first_sliver.symbols.data().len();
         let total_size_needed = data_size as usize; // 8 bytes for prefix + data
         let num_slivers_needed = total_size_needed.div_ceil(sliver_size); // Ceiling division
-
-        tracing::info!("num_slivers_needed: {}", num_slivers_needed);
-        // If we only need one sliver and it has enough data, use it directly
-        if num_slivers_needed == 1 && sliver_size >= total_size_needed {
-            return bcs::from_bytes(&first_sliver.symbols.data()[8..data_size as usize]).ok();
-        }
+        self.start_index = num_slivers_needed as u16;
 
         // Otherwise, we need to collect data from multiple slivers
         let mut combined_data = Vec::with_capacity((data_size - 8) as usize);
@@ -1085,7 +1087,55 @@ impl<'a> QuiltDecoder<'a> {
         combined_data.truncate((data_size - 8) as usize);
 
         // Decode the QuiltIndex from the collected data
-        bcs::from_bytes(&combined_data).ok()
+        self.quilt_index = bcs::from_bytes(&combined_data).ok();
+
+        // After successful deserialization, sort the blocks by end_index
+        if let Some(quilt_index) = &mut self.quilt_index {
+            quilt_index
+                .quilt_blocks
+                .sort_by_key(|block| block.end_index);
+        }
+
+        self.quilt_index.as_ref()
+    }
+
+    pub fn get_quilt_index(&self) -> Option<&QuiltIndex> {
+        self.quilt_index.as_ref()
+    }
+
+    pub fn get_blob_by_id(&self, id: &BlobId) -> Option<Vec<u8>> {
+        let quilt_index = self.get_quilt_index()?;
+
+        // Find the block with matching ID
+        let (block_idx, block) = quilt_index
+            .quilt_blocks
+            .iter()
+            .enumerate()
+            .find(|(_, block)| &block.blob_id == id)?;
+
+        // Determine start index (0 for first block, previous block's end_index otherwise)
+        let start_idx = if block_idx == 0 {
+            self.start_index
+        } else {
+            quilt_index.quilt_blocks[block_idx - 1].end_index
+        };
+
+        let end_idx = block.end_index;
+
+        // Extract and reconstruct the blob
+        let mut blob = Vec::with_capacity(block.unencoded_length as usize);
+
+        // Collect data from the appropriate slivers
+        for i in start_idx..end_idx {
+            let sliver_idx = SliverIndex(i as u16);
+            if let Some(sliver) = self.slivers.iter().find(|s| s.index == sliver_idx) {
+                blob.extend_from_slice(sliver.symbols.data());
+            }
+        }
+
+        // Truncate to the exact size
+        blob.truncate(block.unencoded_length as usize);
+        Some(blob)
     }
 
     /// Adds slivers to the decoder.
@@ -2405,5 +2455,10 @@ mod tests {
         let quilt_index = decoder.decode_quilt_index();
         assert!(quilt_index.is_some());
         tracing::info!("Quilt index: {:?}", quilt_index);
+
+        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
+            let blob = decoder.get_blob_by_id(blob_id);
+            assert_eq!(blob, Some(blob_with_desc.blob.to_vec()));
+        }
     }
 }
