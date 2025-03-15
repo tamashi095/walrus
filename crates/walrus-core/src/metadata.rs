@@ -66,6 +66,9 @@ pub struct QuiltBlock {
 /// A container quilt index.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndex {
+    /// The size of the quilt.
+    #[serde(skip)]
+    pub start_index: u16,
     /// The structure of the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }

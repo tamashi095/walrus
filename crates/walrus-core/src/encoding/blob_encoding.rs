@@ -372,7 +372,7 @@ impl<'a> QuiltEncoder<'a> {
             .collect();
 
         // Create the container quilt index
-        let mut container_quilt_index = QuiltIndex { quilt_blocks };
+        let mut container_quilt_index = QuiltIndex { quilt_blocks, start_index: 0 };
 
         // Get just the serialized size without actually serializing
         let serialized_index_size = bcs::serialized_size(&container_quilt_index)
@@ -1027,7 +1027,6 @@ pub struct QuiltDecoder<'a> {
     n_shards: NonZeroU16,
     slivers: Vec<&'a SliverData<Secondary>>,
     quilt_index: Option<QuiltIndex>,
-    start_index: u16,
 }
 
 impl<'a> QuiltDecoder<'a> {
@@ -1036,7 +1035,6 @@ impl<'a> QuiltDecoder<'a> {
             n_shards,
             slivers: slivers.to_vec(),
             quilt_index: None,
-            start_index: 0,
         }
     }
 
@@ -1067,7 +1065,6 @@ impl<'a> QuiltDecoder<'a> {
         let sliver_size = first_sliver.symbols.data().len();
         let total_size_needed = data_size as usize; // 8 bytes for prefix + data
         let num_slivers_needed = total_size_needed.div_ceil(sliver_size); // Ceiling division
-        self.start_index = num_slivers_needed as u16;
 
         // Otherwise, we need to collect data from multiple slivers
         let mut combined_data = Vec::with_capacity((data_size - 8) as usize);
@@ -1105,6 +1102,7 @@ impl<'a> QuiltDecoder<'a> {
             quilt_index
                 .quilt_blocks
                 .sort_by_key(|block| block.end_index);
+            quilt_index.start_index = num_slivers_needed as u16;
         }
 
         self.quilt_index.as_ref()
@@ -1137,7 +1135,7 @@ impl<'a> QuiltDecoder<'a> {
 
         // Determine start index (0 for first block, previous block's end_index otherwise)
         let start_idx = if block_idx == 0 {
-            self.start_index
+            quilt_index.start_index
         } else {
             quilt_index.quilt_blocks[block_idx - 1].end_index
         };

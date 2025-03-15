@@ -1579,15 +1579,6 @@ impl<T> Client<T> {
             })
             .collect::<Vec<_>>();
         tracing::info!("Received slivers: {:?}", slivers);
-        // Convert SliverData<E> to Sliver
-        // let retrieved_slivers = slivers
-        //     .into_iter()
-        //     .filter_map(|sliver_data| sliver_data.try_into().ok())
-        //     .collect::<Vec<_>>();
-
-        // if retrieved_slivers.is_empty() {
-        //     return Err(ClientErrorKind::NotEnoughSlivers.into());
-        // }
 
         Ok(slivers)
     }
