@@ -3,7 +3,16 @@
 
 //! Client for the Walrus service.
 
-use std::{collections::HashMap, fmt::Display, path::PathBuf, sync::Arc, time::Instant};
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    fs,
+    fs::read,
+    io,
+    path::PathBuf,
+    sync::Arc,
+    time::Instant,
+};
 
 use anyhow::anyhow;
 use cli::{styled_progress_bar, styled_spinner};
@@ -13,7 +22,7 @@ use indicatif::{HumanDuration, MultiProgress};
 use rand::{rngs::ThreadRng, RngCore as _};
 use refresh::are_current_previous_different;
 use resource::{PriceComputation, RegisterBlobOp, ResourceManager, StoreOp};
-use responses::BlobStoreResultWithPath;
+use responses::{BlobStoreResultWithPath, QuiltStoreResult};
 use sui_types::base_types::ObjectID;
 use tokio::{sync::Semaphore, time::Duration};
 use tracing::{Instrument as _, Level};
@@ -104,6 +113,46 @@ pub use refill::{RefillHandles, Refiller};
 mod multiplexer;
 
 type ClientResult<T> = Result<T, ClientError>;
+
+/// Reads all files from a folder and returns them as path-content pairs.
+///
+/// Only regular files (not directories or other special files) are included.
+fn get_blobs_and_paths(folder_path: PathBuf) -> ClientResult<Vec<(PathBuf, Vec<u8>)>> {
+    let dir_entries = fs::read_dir(&folder_path).map_err(|e| {
+        ClientError::from(ClientErrorKind::Other(
+            format!("Failed to read directory {}: {}", folder_path.display(), e).into(),
+        ))
+    })?;
+
+    let mut result = Vec::new();
+
+    for entry_result in dir_entries {
+        if let Ok(entry) = entry_result {
+            let path = entry.path();
+
+            // Skip if not a regular file
+            if let Ok(file_type) = entry.file_type() {
+                if !file_type.is_file() {
+                    continue;
+                }
+
+                // Try to read the file content
+                match fs::read(&path) {
+                    Ok(content) => {
+                        result.push((path, content));
+                    }
+                    Err(e) => {
+                        return Err(ClientError::from(ClientErrorKind::Other(
+                            format!("Failed to read file {}: {}", path.display(), e).into(),
+                        )));
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(result)
+}
 
 /// The result of encoding as a list of sliver pairs and metadata and a
 /// mapping from blob id to file path.
@@ -588,21 +637,147 @@ impl Client<SuiContractClient> {
         .await
     }
 
-    /// Encodes the blob, reserves & registers the space on chain, and stores the slivers to the
-    /// storage nodes. Finally, the function aggregates the storage confirmations and posts the
-    /// [`ConfirmationCertificate`] on chain.
-    #[tracing::instrument(skip_all, fields(blob_id))]
-    pub async fn reserve_and_store_quilt<'a>(
+    /// Stores all files from a folder as a quilt, using file names as descriptions.
+    ///
+    /// This function:
+    /// 1. Reads all files from the specified folder
+    /// 2. Uses the file names as descriptions for the quilt
+    /// 3. Encodes and stores the files as a quilt
+    #[tracing::instrument(skip_all, fields(folder_path = %folder_path.display()))]
+    pub async fn reserve_and_store_quilt_from_folder(
         &self,
-        blobs: &[BlobWithDesc<'a>],
+        folder_path: PathBuf,
         encoding_type: EncodingType,
         epochs_ahead: EpochCount,
         store_when: StoreWhen,
         persistence: BlobPersistence,
         post_store: PostStoreAction,
-    ) -> ClientResult<(BlobStoreResult, QuiltMetadata)> {
+    ) -> ClientResult<QuiltStoreResult> {
+        // Read files from the folder
+        let blobs_with_paths = get_blobs_and_paths(folder_path).map_err(|e| {
+            ClientError::from(ClientErrorKind::Other(
+                format!("Failed to read directory: {}", e).into(),
+            ))
+        })?;
+
+        if blobs_with_paths.is_empty() {
+            return Err(ClientError::from(ClientErrorKind::Other(
+                "No valid files found in the specified folder".into(),
+            )));
+        }
+
+        self.reserve_and_store_quilt_with_path_retry_committees(
+            &blobs_with_paths,
+            encoding_type,
+            epochs_ahead,
+            store_when,
+            persistence,
+            post_store,
+        )
+        .await
+    }
+
+    /// Stores a list of blobs as a quilt, retrying if it fails because of epoch change.
+    ///
+    /// The file names are used as the descriptions for the quilt.
+    pub async fn reserve_and_store_quilt_with_path_retry_committees(
+        &self,
+        blobs_with_paths: &[(PathBuf, Vec<u8>)],
+        encoding_type: EncodingType,
+        epochs_ahead: EpochCount,
+        store_when: StoreWhen,
+        persistence: BlobPersistence,
+        post_store: PostStoreAction,
+    ) -> ClientResult<QuiltStoreResult> {
+        self.retry_if_notified_epoch_change(|| {
+            self.reserve_and_store_quilt_with_path(
+                blobs_with_paths,
+                encoding_type,
+                epochs_ahead,
+                store_when,
+                persistence,
+                post_store,
+            )
+        })
+        .await
+    }
+
+    /// Stores a list of blobs as a quilt, retrying if it fails because of epoch change.
+    pub async fn reserve_and_store_quilt_retry_committees(
+        &self,
+        blobs: &[&[u8]],
+        descs: &[&str],
+        encoding_type: EncodingType,
+        epochs_ahead: EpochCount,
+        store_when: StoreWhen,
+        persistence: BlobPersistence,
+        post_store: PostStoreAction,
+    ) -> ClientResult<QuiltStoreResult> {
+        self.retry_if_notified_epoch_change(|| {
+            self.reserve_and_store_quilt(
+                blobs,
+                descs,
+                encoding_type,
+                epochs_ahead,
+                store_when,
+                persistence,
+                post_store,
+            )
+        })
+        .await
+    }
+
+    /// Stores a list of blobs as a quilt, with the file name as the description.
+    pub async fn reserve_and_store_quilt_with_path(
+        &self,
+        blobs_with_paths: &[(PathBuf, Vec<u8>)],
+        encoding_type: EncodingType,
+        epochs_ahead: EpochCount,
+        store_when: StoreWhen,
+        persistence: BlobPersistence,
+        post_store: PostStoreAction,
+    ) -> ClientResult<QuiltStoreResult> {
+        let descs = blobs_with_paths
+            .iter()
+            .map(|(path, _)| {
+                path.file_name()
+                    .and_then(|os| os.to_str())
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        let blobs = blobs_with_paths
+            .iter()
+            .map(|(_, blob)| blob.as_slice())
+            .collect::<Vec<_>>();
+
+        self.reserve_and_store_quilt(
+            &blobs,
+            &descs,
+            encoding_type,
+            epochs_ahead,
+            store_when,
+            persistence,
+            post_store,
+        )
+        .await
+    }
+
+    /// Encodes the blob, reserves & registers the space on chain, and stores the slivers to the
+    /// storage nodes. Finally, the function aggregates the storage confirmations and posts the
+    /// [`ConfirmationCertificate`] on chain.
+    #[tracing::instrument(skip_all, fields(blob_id))]
+    pub async fn reserve_and_store_quilt(
+        &self,
+        blobs: &[&[u8]],
+        descs: &[&str],
+        encoding_type: EncodingType,
+        epochs_ahead: EpochCount,
+        store_when: StoreWhen,
+        persistence: BlobPersistence,
+        post_store: PostStoreAction,
+    ) -> ClientResult<QuiltStoreResult> {
         let quilt_and_metadata = self
-            .encode_blobs_to_quilt_and_metadata(blobs, encoding_type)
+            .encode_blobs_to_quilt_and_metadata(blobs, descs, encoding_type)
             .await?;
         let Some((pairs, metadata)) = quilt_and_metadata else {
             return Err(ClientError::from(ClientErrorKind::Other(
@@ -624,7 +799,12 @@ impl Client<SuiContractClient> {
                 post_store,
             )
             .await?;
-        Ok((store_results.first().unwrap().clone(), metadata))
+        Ok(QuiltStoreResult {
+            quilt_blob_store_result: store_results.first().unwrap().clone(),
+            quilt_index: metadata
+                .quilt_index()
+                .expect("quilt index is not available"),
+        })
     }
 
     async fn encode_blobs_to_pairs_and_metadata_with_path(
@@ -730,9 +910,10 @@ impl Client<SuiContractClient> {
     }
 
     /// Encodes multiple blobs into quilt blocks and metadata.
-    pub async fn encode_blobs_to_quilt_and_metadata<'a>(
+    pub async fn encode_blobs_to_quilt_and_metadata(
         &self,
-        blobs: &'a [BlobWithDesc<'a>],
+        blobs: &[&[u8]],
+        descs: &[&str],
         encoding_type: EncodingType,
     ) -> ClientResult<Option<(Vec<SliverPair>, QuiltMetadata)>> {
         if blobs.len() < MIN_BLOBS_PER_QUILT as usize {
@@ -758,7 +939,12 @@ impl Client<SuiContractClient> {
         }
 
         let encoder = self.encoding_config.get_for_type(encoding_type);
-        let quilt_encoder = QuiltEncoder::new(encoder, &blobs);
+        let blobs_with_desc: Vec<BlobWithDesc<'_>> = blobs
+            .iter()
+            .zip(descs.iter())
+            .map(|(blob, desc)| BlobWithDesc::new(blob, desc))
+            .collect();
+        let quilt_encoder = QuiltEncoder::new(encoder, &blobs_with_desc);
         let (slivers, metadata) = quilt_encoder
             .encode_with_quilt_index_and_metadata()
             .map_err(ClientError::other)?;

@@ -129,6 +129,24 @@ impl QuiltMetadata {
     pub fn obj_id(&self) -> Option<&ObjectID> {
         self.obj_id.as_ref()
     }
+
+    /// Returns the quilt index of the quilt.
+    ///
+    /// It is the QuiltBlocks except for the first one.
+    pub fn quilt_index(&self) -> Option<QuiltIndex> {
+        if self.blocks.len() <= 1 {
+            return None;
+        }
+        let blocks_from_index_1 = &self.blocks[1..];
+        let quilt_blocks = blocks_from_index_1
+            .iter()
+            .map(|block| block.clone())
+            .collect::<Vec<_>>();
+        Some(QuiltIndex {
+            start_index: self.blocks[0].end_index,
+            quilt_blocks,
+        })
+    }
 }
 
 /// [`BlobMetadataWithId`] that has been verified with [`UnverifiedBlobMetadataWithId::verify`].

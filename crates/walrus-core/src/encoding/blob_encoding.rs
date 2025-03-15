@@ -372,7 +372,10 @@ impl<'a> QuiltEncoder<'a> {
             .collect();
 
         // Create the container quilt index
-        let mut container_quilt_index = QuiltIndex { quilt_blocks, start_index: 0 };
+        let mut container_quilt_index = QuiltIndex {
+            quilt_blocks,
+            start_index: 0,
+        };
 
         // Get just the serialized size without actually serializing
         let serialized_index_size = bcs::serialized_size(&container_quilt_index)

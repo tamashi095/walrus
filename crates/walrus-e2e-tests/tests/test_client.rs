@@ -24,7 +24,6 @@ use tempfile::TempDir;
 use tokio_stream::StreamExt;
 use walrus_core::{
     encoding::{
-        BlobWithDesc,
         EncodingAxis,
         EncodingConfigTrait as _,
         Primary,
@@ -50,7 +49,7 @@ use walrus_proc_macros::walrus_simtest;
 use walrus_sdk::api::BlobStatus;
 use walrus_service::{
     client::{
-        responses::BlobStoreResult,
+        responses::{BlobStoreResult, QuiltStoreResult},
         Blocklist,
         Client,
         ClientCommunicationConfig,
@@ -756,7 +755,7 @@ async_param_test! {
     test_store_quilt -> TestResult : [
         one_quilt: (2),
         three_quilt: (3),
-        ten_quilt: (4),
+        four_quilt: (4),
     ]
 }
 /// Tests that a quilt can be stored.
@@ -768,17 +767,14 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
     let desc_vec = (0..blobs_to_create as usize)
         .map(|i| format!("test-blob-{}", i + 1))
         .collect::<Vec<_>>();
-    let blobs_with_desc = blobs
-        .iter()
-        .zip(desc_vec.iter())
-        .map(|(blob, desc)| BlobWithDesc::new(blob, desc))
-        .collect::<Vec<_>>();
-
+    let blobs = blobs.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+    let descs = desc_vec.iter().map(AsRef::as_ref).collect::<Vec<_>>();
     // Add a blob that is not deletable.
-    let (result, quilt_metadata) = client
+    let result = client
         .as_ref()
         .reserve_and_store_quilt(
-            &blobs_with_desc,
+            &blobs,
+            &descs,
             encoding_type,
             2,
             StoreWhen::Always,
@@ -788,17 +784,21 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
         .await?;
     tracing::info!("result: {:?}", result);
 
-    let certified_epoch = match result {
-        BlobStoreResult::NewlyCreated { blob_object, .. } => {
-            blob_object.certified_epoch.unwrap_or(0)
-        }
+    let (certified_epoch, blob_id) = match result {
+        QuiltStoreResult {
+            quilt_blob_store_result: BlobStoreResult::NewlyCreated { blob_object, .. },
+            ..
+        } => (
+            blob_object.certified_epoch.unwrap_or(0),
+            blob_object.blob_id,
+        ),
         _ => {
             panic!("expected newly created blob");
         }
     };
     let metadata = client
         .as_ref()
-        .retrieve_metadata(certified_epoch, &quilt_metadata.blob_id())
+        .retrieve_metadata(certified_epoch, &blob_id)
         .await?;
 
     tracing::info!("Metadata received: {:?}", metadata);

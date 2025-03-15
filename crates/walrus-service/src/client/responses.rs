@@ -31,7 +31,7 @@ use walrus_core::{
         metadata_length_for_n_shards,
         source_symbols_for_n_shards,
     },
-    metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
+    metadata::{BlobMetadataApi as _, QuiltIndex, VerifiedBlobMetadataWithId},
     BlobId,
     EncodingType,
     Epoch,
@@ -88,6 +88,16 @@ impl Display for EventOrObjectId {
             }
         }
     }
+}
+
+/// Result when attempting to store a quilt.
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct QuiltStoreResult {
+    /// The result of storing the quilt data as a blob.
+    pub quilt_blob_store_result: BlobStoreResult,
+    /// The structure of the quilt.
+    pub quilt_index: QuiltIndex,
 }
 
 /// Blob store result with its file path.
