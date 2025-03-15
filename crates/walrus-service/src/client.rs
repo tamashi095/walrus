@@ -3,16 +3,7 @@
 
 //! Client for the Walrus service.
 
-use std::{
-    collections::HashMap,
-    fmt::Display,
-    fs,
-    fs::read,
-    io,
-    path::PathBuf,
-    sync::Arc,
-    time::Instant,
-};
+use std::{collections::HashMap, fmt::Display, fs, path::PathBuf, sync::Arc, time::Instant};
 
 use anyhow::anyhow;
 use cli::{styled_progress_bar, styled_spinner};
@@ -312,6 +303,130 @@ impl<T: ReadClient> Client<T> {
             .await?
             .with_client(sui_read_client)
             .await)
+    }
+
+    /// Retrieves specific slivers from storage nodes based on their indices.
+    ///
+    /// The operation is retried if epoch it fails due to epoch change.
+    pub async fn retrieve_slivers_retry_committees<U>(
+        &self,
+        metadata: &VerifiedBlobMetadataWithId,
+        sliver_indices: &[SliverIndex],
+        certified_epoch: Epoch,
+    ) -> ClientResult<Vec<SliverData<U>>>
+    where
+        U: EncodingAxis,
+        SliverData<U>: TryFrom<Sliver>,
+    {
+        self.retry_if_notified_epoch_change(|| {
+            self.retrieve_slivers::<U>(metadata, sliver_indices, certified_epoch)
+        })
+        .await
+    }
+
+    /// Retrieves specific slivers from storage nodes based on their indices.
+    ///
+    /// This function:
+    /// 1. Maps sliver indices to the nodes that host them
+    /// 2. Retrieves the slivers from those nodes
+    ///
+    /// Returns the retrieved slivers or an error if they cannot be found.
+    #[tracing::instrument(level = Level::ERROR, skip_all)]
+    pub async fn retrieve_slivers<'a, E: EncodingAxis>(
+        &self,
+        metadata: &'a VerifiedBlobMetadataWithId,
+        sliver_indices: &[SliverIndex],
+        certified_epoch: Epoch,
+    ) -> ClientResult<Vec<SliverData<E>>>
+    where
+        SliverData<E>: TryFrom<Sliver>,
+    {
+        let blob_id = metadata.blob_id();
+        tracing::debug!("starting to retrieve specific slivers");
+        self.check_blob_id(blob_id)?;
+
+        let committees = self.get_committees().await?;
+
+        // Create a progress bar to track the progress of the sliver retrieval.
+        let progress_bar: indicatif::ProgressBar = styled_progress_bar(sliver_indices.len() as u64);
+        progress_bar.set_message("requesting specific slivers");
+
+        // Get communications with storage nodes
+        let comms = self
+            .communication_factory
+            .node_read_communications(&committees, certified_epoch)?;
+
+        // Find which nodes have which slivers
+        let node_to_sliver_indices =
+            find_nodes_for_sliver_indices::<E>(blob_id, sliver_indices, &committees).await;
+
+        // Create futures for retrieving slivers from each node
+        let n_shards = committees.n_shards();
+        let futures = node_to_sliver_indices
+            .iter()
+            .flat_map(|(&node_idx, indices)| {
+                let node_comms = &comms[node_idx];
+                let pb_clone = progress_bar.clone();
+                indices.iter().map(move |&sliver_idx| {
+                    // Convert sliver index to pair index based on encoding axis
+                    let pair_idx = sliver_idx.to_pair_index::<E>(n_shards);
+
+                    // Get the shard index for this pair
+                    let shard_idx = pair_idx.to_shard_index(n_shards, blob_id);
+
+                    node_comms
+                        .retrieve_verified_sliver::<E>(metadata, shard_idx)
+                        .instrument(node_comms.span.clone())
+                        // Increment the progress bar if the sliver is successfully retrieved.
+                        .inspect({
+                            let value = pb_clone.clone();
+                            move |result| {
+                                if result.is_ok() {
+                                    value.inc(1)
+                                }
+                            }
+                        })
+                })
+            });
+
+        let mut requests = WeightedFutures::new(futures);
+
+        // Execute all requests with appropriate concurrency limits
+        requests
+            .execute_weight(
+                &|_| false, // We want to execute all futures
+                self.communication_limits
+                    .max_concurrent_sliver_reads_for_blob_size(
+                        metadata.metadata().unencoded_length(),
+                        &self.encoding_config,
+                        metadata.metadata().encoding_type(),
+                    ),
+            )
+            .await;
+
+        progress_bar.finish_with_message("slivers received");
+
+        let mut n_not_found = 0;
+        let mut n_forbidden = 0;
+        let slivers = requests
+            .take_results()
+            .into_iter()
+            .filter_map(|NodeResult(_, _, node, result)| {
+                result
+                    .map_err(|error| {
+                        tracing::debug!(%node, %error, "retrieving sliver failed");
+                        if error.is_status_not_found() {
+                            n_not_found += 1;
+                        } else if error.is_blob_blocked() {
+                            n_forbidden += 1;
+                        }
+                    })
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+        tracing::info!("Received slivers: {:?}", slivers);
+
+        Ok(slivers)
     }
 
     /// Reconstructs the blob by reading slivers from Walrus shards.
@@ -638,11 +753,6 @@ impl Client<SuiContractClient> {
     }
 
     /// Stores all files from a folder as a quilt, using file names as descriptions.
-    ///
-    /// This function:
-    /// 1. Reads all files from the specified folder
-    /// 2. Uses the file names as descriptions for the quilt
-    /// 3. Encodes and stores the files as a quilt
     #[tracing::instrument(skip_all, fields(folder_path = %folder_path.display()))]
     pub async fn reserve_and_store_quilt_from_folder(
         &self,
@@ -653,7 +763,7 @@ impl Client<SuiContractClient> {
         persistence: BlobPersistence,
         post_store: PostStoreAction,
     ) -> ClientResult<QuiltStoreResult> {
-        // Read files from the folder
+        // Read files from the folder.
         let blobs_with_paths = get_blobs_and_paths(folder_path).map_err(|e| {
             ClientError::from(ClientErrorKind::Other(
                 format!("Failed to read directory: {}", e).into(),
@@ -1662,111 +1772,6 @@ impl<T> Client<T> {
         committees: &ActiveCommittees,
     ) -> ClientError {
         ClientErrorKind::NotEnoughConfirmations(weight, committees.min_n_correct()).into()
-    }
-
-    /// Retrieves specific slivers from storage nodes based on their indices.
-    ///
-    /// This function:
-    /// 1. Maps sliver indices to the nodes that host them
-    /// 2. Retrieves the slivers from those nodes
-    ///
-    /// Returns the retrieved slivers or an error if they cannot be found.
-    #[tracing::instrument(level = Level::ERROR, skip_all)]
-    pub async fn retrieve_slivers<'a, E: EncodingAxis>(
-        &self,
-        metadata: &'a VerifiedBlobMetadataWithId,
-        sliver_indices: &[SliverIndex],
-        certified_epoch: Epoch,
-    ) -> ClientResult<Vec<SliverData<E>>>
-    where
-        SliverData<E>: TryFrom<Sliver>,
-    {
-        let blob_id = metadata.blob_id();
-        tracing::debug!("starting to retrieve specific slivers");
-        self.check_blob_id(blob_id)?;
-
-        let committees = self.get_committees().await?;
-
-        // Create a progress bar to track the progress of the sliver retrieval.
-        let progress_bar: indicatif::ProgressBar = styled_progress_bar(sliver_indices.len() as u64);
-        progress_bar.set_message("requesting specific slivers");
-
-        // Get communications with storage nodes
-        let comms = self
-            .communication_factory
-            .node_read_communications(&committees, certified_epoch)?;
-
-        // Find which nodes have which slivers
-        let node_to_sliver_indices =
-            find_nodes_for_sliver_indices::<E>(blob_id, sliver_indices, &committees).await;
-
-        // Create futures for retrieving slivers from each node
-        let n_shards = committees.n_shards();
-        let futures = node_to_sliver_indices
-            .iter()
-            .flat_map(|(&node_idx, indices)| {
-                let node_comms = &comms[node_idx];
-                let pb_clone = progress_bar.clone();
-                indices.iter().map(move |&sliver_idx| {
-                    // Convert sliver index to pair index based on encoding axis
-                    let pair_idx = sliver_idx.to_pair_index::<E>(n_shards);
-
-                    // Get the shard index for this pair
-                    let shard_idx = pair_idx.to_shard_index(n_shards, blob_id);
-
-                    node_comms
-                        .retrieve_verified_sliver::<E>(metadata, shard_idx)
-                        .instrument(node_comms.span.clone())
-                        // Increment the progress bar if the sliver is successfully retrieved.
-                        .inspect({
-                            let value = pb_clone.clone();
-                            move |result| {
-                                if result.is_ok() {
-                                    value.inc(1)
-                                }
-                            }
-                        })
-                })
-            });
-
-        let mut requests = WeightedFutures::new(futures);
-
-        // Execute all requests with appropriate concurrency limits
-        requests
-            .execute_weight(
-                &|_| false, // We want to execute all futures
-                self.communication_limits
-                    .max_concurrent_sliver_reads_for_blob_size(
-                        metadata.metadata().unencoded_length(),
-                        &self.encoding_config,
-                        metadata.metadata().encoding_type(),
-                    ),
-            )
-            .await;
-
-        progress_bar.finish_with_message("slivers received");
-
-        let mut n_not_found = 0;
-        let mut n_forbidden = 0;
-        let slivers = requests
-            .take_results()
-            .into_iter()
-            .filter_map(|NodeResult(_, _, node, result)| {
-                result
-                    .map_err(|error| {
-                        tracing::debug!(%node, %error, "retrieving sliver failed");
-                        if error.is_status_not_found() {
-                            n_not_found += 1;
-                        } else if error.is_blob_blocked() {
-                            n_forbidden += 1;
-                        }
-                    })
-                    .ok()
-            })
-            .collect::<Vec<_>>();
-        tracing::info!("Received slivers: {:?}", slivers);
-
-        Ok(slivers)
     }
 
     /// Requests the slivers and decodes them into a blob.
