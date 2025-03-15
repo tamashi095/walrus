@@ -23,6 +23,7 @@ use crate::{
     merkle::{MerkleTree, Node as MerkleNode, DIGEST_LEN},
     BlobId,
     EncodingType,
+    SliverIndex,
     SliverPairIndex,
     SliverType,
 };
@@ -74,18 +75,66 @@ pub struct QuiltIndex {
 }
 
 impl QuiltIndex {
+    /// Returns the quilt block with the given blob ID.
     pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Option<&QuiltBlock> {
         self.quilt_blocks.iter().find(|block| &block.blob_id == id)
     }
 
+    /// Returns the quilt block with the given blob description.
     pub fn get_quilt_block_by_desc(&self, desc: &str) -> Option<&QuiltBlock> {
         self.quilt_blocks.iter().find(|block| &block.desc == desc)
+    }
+
+    /// Returns an iterator over (blob_id, blob_desc) pairs in the quilt.
+    pub fn iter(&self) -> impl Iterator<Item = (&BlobId, &str)> {
+        self.quilt_blocks
+            .iter()
+            .map(|block| (&block.blob_id, block.desc.as_str()))
+    }
+
+    /// Returns the sliver indices for the given blob ID.
+    pub fn get_sliver_indices_for_blob(&self, blob_id: &BlobId) -> Vec<SliverIndex> {
+        let mut prev_end_index = self.start_index;
+
+        for block in &self.quilt_blocks {
+            if &block.blob_id == blob_id {
+                return (prev_end_index..block.end_index)
+                    .map(|i| SliverIndex(i))
+                    .collect();
+            }
+            prev_end_index = block.end_index;
+        }
+
+        Vec::new()
     }
 }
 
 impl QuiltBlock {
     /// The length of the description.
     pub const LENGTH: usize = 32;
+}
+
+/// Metadata associated with a quilt containing index.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuiltMetadataWithIndex {
+    /// The BlobId of the quilt.
+    pub quilt_id: BlobId,
+    /// The blob metadata of the quilt blob.
+    pub metadata: BlobMetadata,
+    /// The index of the quilt.
+    pub index: QuiltIndex,
+}
+
+impl QuiltMetadataWithIndex {
+    /// Returns the metadata of the quilt.
+    pub fn metadata(&self) -> VerifiedBlobMetadataWithId {
+        VerifiedBlobMetadataWithId::new_verified_unchecked(self.quilt_id, self.metadata.clone())
+    }
+
+    /// Returns the quilt index.
+    pub fn index(&self) -> &QuiltIndex {
+        &self.index
+    }
 }
 
 /// Metadata associated with a quilt.

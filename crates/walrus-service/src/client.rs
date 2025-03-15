@@ -38,6 +38,7 @@ use walrus_core::{
         BlobMetadataApi as _,
         QuiltIndex,
         QuiltMetadata,
+        QuiltMetadataWithIndex,
         VerifiedBlobMetadataWithId,
         MIN_BLOBS_PER_QUILT,
     },
@@ -309,17 +310,50 @@ impl<T: ReadClient> Client<T> {
     }
 
     /// Retrieves the list of blobs contained in a quilt.
-    ///
-    /// This function:
-    /// 1. Verifies the quilt ID is not blocked.
-    /// 2. Gets the certified epoch for the quilt.
-    /// 3. Retrieves the quilt metadata.
-    /// 4. Fetches the first sliver (index 0) which contains the quilt index information.
-    /// 5. If needed, retrieves any intermediate slivers (indices 1 to start_index-1).
-    /// 6. Decodes the quilt index from the collected slivers.
-    ///
-    /// Returns the decoded QuiltIndex or an error if any step fails.
-    pub async fn list_blobs_from_quilt(&self, quilt_id: &BlobId) -> ClientResult<QuiltIndex> {
+    pub async fn get_blobs_from_quilt(
+        &self,
+        quilt_id: &BlobId,
+        blobs_ids: &[BlobId],
+        quilt_metadata: Option<QuiltMetadataWithIndex>,
+    ) -> ClientResult<Vec<Vec<u8>>> {
+        let quilt_metadata = match quilt_metadata {
+            Some(metadata) => metadata,
+            None => self.get_quilt_metadata(quilt_id).await?,
+        };
+
+        let mut blobs = Vec::new();
+        for blob_id in blobs_ids {
+            let sliver_indices = quilt_metadata.index().get_sliver_indices_for_blob(blob_id);
+            if sliver_indices.is_empty() {
+                return Err(ClientError::from(ClientErrorKind::Other(
+                    format!("Blob {} not found in quilt {}", blob_id, quilt_id).into(),
+                )));
+            }
+            let slivers = self
+                .retrieve_slivers_with_retry(
+                    &quilt_metadata.metadata(),
+                    &sliver_indices,
+                    self.get_certified_epoch(quilt_id, None).await?,
+                    None,
+                    None,
+                )
+                .await?;
+            let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
+            let mut quilt_decoder =
+                QuiltDecoder::new(self.encoding_config().n_shards(), sliver_refs.as_slice());
+            let quilt_decoder = quilt_decoder.with_quilt_index(quilt_metadata.index().clone());
+            let blob = quilt_decoder.get_blob_by_id(blob_id).unwrap();
+            blobs.push(blob);
+        }
+
+        Ok(blobs.into_iter().map(|blob| blob.to_vec()).collect())
+    }
+
+    /// Retrieves the list of blobs contained in a quilt.
+    pub async fn get_quilt_metadata(
+        &self,
+        quilt_id: &BlobId,
+    ) -> ClientResult<QuiltMetadataWithIndex> {
         self.check_blob_id(quilt_id)?;
         let certified_epoch = self.get_certified_epoch(quilt_id, None).await?;
         let metadata = self.retrieve_metadata(certified_epoch, quilt_id).await?;
@@ -359,10 +393,16 @@ impl<T: ReadClient> Client<T> {
         let mut quilt_decoder =
             QuiltDecoder::new(self.encoding_config().n_shards(), slivers_refs.as_slice());
 
-        Ok(quilt_decoder
+        let quilt_index = quilt_decoder
             .decode_quilt_index()
             .expect("Failed to decode quilt index.")
-            .clone())
+            .clone();
+
+        Ok(QuiltMetadataWithIndex {
+            quilt_id: quilt_id.clone(),
+            metadata: metadata.metadata().clone(),
+            index: quilt_index,
+        })
     }
 
     /// Retrieves slivers with retry logic, only requesting missing slivers in subsequent attempts.

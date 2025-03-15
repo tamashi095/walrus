@@ -34,7 +34,6 @@ use crate::{
     encoding::config::EncodingConfigTrait as _,
     merkle::{leaf_hash, MerkleTree},
     metadata::{
-        BlobMetadata,
         QuiltBlock,
         QuiltIndex,
         QuiltMetadata,
@@ -1059,6 +1058,11 @@ impl<'a> QuiltDecoder<'a> {
             slivers: slivers.to_vec(),
             quilt_index: None,
         }
+    }
+
+    pub fn with_quilt_index(mut self, quilt_index: QuiltIndex) -> Self {
+        self.quilt_index = Some(quilt_index);
+        self
     }
 
     /// Decodes the quilt index from the provided slivers.

@@ -767,8 +767,13 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
     let desc_vec = (0..blobs_to_create as usize)
         .map(|i| format!("test-blob-{}", i + 1))
         .collect::<Vec<_>>();
-    let blobs = blobs.iter().map(AsRef::as_ref).collect::<Vec<_>>();
-    let descs = desc_vec.iter().map(AsRef::as_ref).collect::<Vec<_>>();
+    let blobs: Vec<&[u8]> = blobs.iter().map(AsRef::as_ref).collect();
+    let descs: Vec<&str> = desc_vec.iter().map(AsRef::as_ref).collect();
+    let blobs_by_desc = descs
+        .iter()
+        .zip(blobs.iter())
+        .map(|(desc, blob)| (desc.clone(), blob.clone()))
+        .collect::<HashMap<_, _>>();
     // Add a blob that is not deletable.
     let result = client
         .as_ref()
@@ -827,9 +832,21 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
         .expect("quilt index should be decoded");
     tracing::info!("quilt index: {:?}", quilt_index);
 
-    let retrieved_quilt_index = client.as_ref().list_blobs_from_quilt(&blob_id).await?;
-    tracing::info!("retrieved quilt index: {:?}", retrieved_quilt_index);
-    assert_eq!(quilt_index, &retrieved_quilt_index);
+    let quilt_metadata = client.as_ref().get_quilt_metadata(&blob_id).await?;
+    tracing::info!("retrieved quilt metadata: {:?}", quilt_metadata);
+    assert_eq!(quilt_index, quilt_metadata.index());
+
+    for (inner_blob_id, desc) in quilt_index.iter() {
+        let blob = client
+            .as_ref()
+            .get_blobs_from_quilt(&blob_id, &[*inner_blob_id], Some(quilt_metadata.clone()))
+            .await?;
+
+        tracing::info!("blob: {:?}", blob);
+
+        assert_eq!(blob.first().unwrap(), blobs_by_desc[desc]);
+    }
+
     Ok(())
 }
 
