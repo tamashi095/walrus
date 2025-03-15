@@ -1026,6 +1026,7 @@ impl<'a> ExpandedMessageMatrix<'a> {
 }
 
 /// A decoder for the quilt index.
+#[derive(Debug)]
 pub struct QuiltDecoder<'a> {
     n_shards: NonZeroU16,
     slivers: Vec<&'a SliverData<Secondary>>,
@@ -1033,6 +1034,25 @@ pub struct QuiltDecoder<'a> {
 }
 
 impl<'a> QuiltDecoder<'a> {
+    /// Get the start index of the quilt index from the first sliver.
+    pub fn get_start_index(first_sliver: &SliverData<Secondary>) -> Option<u16> {
+        if first_sliver.symbols.data().len() < 8 {
+            return None;
+        }
+
+        let data_size = u64::from_le_bytes(
+            first_sliver.symbols.data()[0..8]
+                .try_into()
+                .expect("slice with incorrect length"),
+        ) as u16;
+
+        let sliver_size = first_sliver.symbols.data().len();
+        let total_size_needed = data_size as usize; // 8 bytes for prefix + data
+        let num_slivers_needed = total_size_needed.div_ceil(sliver_size); // Ceiling division
+        Some(num_slivers_needed as u16)
+    }
+
+    /// Creates a new QuiltDecoder with the given number of shards and slivers.
     pub fn new(n_shards: NonZeroU16, slivers: &'a [&'a SliverData<Secondary>]) -> Self {
         Self {
             n_shards,

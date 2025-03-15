@@ -807,15 +807,16 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
 
     // tracing::info!("Blob received: {:?}", blob);
 
-    let slivers: Vec<SliverData<Secondary>> = retrieve_slivers_with_retry::<Secondary>(
-        &client.as_ref(),
-        &metadata,
-        &[SliverIndex(0), SliverIndex(1), SliverIndex(2)],
-        certified_epoch,
-        None,
-        1000,
-    )
-    .await?;
+    let slivers: Vec<SliverData<Secondary>> = client
+        .as_ref()
+        .retrieve_slivers_with_retry(
+            &metadata,
+            &[SliverIndex(0), SliverIndex(1), SliverIndex(2)],
+            certified_epoch,
+            None,
+            Some(Duration::from_secs(60)),
+        )
+        .await?;
 
     let committees = client.as_ref().get_committees().await?;
     let n_shards = committees.n_shards();
@@ -825,6 +826,10 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
         .decode_quilt_index()
         .expect("quilt index should be decoded");
     tracing::info!("quilt index: {:?}", quilt_index);
+
+    let retrieved_quilt_index = client.as_ref().list_blobs_from_quilt(&blob_id).await?;
+    tracing::info!("retrieved quilt index: {:?}", retrieved_quilt_index);
+    assert_eq!(quilt_index, &retrieved_quilt_index);
     Ok(())
 }
 

@@ -26,7 +26,9 @@ use walrus_core::{
         EncodingAxis,
         EncodingConfig,
         EncodingConfigTrait as _,
+        QuiltDecoder,
         QuiltEncoder,
+        Secondary,
         SliverData,
         SliverPair,
     },
@@ -34,6 +36,7 @@ use walrus_core::{
     messages::{BlobPersistenceType, ConfirmationCertificate, SignedStorageConfirmation},
     metadata::{
         BlobMetadataApi as _,
+        QuiltIndex,
         QuiltMetadata,
         VerifiedBlobMetadataWithId,
         MIN_BLOBS_PER_QUILT,
@@ -305,6 +308,174 @@ impl<T: ReadClient> Client<T> {
             .await)
     }
 
+    /// Retrieves the list of blobs contained in a quilt.
+    ///
+    /// This function:
+    /// 1. Verifies the quilt ID is not blocked.
+    /// 2. Gets the certified epoch for the quilt.
+    /// 3. Retrieves the quilt metadata.
+    /// 4. Fetches the first sliver (index 0) which contains the quilt index information.
+    /// 5. If needed, retrieves any intermediate slivers (indices 1 to start_index-1).
+    /// 6. Decodes the quilt index from the collected slivers.
+    ///
+    /// Returns the decoded QuiltIndex or an error if any step fails.
+    pub async fn list_blobs_from_quilt(&self, quilt_id: &BlobId) -> ClientResult<QuiltIndex> {
+        self.check_blob_id(quilt_id)?;
+        let certified_epoch = self.get_certified_epoch(quilt_id, None).await?;
+        let metadata = self.retrieve_metadata(certified_epoch, quilt_id).await?;
+
+        let mut slivers = self
+            .retrieve_slivers_with_retry(
+                &metadata,
+                &[SliverIndex::new(0)],
+                certified_epoch,
+                None,
+                None,
+            )
+            .await?;
+
+        let start_index =
+            QuiltDecoder::get_start_index(&slivers[0]).expect("Failed to get start index.");
+
+        if start_index > 1 {
+            let missing_indices: Vec<SliverIndex> =
+                (1..start_index).map(SliverIndex::new).collect();
+
+            let extra_slivers = self
+                .retrieve_slivers_with_retry(
+                    &metadata,
+                    &missing_indices,
+                    certified_epoch,
+                    None,
+                    None,
+                )
+                .await?;
+
+            slivers.extend(extra_slivers);
+        }
+
+        let slivers_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
+
+        let mut quilt_decoder =
+            QuiltDecoder::new(self.encoding_config().n_shards(), slivers_refs.as_slice());
+
+        Ok(quilt_decoder
+            .decode_quilt_index()
+            .expect("Failed to decode quilt index.")
+            .clone())
+    }
+
+    /// Retrieves slivers with retry logic, only requesting missing slivers in subsequent attempts.
+    ///
+    /// This function will keep retrying until all requested slivers are received or the maximum
+    /// number of retries is reached.
+    pub async fn retrieve_slivers_with_retry<E: EncodingAxis>(
+        &self,
+        metadata: &VerifiedBlobMetadataWithId,
+        sliver_indices: &[SliverIndex],
+        certified_epoch: Epoch,
+        max_retries: Option<usize>,
+        timeout_duration: Option<Duration>,
+    ) -> Result<Vec<SliverData<E>>, ClientError>
+    where
+        SliverData<E>: TryFrom<walrus_core::Sliver>,
+    {
+        let mut all_slivers: HashMap<SliverIndex, SliverData<E>> = HashMap::new();
+        let mut missing_indices: Vec<SliverIndex> = sliver_indices.to_vec();
+        let mut retry_count = 0;
+        let retry_delay_ms = 100; // Fixed retry delay of 100ms
+        let timeout_duration = timeout_duration.unwrap_or(Duration::from_secs(30));
+        let start_time = Instant::now();
+
+        while !missing_indices.is_empty() {
+            // Check if we've exceeded the timeout
+            if start_time.elapsed() > timeout_duration {
+                tracing::warn!(
+                    "Timeout reached after {:?} while retrieving slivers",
+                    timeout_duration
+                );
+                break;
+            }
+
+            // Check if we've exceeded max retries
+            if let Some(max) = max_retries {
+                if retry_count >= max {
+                    tracing::debug!("Max retry count ({}) reached", max);
+                    break;
+                }
+            }
+
+            tracing::debug!("Retrieving missing slivers: {:?}", missing_indices);
+
+            match self
+                .retrieve_slivers_retry_committees(metadata, &missing_indices, certified_epoch)
+                .await
+            {
+                Ok(new_slivers) => {
+                    // Track which indices we've successfully retrieved
+                    let retrieved_indices: Vec<SliverIndex> =
+                        new_slivers.iter().map(|s| s.index).collect();
+
+                    // Add new slivers to our collection
+                    for sliver in new_slivers {
+                        all_slivers.insert(sliver.index, sliver);
+                    }
+
+                    // Update missing indices for next attempt
+                    missing_indices.retain(|idx| !retrieved_indices.contains(idx));
+
+                    if !missing_indices.is_empty() {
+                        tracing::debug!(
+                            "Still missing slivers: {:?} (attempt {}/{}, elapsed: {:?})",
+                            missing_indices,
+                            retry_count + 1,
+                            max_retries.unwrap_or(usize::MAX),
+                            start_time.elapsed()
+                        );
+                        tokio::time::sleep(Duration::from_millis(retry_delay_ms)).await;
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Error retrieving slivers: {:?}", e);
+                    tokio::time::sleep(Duration::from_millis(retry_delay_ms * 2)).await;
+                }
+            }
+
+            retry_count += 1;
+        }
+
+        // Log summary of retrieval operation
+        let total_requested = sliver_indices.len();
+        let total_retrieved = all_slivers.len();
+
+        if total_retrieved < total_requested {
+            tracing::warn!(
+                "Retrieved {}/{} requested slivers after {} attempts and {:?}",
+                total_retrieved,
+                total_requested,
+                retry_count,
+                start_time.elapsed()
+            );
+            return Err(ClientError::from(ClientErrorKind::Other(
+                format!(
+                    "Failed to retrieve all slivers after {} attempts and {:?}",
+                    retry_count,
+                    start_time.elapsed()
+                )
+                .into(),
+            )));
+        } else {
+            tracing::info!(
+                "Successfully retrieved all {} slivers after {} attempts and {:?}",
+                total_requested,
+                retry_count,
+                start_time.elapsed()
+            );
+        }
+
+        // Convert the HashMap values to a Vec for further processing
+        Ok(all_slivers.into_values().collect())
+    }
     /// Retrieves specific slivers from storage nodes based on their indices.
     ///
     /// The operation is retried if epoch it fails due to epoch change.
@@ -477,33 +648,8 @@ impl<T: ReadClient> Client<T> {
     {
         tracing::debug!("starting to read blob");
         self.check_blob_id(blob_id)?;
-        let committees = self.get_committees().await?;
 
-        let certified_epoch = if committees.is_change_in_progress() {
-            tracing::info!("epoch change in progress, reading from initial certified epoch");
-            let blob_status = match blob_status {
-                Some(status) => status,
-                None => {
-                    self.get_blob_status_with_retries(blob_id, &self.sui_client)
-                        .await?
-                }
-            };
-            blob_status
-                .initial_certified_epoch()
-                .ok_or_else(|| ClientError::from(ClientErrorKind::BlobIdDoesNotExist))?
-        } else {
-            // We are not during epoch change, we can read from the current epoch directly.
-            committees.epoch()
-        };
-
-        // Return early if the committee is behind.
-        let current_epoch = committees.epoch();
-        if certified_epoch > current_epoch {
-            return Err(ClientError::from(ClientErrorKind::BehindCurrentEpoch {
-                client_epoch: current_epoch,
-                certified_epoch,
-            }));
-        }
+        let certified_epoch = self.get_certified_epoch(blob_id, blob_status).await?;
 
         self.read_metadata_and_slivers::<U>(certified_epoch, blob_id)
             .await
@@ -622,6 +768,50 @@ impl<T: ReadClient> Client<T> {
             },
             result = future => result,
         }
+    }
+
+    /// Gets the certified epoch for a blob, handling epoch changes appropriately.
+    ///
+    /// This function determines the correct epoch to use when retrieving blob data:
+    /// - During epoch changes, it uses the initial certified epoch from the blob status
+    /// - Otherwise, it uses the current epoch
+    ///
+    /// Returns an error if the blob doesn't exist or if the certified epoch is ahead of
+    /// the client's epoch.
+    async fn get_certified_epoch(
+        &self,
+        blob_id: &BlobId,
+        blob_status: Option<BlobStatus>,
+    ) -> ClientResult<Epoch> {
+        let committees = self.get_committees().await?;
+
+        let certified_epoch = if committees.is_change_in_progress() {
+            tracing::info!("epoch change in progress, reading from initial certified epoch");
+            let blob_status = match blob_status {
+                Some(status) => status,
+                None => {
+                    self.get_blob_status_with_retries(blob_id, &self.sui_client)
+                        .await?
+                }
+            };
+            blob_status
+                .initial_certified_epoch()
+                .ok_or_else(|| ClientError::from(ClientErrorKind::BlobIdDoesNotExist))?
+        } else {
+            // We are not during epoch change, we can read from the current epoch directly.
+            committees.epoch()
+        };
+
+        // Return early if the committee is behind.
+        let current_epoch = committees.epoch();
+        if certified_epoch > current_epoch {
+            return Err(ClientError::from(ClientErrorKind::BehindCurrentEpoch {
+                client_epoch: current_epoch,
+                certified_epoch,
+            }));
+        }
+
+        Ok(certified_epoch)
     }
 }
 
