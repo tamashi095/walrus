@@ -44,6 +44,8 @@ use walrus_core::{
     EpochCount,
     ShardIndex,
     Sliver,
+    SliverIndex,
+    SliverPairIndex,
 };
 use walrus_sdk::{api::BlobStatus, error::NodeError};
 use walrus_sui::{
@@ -1476,6 +1478,120 @@ impl<T> Client<T> {
         ClientErrorKind::NotEnoughConfirmations(weight, committees.min_n_correct()).into()
     }
 
+    /// Retrieves specific slivers from storage nodes based on their indices.
+    ///
+    /// This function:
+    /// 1. Maps sliver indices to the nodes that host them
+    /// 2. Retrieves the slivers from those nodes
+    ///
+    /// Returns the retrieved slivers or an error if they cannot be found.
+    #[tracing::instrument(level = Level::ERROR, skip_all)]
+    pub async fn retrieve_slivers<'a, E: EncodingAxis>(
+        &self,
+        metadata: &'a VerifiedBlobMetadataWithId,
+        sliver_indices: &[SliverIndex],
+        certified_epoch: Epoch,
+    ) -> ClientResult<Vec<SliverData<E>>>
+    where
+        SliverData<E>: TryFrom<Sliver>,
+    {
+        let blob_id = metadata.blob_id();
+        tracing::debug!("starting to retrieve specific slivers");
+        self.check_blob_id(blob_id)?;
+
+        let committees = self.get_committees().await?;
+
+        // Create a progress bar to track the progress of the sliver retrieval.
+        let progress_bar: indicatif::ProgressBar = styled_progress_bar(sliver_indices.len() as u64);
+        progress_bar.set_message("requesting specific slivers");
+
+        // Get communications with storage nodes
+        let comms = self
+            .communication_factory
+            .node_read_communications(&committees, certified_epoch)?;
+
+        // Find which nodes have which slivers
+        let node_to_sliver_indices =
+            find_nodes_for_sliver_indices::<E>(blob_id, sliver_indices, &committees).await;
+
+        // Create futures for retrieving slivers from each node
+        let n_shards = committees.n_shards();
+        let futures = node_to_sliver_indices
+            .iter()
+            .flat_map(|(&node_idx, indices)| {
+                let node_comms = &comms[node_idx];
+                let pb_clone = progress_bar.clone();
+                indices.iter().map(move |&sliver_idx| {
+                    // Convert sliver index to pair index based on encoding axis
+                    let pair_idx = sliver_idx.to_pair_index::<E>(n_shards);
+
+                    // Get the shard index for this pair
+                    let shard_idx = pair_idx.to_shard_index(n_shards, blob_id);
+
+                    node_comms
+                        .retrieve_verified_sliver::<E>(metadata, shard_idx)
+                        .instrument(node_comms.span.clone())
+                        // Increment the progress bar if the sliver is successfully retrieved.
+                        .inspect({
+                            let value = pb_clone.clone();
+                            move |result| {
+                                if result.is_ok() {
+                                    value.inc(1)
+                                }
+                            }
+                        })
+                })
+            });
+
+        let mut requests = WeightedFutures::new(futures);
+
+        // Execute all requests with appropriate concurrency limits
+        requests
+            .execute_weight(
+                &|_| false, // We want to execute all futures
+                self.communication_limits
+                    .max_concurrent_sliver_reads_for_blob_size(
+                        metadata.metadata().unencoded_length(),
+                        &self.encoding_config,
+                        metadata.metadata().encoding_type(),
+                    ),
+            )
+            .await;
+
+        progress_bar.finish_with_message("slivers received");
+
+        let mut n_not_found = 0;
+        let mut n_forbidden = 0;
+        let slivers = requests
+            .take_results()
+            .into_iter()
+            .filter_map(|NodeResult(_, _, node, result)| {
+                result
+                    .map_err(|error| {
+                        tracing::debug!(%node, %error, "retrieving sliver failed");
+                        if error.is_status_not_found() {
+                            n_not_found += 1;
+                        } else if error.is_blob_blocked() {
+                            n_forbidden += 1;
+                        }
+                    })
+                    .ok()
+            })
+            .collect::<Vec<_>>();
+        tracing::info!("Received slivers: {:?}", slivers);
+        // Convert SliverData<E> to Sliver
+        // let retrieved_slivers = slivers
+        //     .into_iter()
+        //     .filter_map(|sliver_data| sliver_data.try_into().ok())
+        //     .collect::<Vec<_>>();
+
+        // if retrieved_slivers.is_empty() {
+        //     return Err(ClientErrorKind::NotEnoughSlivers.into());
+        // }
+
+        Ok(slivers)
+    }
+
     /// Requests the slivers and decodes them into a blob.
     ///
     /// Returns a [`ClientError`] of kind [`ClientErrorKind::BlobIdDoesNotExist`] if it receives a
@@ -2013,4 +2129,38 @@ async fn verify_blob_status_event(
     };
 
     Ok(())
+}
+
+/// This function maps multiple sliver indices to the nodes that hold them.
+///
+/// Returns a mapping from node indices to the pair indices they hold.
+///
+/// For primary slivers, the sliver index is directly converted to a pair index.
+/// For secondary slivers, the sliver index is converted using n_shards - index - 1.
+async fn find_nodes_for_sliver_indices<'a, E: EncodingAxis>(
+    blob_id: &'a BlobId,
+    sliver_indices: &[SliverIndex],
+    committees: &ActiveCommittees,
+) -> HashMap<usize, Vec<SliverIndex>> {
+    let mut node_to_sliver_indices: HashMap<usize, Vec<SliverIndex>> = HashMap::new();
+    let n_shards = committees.n_shards();
+
+    for &sliver_index in sliver_indices {
+        // Convert sliver index to pair index based on encoding axis
+        let pair_index = sliver_index.to_pair_index::<E>(n_shards);
+
+        // Get the shard index for this pair
+        let shard_index = pair_index.to_shard_index(n_shards, blob_id);
+
+        for (node_idx, node) in committees.write_committee().members().iter().enumerate() {
+            if node.shard_ids.contains(&shard_index) {
+                node_to_sliver_indices
+                    .entry(node_idx)
+                    .or_default()
+                    .push(sliver_index);
+            }
+        }
+    }
+
+    node_to_sliver_indices
 }

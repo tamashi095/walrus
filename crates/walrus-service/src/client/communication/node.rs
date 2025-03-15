@@ -216,7 +216,7 @@ impl<W> NodeCommunication<'_, W> {
     where
         SliverData<A>: TryFrom<Sliver>,
     {
-        tracing::debug!(
+        tracing::info!(
             walrus.shard_index = %shard_index,
             sliver_type = A::NAME,
             "retrieving verified sliver"

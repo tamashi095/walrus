@@ -1889,6 +1889,12 @@ impl ServiceState for StorageNode {
         sliver_pair_index: SliverPairIndex,
         sliver_type: SliverType,
     ) -> Result<Sliver, RetrieveSliverError> {
+        tracing::info!(
+            "Retrieving sliver {:?}{:?} for blob {:?}",
+            sliver_type,
+            sliver_pair_index,
+            blob_id
+        );
         self.inner
             .retrieve_sliver(blob_id, sliver_pair_index, sliver_type)
     }
@@ -2112,14 +2118,24 @@ impl ServiceState for StorageNodeInner {
 
         let shard_storage = self.get_shard_for_sliver_pair(sliver_pair_index, blob_id)?;
 
-        shard_storage
+        let result = shard_storage
             .get_sliver(blob_id, sliver_type)
             .context("unable to retrieve sliver")?
             .ok_or(RetrieveSliverError::Unavailable)
             .inspect(|sliver| {
                 walrus_utils::with_label!(self.metrics.slivers_retrieved_total, sliver.r#type())
                     .inc();
-            })
+            });
+
+        tracing::info!(
+            "Retrieved sliver {:?}{:?} for blob {:?}\n{:?}",
+            sliver_type,
+            sliver_pair_index,
+            blob_id,
+            result
+        );
+
+        result
     }
 
     fn store_sliver(

@@ -23,15 +23,25 @@ use sui_types::base_types::{SuiAddress, SUI_ADDRESS_LENGTH};
 use tempfile::TempDir;
 use tokio_stream::StreamExt;
 use walrus_core::{
-    encoding::{BlobWithDesc, EncodingConfigTrait as _, Primary},
+    encoding::{
+        BlobWithDesc,
+        EncodingAxis,
+        EncodingConfigTrait as _,
+        Primary,
+        QuiltDecoder,
+        Secondary,
+        SliverData,
+    },
     merkle::Node,
     messages::BlobPersistenceType,
     metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
     test_utils::random_encoding_type,
     BlobId,
     EncodingType,
+    Epoch,
     EpochCount,
     ShardIndex,
+    SliverIndex,
     SliverPairIndex,
     DEFAULT_ENCODING,
     SUPPORTED_ENCODING_TYPES,
@@ -765,7 +775,7 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
         .collect::<Vec<_>>();
 
     // Add a blob that is not deletable.
-    let result = client
+    let (result, quilt_metadata) = client
         .as_ref()
         .reserve_and_store_quilt(
             &blobs_with_desc,
@@ -778,6 +788,43 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
         .await?;
     tracing::info!("result: {:?}", result);
 
+    let certified_epoch = match result {
+        BlobStoreResult::NewlyCreated { blob_object, .. } => {
+            blob_object.certified_epoch.unwrap_or(0)
+        }
+        _ => {
+            panic!("expected newly created blob");
+        }
+    };
+    let metadata = client
+        .as_ref()
+        .retrieve_metadata(certified_epoch, &quilt_metadata.blob_id())
+        .await?;
+
+    tracing::info!("Metadata received: {:?}", metadata);
+
+    // let blob = client.as_ref().read_blob::<Primary>(quilt_metadata.blob_id()).await?;
+
+    // tracing::info!("Blob received: {:?}", blob);
+
+    let slivers: Vec<SliverData<Secondary>> = retrieve_slivers_with_retry::<Secondary>(
+        &client.as_ref(),
+        &metadata,
+        &[SliverIndex(0), SliverIndex(1), SliverIndex(2)],
+        certified_epoch,
+        None,
+        1000,
+    )
+    .await?;
+
+    let committees = client.as_ref().get_committees().await?;
+    let n_shards = committees.n_shards();
+    let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
+    let mut quilt_decoder = QuiltDecoder::new(n_shards, sliver_refs.as_slice());
+    let quilt_index = quilt_decoder
+        .decode_quilt_index()
+        .expect("quilt index should be decoded");
+    tracing::info!("quilt index: {:?}", quilt_index);
     Ok(())
 }
 
@@ -2083,4 +2130,72 @@ async fn test_ptb_retriable_error() -> TestResult {
     // Clean up the fail point
     clear_fail_point("ptb_executor_stake_pool_retriable_error");
     Ok(())
+}
+
+/// Retrieves slivers with retry logic, only requesting missing slivers in subsequent attempts.
+///
+/// This function will keep retrying until all requested slivers are received or the maximum
+/// number of retries is reached.
+async fn retrieve_slivers_with_retry<E: EncodingAxis>(
+    client: &Client<SuiContractClient>,
+    metadata: &VerifiedBlobMetadataWithId,
+    sliver_indices: &[SliverIndex],
+    certified_epoch: Epoch,
+    max_retries: Option<usize>,
+    retry_delay_ms: u64,
+) -> Result<Vec<SliverData<E>>, ClientError>
+where
+    SliverData<E>: TryFrom<walrus_core::Sliver>,
+{
+    let mut all_slivers: HashMap<SliverIndex, SliverData<E>> = HashMap::new();
+    let mut missing_indices: Vec<SliverIndex> = sliver_indices.to_vec();
+    let mut retry_count = 0;
+
+    while !missing_indices.is_empty() {
+        if let Some(max) = max_retries {
+            if retry_count >= max {
+                break;
+            }
+        }
+
+        tracing::debug!("Retrieving missing slivers: {:?}", missing_indices);
+
+        match client
+            .retrieve_slivers::<E>(metadata, &missing_indices, certified_epoch)
+            .await
+        {
+            Ok(new_slivers) => {
+                // Track which indices we've successfully retrieved
+                let retrieved_indices: Vec<SliverIndex> =
+                    new_slivers.iter().map(|s| s.index).collect();
+
+                // Add new slivers to our collection
+                for sliver in new_slivers {
+                    all_slivers.insert(sliver.index, sliver);
+                }
+
+                // Update missing indices for next attempt
+                missing_indices.retain(|idx| !retrieved_indices.contains(idx));
+
+                if !missing_indices.is_empty() {
+                    tracing::debug!(
+                        "Still missing slivers: {:?} (attempt {}/{})",
+                        missing_indices,
+                        retry_count + 1,
+                        max_retries.unwrap_or(usize::MAX)
+                    );
+                    tokio::time::sleep(Duration::from_millis(retry_delay_ms)).await;
+                }
+            }
+            Err(e) => {
+                tracing::warn!("Error retrieving slivers: {:?}", e);
+                tokio::time::sleep(Duration::from_millis(retry_delay_ms * 2)).await;
+            }
+        }
+
+        retry_count += 1;
+    }
+
+    // Convert the HashMap values to a Vec for further processing
+    Ok(all_slivers.into_values().collect())
 }

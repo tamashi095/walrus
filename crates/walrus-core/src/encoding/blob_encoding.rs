@@ -540,10 +540,7 @@ impl<'a> QuiltEncoder<'a> {
         let (sliver_pairs, metadata) = encoder.encode_with_metadata();
         let quilt_metadata = QuiltMetadata::new(
             metadata.blob_id().clone(),
-            metadata
-                .metadata()
-                .clone()
-                .with_quilt_index_end_index(quilt.quilt_index_end_index.unwrap()),
+            metadata.metadata().clone(),
             quilt.blocks,
         );
         Ok((sliver_pairs, quilt_metadata))
