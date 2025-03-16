@@ -3,7 +3,7 @@
 
 //! The errors for the storage client and the communication with storage nodes.
 
-use walrus_core::{BlobId, EncodingType, Epoch, SliverPairIndex, SliverType};
+use walrus_core::{error::QuiltError, BlobId, EncodingType, Epoch, SliverPairIndex, SliverType};
 use walrus_sdk::error::{ClientBuildError, NodeError};
 use walrus_sui::client::{SuiClientError, MIN_STAKING_THRESHOLD};
 
@@ -170,7 +170,18 @@ pub enum ClientErrorKind {
         FROST for staking"
     )]
     StakeBelowThreshold(u64),
+    /// Quilt error.
+    #[error(transparent)]
+    Quilt(#[from] QuiltError),
     /// A failure internal to the node.
     #[error("client internal error: {0}")]
     Other(Box<dyn std::error::Error + Send + Sync + 'static>),
+}
+
+impl From<QuiltError> for ClientError {
+    fn from(error: QuiltError) -> Self {
+        ClientError {
+            kind: ClientErrorKind::Quilt(error),
+        }
+    }
 }

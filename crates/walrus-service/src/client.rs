@@ -326,7 +326,9 @@ impl<T: ReadClient> Client<T> {
         let mut blobs = Vec::new();
         let mut failed_blobs = Vec::new();
         for blob_id in blobs_ids {
-            let sliver_indices = quilt_metadata.index().get_sliver_indices_for_blob(blob_id);
+            let sliver_indices = quilt_metadata
+                .index()
+                .get_sliver_indices_for_blob(blob_id)?;
             if sliver_indices.is_empty() {
                 return Err(ClientError::from(ClientErrorKind::Other(
                     format!("Blob {} not found in quilt {}", blob_id, quilt_id).into(),

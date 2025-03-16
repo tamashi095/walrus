@@ -20,6 +20,7 @@ use crate::{
         EncodingConfig,
         EncodingConfigTrait as _,
     },
+    error::QuiltError,
     merkle::{MerkleTree, Node as MerkleNode, DIGEST_LEN},
     BlobId,
     EncodingType,
@@ -58,20 +59,22 @@ pub struct QuiltBlock {
     pub blob_id: BlobId,
     /// The unencoded length of the blob.
     pub unencoded_length: u64,
-    /// The end index of the block.
+    /// The end sliver index of the block.
     pub end_index: u16,
     /// The description of the block.
     pub desc: String,
 }
 
-/// A container quilt index.
+/// A index over the blobs in a quilt.
+///
+/// Each [QuiltBlock] represents a blob in the quilt.
+/// The blobs are located by the secondary sliver index, each blob is
+/// mapped to a continuous index range.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndex {
     /// The size of the quilt.
     #[serde(skip)]
     pub start_index: u16,
-    /// Encoding type of the quilt.
-    // pub encoding_type: EncodingType,
     /// The structure of the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
@@ -95,25 +98,23 @@ impl QuiltIndex {
     }
 
     /// Returns the sliver indices for the given blob ID.
-    pub fn get_sliver_indices_for_blob(&self, blob_id: &BlobId) -> Vec<SliverIndex> {
+    pub fn get_sliver_indices_for_blob(
+        &self,
+        blob_id: &BlobId,
+    ) -> Result<Vec<SliverIndex>, QuiltError> {
         let mut prev_end_index = self.start_index;
 
         for block in &self.quilt_blocks {
             if &block.blob_id == blob_id {
-                return (prev_end_index..block.end_index)
+                return Ok((prev_end_index..block.end_index)
                     .map(|i| SliverIndex(i))
-                    .collect();
+                    .collect());
             }
             prev_end_index = block.end_index;
         }
 
-        Vec::new()
+        Err(QuiltError::blob_not_found_in_quilt(*blob_id))
     }
-}
-
-impl QuiltBlock {
-    /// The length of the description.
-    pub const LENGTH: usize = 32;
 }
 
 /// Metadata associated with a quilt containing index.

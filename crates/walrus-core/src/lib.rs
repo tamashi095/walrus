@@ -57,12 +57,15 @@ use crate::metadata::BlobMetadataApi as _;
 pub mod bft;
 pub mod by_axis;
 pub mod encoding;
+pub mod error;
 pub mod inconsistency;
 pub mod keys;
 pub mod merkle;
 pub mod messages;
 pub mod metadata;
 pub mod utils;
+
+pub use error::QuiltError;
 
 /// A public key for protocol messages.
 pub type PublicKey = BLS12381PublicKey;
