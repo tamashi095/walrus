@@ -6,7 +6,7 @@ use std::{
     fs::File,
     io::BufReader,
     num::NonZeroU16,
-    path::PathBuf,
+    path::{Path, PathBuf},
 };
 
 use serde::{Deserialize, Serialize};
@@ -73,6 +73,34 @@ impl ProtocolParameters for ProtocolClientParameters {}
 // NOTE: Ugly hack -- the keystore path in every `sui-wallet-{i}.yaml` must match `parameters.settings.working_dir`.
 pub struct TargetProtocol;
 
+impl TargetProtocol {
+    pub fn upload_yaml_file_command<P: AsRef<Path>>(source: P, destination: P) -> String {
+        let file = File::open(source).expect("Failed to open file");
+        let reader = BufReader::new(file);
+        let content: serde_yaml::Value =
+            serde_yaml::from_reader(reader).expect("Failed to load file content");
+        let serialized_content =
+            serde_yaml::to_string(&content).expect("failed to serialize file content");
+        format!(
+            "echo -e '{serialized_content}' > {}",
+            destination.as_ref().display()
+        )
+    }
+
+    pub fn upload_json_file_command<P: AsRef<Path>>(source: P, destination: P) -> String {
+        let file = File::open(source).expect("Failed to open file");
+        let reader = BufReader::new(file);
+        let content: serde_json::Value =
+            serde_yaml::from_reader(reader).expect("Failed to load file content");
+        let serialized_content =
+            serde_json::to_string(&content).expect("failed to serialize file content");
+        format!(
+            "echo -e '{serialized_content}' > {}",
+            destination.as_ref().display()
+        )
+    }
+}
+
 impl ProtocolCommands for TargetProtocol {
     fn protocol_dependencies(&self) -> Vec<&'static str> {
         // Clang is required to compile rocksdb.
@@ -89,52 +117,84 @@ impl ProtocolCommands for TargetProtocol {
         I: Iterator<Item = &'a Instance>,
     {
         // Generate a command to upload the contract configs to all instances.
-        let client_config_source = &parameters.client_parameters.client_config_path;
-        let file = File::open(client_config_source).expect("Failed to open client config file");
-        let client_config: serde_yaml::Value =
-            serde_yaml::from_reader(BufReader::new(file)).expect("Failed to load client config");
-        let serialized_client_config =
-            serde_yaml::to_string(&client_config).expect("failed to serialize client config");
-        let client_config_destination = parameters.settings.working_dir.join("client_config.yaml");
-        let upload_client_config_command = format!(
-            "echo -e '{serialized_client_config}' > {}",
-            client_config_destination.display()
-        );
+        // let client_config_source = &parameters.client_parameters.client_config_path;
+        // let file = File::open(client_config_source).expect("Failed to open client config file");
+        // let client_config: serde_yaml::Value =
+        //     serde_yaml::from_reader(BufReader::new(file)).expect("Failed to load client config");
+        // let serialized_client_config =
+        //     serde_yaml::to_string(&client_config).expect("failed to serialize client config");
+        // let client_config_destination = parameters.settings.working_dir.join("client_config.yaml");
+        // let upload_client_config_command = format!(
+        //     "echo -e '{serialized_client_config}' > {}",
+        //     client_config_destination.display()
+        // );
 
         // Generate a client to upload one wallet per client.
-        let mut upload_file_commands = Vec::new();
-        for (i, _) in instances.enumerate() {
-            for filename in [
-                format!("sui-wallet-{i}.yaml"), //SuiClientConfig
-                format!("sui-wallet-{i}.aliases"),
-                format!("sui-wallet-{i}.keystore"),
-            ] {
-                let filepath = parameters.client_parameters.wallets_dir.join(&filename);
-                let file = File::open(filepath).expect("Failed to to read wallet files");
-                let serialized_file = if filename.ends_with(".yaml") {
-                    let config: serde_yaml::Value = serde_yaml::from_reader(BufReader::new(file))
-                        .expect("Failed to load client config");
-                    serde_yaml::to_string(&config).expect("failed to serialize wallet config file")
-                } else {
-                    let config: serde_json::Value = serde_json::from_reader(BufReader::new(file))
-                        .expect("Failed to load client config");
-                    serde_json::to_string(&config).expect("failed to serialize client config")
-                };
-                let file_destination = parameters.settings.working_dir.join(filename);
-                let upload_file_command = format!(
-                    "echo -e '{serialized_file}' > {}",
-                    file_destination.display()
-                );
-                upload_file_commands.push(upload_file_command);
-            }
-        }
+        // let mut upload_file_commands = Vec::new();
+        // for (i, _) in instances.enumerate() {
+        //     for filename in [
+        //         format!("sui-wallet-{i}.yaml"), //SuiClientConfig
+        //                                         // format!("sui-wallet-{i}.aliases"),
+        //                                         // format!("sui-wallet-{i}.keystore"),
+        //     ] {
+        //         let filepath = parameters.client_parameters.wallets_dir.join(&filename);
+        //         let file = File::open(filepath).expect("Failed to to read wallet files");
+        //         let serialized_file = if filename.ends_with(".yaml") {
+        //             let config: serde_yaml::Value = serde_yaml::from_reader(BufReader::new(file))
+        //                 .expect("Failed to load client config");
+        //             serde_yaml::to_string(&config).expect("failed to serialize wallet config file")
+        //         } else {
+        //             let config: serde_json::Value = serde_json::from_reader(BufReader::new(file))
+        //                 .expect("Failed to load client config");
+        //             serde_json::to_string(&config).expect("failed to serialize client config")
+        //         };
+        //         let file_destination = parameters.settings.working_dir.join(filename);
+        //         let upload_file_command = format!(
+        //             "echo -e '{serialized_file}' > {}",
+        //             file_destination.display()
+        //         );
+        //         upload_file_commands.push(upload_file_command);
+        //     }
+        // }
+
+        // Generate commands to upload the client config and wallet files.
+        let upload_client_config_command = Self::upload_yaml_file_command(
+            &parameters.client_parameters.client_config_path,
+            &parameters.settings.working_dir.join("client_config.yaml"),
+        );
+
+        let wallets_dir = &parameters.client_parameters.wallets_dir;
+        let upload_sui_wallet_aliases_command = Self::upload_json_file_command(
+            wallets_dir.join("sui-wallet.aliases"),
+            parameters.settings.working_dir.join("sui-wallet.aliases"),
+        );
+
+        let upload_sui_wallet_keystore_command = Self::upload_json_file_command(
+            wallets_dir.join("sui-wallet.keystore"),
+            parameters.settings.working_dir.join("sui-wallet.keystore"),
+        );
+
+        let upload_sui_wallet_commands: Vec<_> = instances
+            .enumerate()
+            .map(|(i, _)| {
+                Self::upload_yaml_file_command(
+                    wallets_dir.join(format!("sui-wallet-{i}.yaml")),
+                    parameters
+                        .settings
+                        .working_dir
+                        .join(format!("sui-wallet-{i}.yaml")),
+                )
+            })
+            .collect();
 
         // Output a single command to run on all machines.
         let mut command = vec![
             "source $HOME/.cargo/env".to_string(),
             upload_client_config_command,
+            upload_sui_wallet_aliases_command,
+            upload_sui_wallet_keystore_command,
         ];
-        command.extend(upload_file_commands);
+        command.extend(upload_sui_wallet_commands);
         command.join(" && ")
     }
 
@@ -179,12 +239,17 @@ impl ProtocolCommands for TargetProtocol {
                         "--max-size-log2 {}",
                         parameters.client_parameters.max_size_log2
                     ),
-                    format!("--gas_refill_period_millis {}", 1000 * 60 * 60 * 24),
+                    format!("--gas-refill-period-millis {}", 1000 * 60 * 60 * 24),
                 ]
                 .join(" ");
 
-                let command =
-                    ["source $HOME/.cargo/env", "ulimit -n 65535", &run_command].join(" && ");
+                let command = [
+                    "source $HOME/.cargo/env",
+                    "export RUST_LOG=info",
+                    "ulimit -n 65535",
+                    &run_command,
+                ]
+                .join(" && ");
                 (instance, command)
             })
             .collect()
