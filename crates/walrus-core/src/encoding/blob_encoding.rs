@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use alloc::{
-    borrow::ToOwned,
     format,
     string::{String, ToString},
     vec,
@@ -46,7 +45,13 @@ use crate::{
     SliverPairIndex,
 };
 
-/// Data layout of a quilt.
+/// A quilt is a collection of encoded blobs stored together in a unified structure.
+///
+/// The data is organized as a 2D matrix where:
+/// - Each blob occupies a continuous range of columns (secondary slivers).
+/// - The first column's initial 8 bytes contain the unencoded length of the [QuiltIndex].
+/// - The [QuiltIndex] is stored in the first columns(s).
+/// - The blob layout is defined by the [QuiltIndex].
 #[derive(Default, Serialize, Deserialize)]
 pub struct Quilt {
     /// The data of the quilt.
@@ -57,23 +62,21 @@ pub struct Quilt {
     pub blocks: Vec<QuiltBlock>,
     /// The size of each symbol in bytes.
     pub symbol_size: usize,
-    /// The end index of the quilt index.
-    pub quilt_index_end_index: Option<u16>,
 }
 
 impl Quilt {
-    /// Gets the ith column of data as a vector of chunks, where each chunk has size `symbol_size`.
+    /// Gets the ith column of data, as if `data` is a 2D matrix.
     ///
     /// # Arguments
-    /// * `i` - The column index
-    /// * `data` - The data to extract the column from
-    /// * `row_size` - The size of each row in bytes
-    /// * `symbol_size` - The size of each symbol in bytes
+    /// * `i` - The column index.
+    /// * `data` - The data to extract the column from.
+    /// * `row_size` - The size of each row in bytes.
+    /// * `symbol_size` - The size of each symbol in bytes.
     ///
     /// # Returns
-    /// A vector containing the chunks from the ith column
+    /// A vector containing the bytes from the ith column.
     fn get_column(i: usize, data: &[u8], row_size: usize, symbol_size: usize) -> Vec<u8> {
-        // Verify inputs make sense
+        // Verify inputs make sense.
         if row_size == 0
             || data.len() == 0
             || symbol_size == 0
@@ -106,56 +109,49 @@ impl Quilt {
     }
 
     /// Constructs a quilt from a quilt blob.
+    ///
+    /// `quilt_blob` is a [`Quilt`] constructed from a set of blobs.
+    /// This function reverses the process and constructs a [`Quilt`] from the quilt blob.
     pub fn new_from_quilt_blob(
         quilt_blob: Vec<u8>,
         metadata: &QuiltMetadataWithIndex,
         n_shards: NonZeroU16,
     ) -> Self {
-        let encoding_type = metadata.metadata().metadata().encoding_type();
+        // Get encoding configuration and dimensions
         let encoding_config = EncodingConfig::new(n_shards);
-        let config = encoding_config.get_for_type(encoding_type);
+        let config = encoding_config
+            .get_for_type(metadata.metadata().metadata().encoding_type());
+        
+        // Verify data alignment
+        assert!(quilt_blob.len() % (config.n_primary_source_symbols().get() 
+            * config.n_secondary_source_symbols().get()) as usize == 0);
 
-        // Get primary and secondary source symbol counts
-        let n_primary = config.n_primary_source_symbols();
-        let n_secondary = config.n_secondary_source_symbols();
+        // Calculate matrix dimensions
+        let row_size = quilt_blob.len() / config.n_primary_source_symbols().get() as usize;
+        let symbol_size = row_size / config.n_secondary_source_symbols().get() as usize;
 
-        let n_source_symbols = n_primary.get() * n_secondary.get();
-        assert!(quilt_blob.len() % n_source_symbols as usize == 0);
-
-        let row_size = quilt_blob.len() / n_primary.get() as usize;
-        let symbol_size = row_size / n_secondary.get() as usize;
-        let first_column = Self::get_column(0, &quilt_blob, row_size, symbol_size);
-
+        // Extract quilt index size and calculate required columns
         let data_size = u64::from_le_bytes(
-            first_column[0..8]
+            Self::get_column(0, &quilt_blob, row_size, symbol_size)[0..8]
                 .try_into()
                 .expect("slice with incorrect length"),
         ) as u16;
 
-        // Calculate how many columns we need to get at least data_size bytes
-        let columns_needed = (data_size as usize).div_ceil(symbol_size * n_primary.get() as usize);
-
-        let mut blocks = Vec::new();
-        blocks.push(QuiltBlock {
+        // Construct quilt
+        let mut blocks = vec![QuiltBlock {
             blob_id: BlobId::ZERO,
             unencoded_length: data_size as u64,
-            end_index: columns_needed as u16,
+            end_index: (data_size as usize)
+                .div_ceil(symbol_size * config.n_primary_source_symbols().get() as usize) as u16,
             desc: "".to_string(),
-        });
-        blocks.extend(
-            metadata
-                .index
-                .quilt_blocks
-                .iter()
-                .map(|block| block.clone()),
-        );
+        }];
+        blocks.extend(metadata.index.quilt_blocks.iter().cloned());
 
         Self {
             data: quilt_blob,
             row_size,
             blocks,
             symbol_size,
-            quilt_index_end_index: Some(columns_needed as u16),
         }
     }
 
@@ -436,7 +432,6 @@ impl<'a> QuiltEncoder<'a> {
             row_size,
             blocks: quilt_blocks,
             symbol_size,
-            quilt_index_end_index: None,
         })
     }
 
@@ -592,7 +587,6 @@ impl<'a> QuiltEncoder<'a> {
             row_size,
             blocks: quilt_blocks,
             symbol_size,
-            quilt_index_end_index: Some(index_cols_needed as u16),
         })
     }
 
