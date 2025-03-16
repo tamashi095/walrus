@@ -808,10 +808,6 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
 
     tracing::info!("Metadata received: {:?}", metadata);
 
-    // let blob = client.as_ref().read_blob::<Primary>(quilt_metadata.blob_id()).await?;
-
-    // tracing::info!("Blob received: {:?}", blob);
-
     let slivers: Vec<SliverData<Secondary>> = client
         .as_ref()
         .retrieve_slivers_with_retry(
@@ -849,67 +845,6 @@ async fn test_store_quilt(blobs_to_create: u32) -> TestResult {
 
     Ok(())
 }
-
-// #[ignore = "ignore E2E tests by default"]
-// #[walrus_simtest]
-// async fn test_store_quilt_from_folder() -> TestResult {
-//     telemetry_subscribers::init_for_testing();
-//     let (_sui_cluster_handle, _cluster, client) = test_cluster::default_setup().await?;
-//     let blobs = walrus_test_utils::random_data_list(314, blobs_to_create as usize);
-//     let encoding_type = random_encoding_type();
-//     let folder_path = tempfile::tempdir().expect("temporary directory creation must succeed");
-
-//     let blobs_with_paths = get_blobs_and_paths(folder_path.path().to_path_buf()).map_err(|e| {
-//         ClientError::from(ClientErrorKind::Other(
-//             format!("Failed to read directory: {}", e).into(),
-//         ))
-//     })?;
-
-//     tracing::info!("result: {:?}", result);
-
-//     let (certified_epoch, blob_id) = match result {
-//         QuiltStoreResult {
-//             quilt_blob_store_result: BlobStoreResult::NewlyCreated { blob_object, .. },
-//             ..
-//         } => (
-//             blob_object.certified_epoch.unwrap_or(0),
-//             blob_object.blob_id,
-//         ),
-//         _ => {
-//             panic!("expected newly created blob");
-//         }
-//     };
-//     let metadata = client
-//         .as_ref()
-//         .retrieve_metadata(certified_epoch, &blob_id)
-//         .await?;
-
-//     tracing::info!("Metadata received: {:?}", metadata);
-
-//     // let blob = client.as_ref().read_blob::<Primary>(quilt_metadata.blob_id()).await?;
-
-//     // tracing::info!("Blob received: {:?}", blob);
-
-//     let slivers: Vec<SliverData<Secondary>> = retrieve_slivers_with_retry::<Secondary>(
-//         &client.as_ref(),
-//         &metadata,
-//         &[SliverIndex(0), SliverIndex(1), SliverIndex(2)],
-//         certified_epoch,
-//         None,
-//         1000,
-//     )
-//     .await?;
-
-//     let committees = client.as_ref().get_committees().await?;
-//     let n_shards = committees.n_shards();
-//     let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
-//     let mut quilt_decoder = QuiltDecoder::new(n_shards, sliver_refs.as_slice());
-//     let quilt_index = quilt_decoder
-//         .decode_quilt_index()
-//         .expect("quilt index should be decoded");
-//     tracing::info!("quilt index: {:?}", quilt_index);
-//     Ok(())
-// }
 
 async_param_test! {
     #[ignore = "ignore E2E tests by default"]

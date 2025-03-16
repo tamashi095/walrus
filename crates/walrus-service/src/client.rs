@@ -26,6 +26,8 @@ use walrus_core::{
         EncodingAxis,
         EncodingConfig,
         EncodingConfigTrait as _,
+        Primary,
+        Quilt,
         QuiltDecoder,
         QuiltEncoder,
         Secondary,
@@ -322,6 +324,7 @@ impl<T: ReadClient> Client<T> {
         };
 
         let mut blobs = Vec::new();
+        let mut failed_blobs = Vec::new();
         for blob_id in blobs_ids {
             let sliver_indices = quilt_metadata.index().get_sliver_indices_for_blob(blob_id);
             if sliver_indices.is_empty() {
@@ -329,7 +332,7 @@ impl<T: ReadClient> Client<T> {
                     format!("Blob {} not found in quilt {}", blob_id, quilt_id).into(),
                 )));
             }
-            let slivers = self
+            match self
                 .retrieve_slivers_with_retry(
                     &quilt_metadata.metadata(),
                     &sliver_indices,
@@ -337,13 +340,37 @@ impl<T: ReadClient> Client<T> {
                     None,
                     None,
                 )
-                .await?;
-            let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
-            let quilt_decoder =
-                QuiltDecoder::new(self.encoding_config().n_shards(), sliver_refs.as_slice());
-            let quilt_decoder = quilt_decoder.with_quilt_index(quilt_metadata.index().clone());
-            let blob = quilt_decoder.get_blob_by_id(blob_id).unwrap();
-            blobs.push(blob);
+                .await
+            {
+                Ok(slivers) => {
+                    let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
+                    let quilt_decoder = QuiltDecoder::new(
+                        self.encoding_config().n_shards(),
+                        sliver_refs.as_slice(),
+                    );
+                    let quilt_decoder =
+                        quilt_decoder.with_quilt_index(quilt_metadata.index().clone());
+                    let blob = quilt_decoder.get_blob_by_id(blob_id).unwrap();
+                    blobs.push(blob);
+                }
+                Err(e) => {
+                    tracing::warn!("Error retrieving slivers: {:?}", e);
+                    failed_blobs.push(blob_id.clone());
+                }
+            }
+        }
+
+        if !failed_blobs.is_empty() {
+            let quilt_blob = self.read_blob_retry_committees::<Primary>(quilt_id).await?;
+            let quilt = Quilt::new_from_quilt_blob(
+                quilt_blob,
+                &quilt_metadata,
+                self.encoding_config().n_shards(),
+            );
+            for blob_id in failed_blobs {
+                let blob = quilt.get_blob_by_id(&blob_id).unwrap();
+                blobs.push(blob);
+            }
         }
 
         Ok(blobs.into_iter().map(|blob| blob.to_vec()).collect())
@@ -506,8 +533,6 @@ impl<T: ReadClient> Client<T> {
             start_time.elapsed()
         );
 
-        // let blob = self.read_blob_retry_committees(quilt_id).await?;
-        // Ok(vec![blob])
         Err(ClientError::from(ClientErrorKind::Other(
             format!(
                 "Failed to retrieve all slivers after {} attempts and {:?}",

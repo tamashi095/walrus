@@ -49,10 +49,15 @@ use crate::{
 /// Data layout of a quilt.
 #[derive(Default, Serialize, Deserialize)]
 pub struct Quilt {
+    /// The data of the quilt.
     pub data: Vec<u8>,
+    /// The size of each row in bytes.
     pub row_size: usize,
+    /// The internal structure of the quilt.
     pub blocks: Vec<QuiltBlock>,
+    /// The size of each symbol in bytes.
     pub symbol_size: usize,
+    /// The end index of the quilt index.
     pub quilt_index_end_index: Option<u16>,
 }
 
@@ -100,6 +105,7 @@ impl Quilt {
         column
     }
 
+    /// Constructs a quilt from a quilt blob.
     pub fn new_from_quilt_blob(
         quilt_blob: Vec<u8>,
         metadata: &QuiltMetadataWithIndex,
@@ -153,6 +159,7 @@ impl Quilt {
         }
     }
 
+    /// Gets the ith blob from the quilt.
     pub fn get_blob(&self, index: usize) -> Option<Vec<u8>> {
         if index >= self.blocks.len() {
             return None;
@@ -184,6 +191,7 @@ impl Quilt {
         Some(blob)
     }
 
+    /// Gets the blob with the given blob id.
     pub fn get_blob_by_id(&self, id: &BlobId) -> Option<Vec<u8>> {
         let index = self
             .blocks
@@ -670,9 +678,9 @@ fn compute_symbol_size(
     }
 
     let min_len = blobs.iter().sum::<usize>().div_ceil(nc);
-    let mut min_val = (min_len - 1) / nr + 1;
-    let max_len = blobs.iter().max().expect("blobs not empty").to_owned();
-    let mut max_val = (max_len - 1) / nr + 1;
+    let mut min_val = min_len.div_ceil(nr);
+    let max_len = blobs.iter().max().copied().unwrap_or(0);
+    let mut max_val = max_len.div_ceil(nr);
 
     while min_val < max_val {
         tracing::info!("min_val: {}, max_val: {}", min_val, max_val);
@@ -683,7 +691,7 @@ fn compute_symbol_size(
             min_val = mid + 1;
         }
     }
-    min_val = cmp::max(min_val, (8 as usize).div_ceil(nc));
+    min_val = cmp::max(min_val, (8 as usize).div_ceil(nr));
     Some(min_val).filter(|&size| size * nc * nr <= max_quilt_size)
 }
 
@@ -1744,14 +1752,14 @@ mod tests {
 
     param_test! {
         test_find_min_length: [
-            not_fit: (&[2, 1, 2, 1], 3, 3, None),
-            single_large_blob: (&[1000, 1, 1], 4, 7, Some(72)),
-            // empty_input: (&[], 3, 1, Some(0)),
-            single_small_blob: (&[1], 3, 2, Some(1)),
-            impossible_case: (&[15, 8, 4], 4, 2, Some(4)),
-            perfect_fit: (&[2, 2, 2], 3, 1, Some(2)),
-            with_empty_columns: (&[5, 5, 5], 5, 1, Some(5)),
-            with_many_columns: (&[25, 35, 45], 200, 1, Some(1))
+            case_1: (&[2, 1, 2, 1], 3, 3, None),
+            case_2: (&[1000, 1, 1], 4, 7, Some(72)),
+            case_3: (&[], 3, 1, Some(8)),
+            case_4: (&[1], 3, 2, Some(4)),
+            case_5: (&[115, 80, 4], 17, 9, Some(2)),
+            case_6: (&[20, 20, 20], 3, 5, Some(4)),
+            case_7: (&[5, 5, 5], 5, 1, Some(8)),
+            case_8: (&[25, 35, 45], 200, 1, Some(8))
         ]
     }
     fn test_find_min_length(blobs: &[usize], nc: usize, nr: usize, expected: Option<usize>) {
@@ -1762,7 +1770,6 @@ mod tests {
         assert_eq!(res, expected);
         if let Some(min_size) = res {
             assert!(min_required_columns(blobs, min_size * nr) <= nc);
-            assert!(min_required_columns(blobs, min_size * nr - nr) > nc);
         }
     }
 
