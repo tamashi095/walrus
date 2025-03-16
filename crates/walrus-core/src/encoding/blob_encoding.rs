@@ -37,6 +37,7 @@ use crate::{
         QuiltBlock,
         QuiltIndex,
         QuiltMetadata,
+        QuiltMetadataWithIndex,
         SliverPairMetadata,
         VerifiedBlobMetadataWithId,
     },
@@ -56,6 +57,102 @@ pub struct Quilt {
 }
 
 impl Quilt {
+    /// Gets the ith column of data as a vector of chunks, where each chunk has size `symbol_size`.
+    ///
+    /// # Arguments
+    /// * `i` - The column index
+    /// * `data` - The data to extract the column from
+    /// * `row_size` - The size of each row in bytes
+    /// * `symbol_size` - The size of each symbol in bytes
+    ///
+    /// # Returns
+    /// A vector containing the chunks from the ith column
+    fn get_column(i: usize, data: &[u8], row_size: usize, symbol_size: usize) -> Vec<u8> {
+        // Verify inputs make sense
+        if row_size == 0
+            || data.len() == 0
+            || symbol_size == 0
+            || row_size % symbol_size != 0
+            || data.len() % row_size != 0
+        {
+            return Vec::new();
+        }
+
+        let n_rows = data.len() / row_size;
+        if i >= (row_size / symbol_size) {
+            return Vec::new();
+        }
+
+        let mut column = Vec::with_capacity(n_rows * symbol_size);
+
+        for row in 0..n_rows {
+            let start_idx = row * row_size + i * symbol_size;
+            let end_idx = start_idx + symbol_size;
+
+            // Check if we have enough data for this chunk
+            if end_idx > data.len() {
+                break;
+            }
+
+            column.extend_from_slice(&data[start_idx..end_idx]);
+        }
+
+        column
+    }
+
+    pub fn new_from_quilt_blob(
+        quilt_blob: Vec<u8>,
+        metadata: &QuiltMetadataWithIndex,
+        n_shards: NonZeroU16,
+    ) -> Self {
+        let encoding_type = metadata.metadata().metadata().encoding_type();
+        let encoding_config = EncodingConfig::new(n_shards);
+        let config = encoding_config.get_for_type(encoding_type);
+
+        // Get primary and secondary source symbol counts
+        let n_primary = config.n_primary_source_symbols();
+        let n_secondary = config.n_secondary_source_symbols();
+
+        let n_source_symbols = n_primary.get() * n_secondary.get();
+        assert!(quilt_blob.len() % n_source_symbols as usize == 0);
+
+        let row_size = quilt_blob.len() / n_primary.get() as usize;
+        let symbol_size = row_size / n_secondary.get() as usize;
+        let first_column = Self::get_column(0, &quilt_blob, row_size, symbol_size);
+
+        let data_size = u64::from_le_bytes(
+            first_column[0..8]
+                .try_into()
+                .expect("slice with incorrect length"),
+        ) as u16;
+
+        // Calculate how many columns we need to get at least data_size bytes
+        let columns_needed = (data_size as usize).div_ceil(symbol_size * n_primary.get() as usize);
+
+        let mut blocks = Vec::new();
+        blocks.push(QuiltBlock {
+            blob_id: BlobId::ZERO,
+            unencoded_length: data_size as u64,
+            end_index: columns_needed as u16,
+            desc: "".to_string(),
+        });
+        blocks.extend(
+            metadata
+                .index
+                .quilt_blocks
+                .iter()
+                .map(|block| block.clone()),
+        );
+
+        Self {
+            data: quilt_blob,
+            row_size,
+            blocks,
+            symbol_size,
+            quilt_index_end_index: Some(columns_needed as u16),
+        }
+    }
+
     pub fn get_blob(&self, index: usize) -> Option<Vec<u8>> {
         if index >= self.blocks.len() {
             return None;
@@ -586,7 +683,7 @@ fn compute_symbol_size(
             min_val = mid + 1;
         }
     }
-
+    min_val = cmp::max(min_val, (8 as usize).div_ceil(nc));
     Some(min_val).filter(|&size| size * nc * nr <= max_quilt_size)
 }
 

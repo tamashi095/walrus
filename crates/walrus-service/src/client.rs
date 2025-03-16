@@ -339,7 +339,7 @@ impl<T: ReadClient> Client<T> {
                 )
                 .await?;
             let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
-            let mut quilt_decoder =
+            let quilt_decoder =
                 QuiltDecoder::new(self.encoding_config().n_shards(), sliver_refs.as_slice());
             let quilt_decoder = quilt_decoder.with_quilt_index(quilt_metadata.index().clone());
             let blob = quilt_decoder.get_blob_by_id(blob_id).unwrap();
@@ -488,34 +488,36 @@ impl<T: ReadClient> Client<T> {
         let total_requested = sliver_indices.len();
         let total_retrieved = all_slivers.len();
 
-        if total_retrieved < total_requested {
-            tracing::warn!(
-                "Retrieved {}/{} requested slivers after {} attempts and {:?}",
-                total_retrieved,
-                total_requested,
-                retry_count,
-                start_time.elapsed()
-            );
-            return Err(ClientError::from(ClientErrorKind::Other(
-                format!(
-                    "Failed to retrieve all slivers after {} attempts and {:?}",
-                    retry_count,
-                    start_time.elapsed()
-                )
-                .into(),
-            )));
-        } else {
-            tracing::info!(
+        if total_retrieved == total_requested {
+            tracing::debug!(
                 "Successfully retrieved all {} slivers after {} attempts and {:?}",
                 total_requested,
                 retry_count,
                 start_time.elapsed()
             );
+            return Ok(all_slivers.into_values().collect());
         }
 
-        // Convert the HashMap values to a Vec for further processing
-        Ok(all_slivers.into_values().collect())
+        tracing::debug!(
+            "Retrieved {}/{} requested slivers after {} attempts and {:?}",
+            total_retrieved,
+            total_requested,
+            retry_count,
+            start_time.elapsed()
+        );
+
+        // let blob = self.read_blob_retry_committees(quilt_id).await?;
+        // Ok(vec![blob])
+        Err(ClientError::from(ClientErrorKind::Other(
+            format!(
+                "Failed to retrieve all slivers after {} attempts and {:?}",
+                retry_count,
+                start_time.elapsed()
+            )
+            .into(),
+        )))
     }
+
     /// Retrieves specific slivers from storage nodes based on their indices.
     ///
     /// The operation is retried if epoch it fails due to epoch change.

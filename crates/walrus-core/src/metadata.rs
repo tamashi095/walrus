@@ -70,6 +70,8 @@ pub struct QuiltIndex {
     /// The size of the quilt.
     #[serde(skip)]
     pub start_index: u16,
+    /// Encoding type of the quilt.
+    // pub encoding_type: EncodingType,
     /// The structure of the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
