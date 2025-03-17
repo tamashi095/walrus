@@ -158,31 +158,30 @@ impl ProtocolCommands for TargetProtocol {
         // }
 
         // Generate commands to upload the client config and wallet files.
+        let wallets_dir = &parameters.client_parameters.wallets_dir;
+        let destination_dir = &parameters.settings.working_dir;
+
         let upload_client_config_command = Self::upload_yaml_file_command(
             &parameters.client_parameters.client_config_path,
-            &parameters.settings.working_dir.join("client_config.yaml"),
+            &destination_dir.join("client_config.yaml"),
         );
 
-        let wallets_dir = &parameters.client_parameters.wallets_dir;
         let upload_sui_wallet_aliases_command = Self::upload_json_file_command(
-            wallets_dir.join("sui-wallet.aliases"),
-            parameters.settings.working_dir.join("sui-wallet.aliases"),
+            &wallets_dir.join("sui-wallet.aliases"),
+            &destination_dir.join("sui-wallet.aliases"),
         );
 
         let upload_sui_wallet_keystore_command = Self::upload_json_file_command(
-            wallets_dir.join("sui-wallet.keystore"),
-            parameters.settings.working_dir.join("sui-wallet.keystore"),
+            &wallets_dir.join("sui-wallet.keystore"),
+            &destination_dir.join("sui-wallet.keystore"),
         );
 
         let upload_sui_wallet_commands: Vec<_> = instances
             .enumerate()
             .map(|(i, _)| {
                 Self::upload_yaml_file_command(
-                    wallets_dir.join(format!("sui-wallet-{i}.yaml")),
-                    parameters
-                        .settings
-                        .working_dir
-                        .join(format!("sui-wallet-{i}.yaml")),
+                    &wallets_dir.join(format!("sui-wallet-{i}.yaml")),
+                    &destination_dir.join(format!("sui-wallet-{i}.yaml")),
                 )
             })
             .collect();
