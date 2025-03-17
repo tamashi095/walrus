@@ -1214,11 +1214,6 @@ impl<'a> QuiltDecoder<'a> {
 
         // Find and add data from subsequent slivers.
         for i in 1..num_slivers_needed {
-            tracing::info!(
-                "adding sliver {}, current combined_data length: {}",
-                i,
-                combined_data.len()
-            );
             let next_index = SliverIndex(i as u16);
             let next_sliver = self
                 .slivers
@@ -1231,19 +1226,14 @@ impl<'a> QuiltDecoder<'a> {
             let sliver_data = next_sliver.symbols.data();
             let to_take = remaining_needed.min(sliver_data.len());
             combined_data.extend_from_slice(&sliver_data[..to_take]);
-            tracing::info!(
-                "added sliver {}, current combined_data length: {}",
-                i,
-                combined_data.len()
-            );
         }
 
-        assert!(combined_data.len() == index_size);
+        debug_assert_eq!(combined_data.len(), index_size);
 
-        // Decode the QuiltIndex from the collected data
+        // Decode the QuiltIndex from the collected data.
         self.quilt_index = bcs::from_bytes(&combined_data).ok();
 
-        // After successful deserialization, sort the blocks by end_index
+        // After successful deserialization, sort the blocks by end_index.
         if let Some(quilt_index) = &mut self.quilt_index {
             quilt_index
                 .quilt_blocks
@@ -1257,32 +1247,36 @@ impl<'a> QuiltDecoder<'a> {
             .expect("quilt index should be decoded"))
     }
 
+    /// Get the quilt index.
     pub fn get_quilt_index(&self) -> Option<&QuiltIndex> {
         self.quilt_index.as_ref()
     }
 
+    /// Get the blob by id.
     pub fn get_blob_by_id(&self, id: &BlobId) -> Option<Vec<u8>> {
-        self.get_block_by_predicate(|block| &block.blob_id == id)
+        self.get_blob_by_predicate(|block| &block.blob_id == id)
     }
 
+    /// Get the blob by description.
     pub fn get_blob_by_desc(&self, desc: &str) -> Option<Vec<u8>> {
-        self.get_block_by_predicate(|block| &block.desc == desc)
+        self.get_blob_by_predicate(|block| &block.desc == desc)
     }
 
-    fn get_block_by_predicate<F>(&self, predicate: F) -> Option<Vec<u8>>
+    /// Get the block by predicate.
+    fn get_blob_by_predicate<F>(&self, predicate: F) -> Option<Vec<u8>>
     where
         F: Fn(&QuiltBlock) -> bool,
     {
         let quilt_index = self.get_quilt_index()?;
 
-        // Find the block matching the predicate
+        // Find the block matching the predicate.
         let (block_idx, block) = quilt_index
             .quilt_blocks
             .iter()
             .enumerate()
             .find(|(_, block)| predicate(block))?;
 
-        // Determine start index (0 for first block, previous block's end_index otherwise)
+        // Determine start index (0 for first block, previous block's end_index otherwise).
         let start_idx = if block_idx == 0 {
             quilt_index.start_index
         } else {
@@ -1291,19 +1285,20 @@ impl<'a> QuiltDecoder<'a> {
 
         let end_idx = block.end_index;
 
-        // Extract and reconstruct the blob
+        // Extract and reconstruct the blob.
         let mut blob = Vec::with_capacity(block.unencoded_length as usize);
 
-        // Collect data from the appropriate slivers
+        // Collect data from the appropriate slivers.
         for i in start_idx..end_idx {
             let sliver_idx = SliverIndex(i as u16);
             if let Some(sliver) = self.slivers.iter().find(|s| s.index == sliver_idx) {
-                blob.extend_from_slice(sliver.symbols.data());
+                let remaining_needed = block.unencoded_length as usize - blob.len();
+                blob.extend_from_slice(
+                    &sliver.symbols.data()[..remaining_needed.min(sliver.symbols.data().len())],
+                );
             }
         }
 
-        // Truncate to the exact size
-        blob.truncate(block.unencoded_length as usize);
         Some(blob)
     }
 
