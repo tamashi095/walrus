@@ -368,7 +368,7 @@ impl<T: ReadClient> Client<T> {
                 quilt_blob,
                 &quilt_metadata,
                 self.encoding_config().n_shards(),
-            );
+            )?;
             for blob_id in failed_blobs {
                 let blob = quilt.get_blob_by_id(&blob_id).unwrap();
                 blobs.push(blob);
@@ -378,7 +378,7 @@ impl<T: ReadClient> Client<T> {
         Ok(blobs.into_iter().map(|blob| blob.to_vec()).collect())
     }
 
-    /// Retrieves the list of blobs contained in a quilt.
+    /// Retrieves the [`QuiltMetadataWithIndex`] for a quilt.
     pub async fn get_quilt_metadata(
         &self,
         quilt_id: &BlobId,
