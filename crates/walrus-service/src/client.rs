@@ -323,8 +323,7 @@ impl<T: ReadClient> Client<T> {
             None => self.get_quilt_metadata(quilt_id).await?,
         };
 
-        let mut blobs = Vec::new();
-        let mut failed_blobs = Vec::new();
+        let mut slivers: Vec<SliverData<Secondary>> = Vec::new();
         for blob_id in blobs_ids {
             let sliver_indices = quilt_metadata
                 .index()
@@ -334,8 +333,8 @@ impl<T: ReadClient> Client<T> {
                     format!("Blob {} not found in quilt {}", blob_id, quilt_id).into(),
                 )));
             }
-            match self
-                .retrieve_slivers_with_retry(
+            if let Ok(sliver_data) = self
+                .retrieve_slivers_with_retry::<Secondary>(
                     &quilt_metadata.metadata(),
                     &sliver_indices,
                     self.get_certified_epoch(quilt_id, None).await?,
@@ -344,21 +343,25 @@ impl<T: ReadClient> Client<T> {
                 )
                 .await
             {
-                Ok(slivers) => {
-                    let sliver_refs: Vec<&SliverData<Secondary>> = slivers.iter().collect();
-                    let quilt_decoder = QuiltDecoder::new(
-                        self.encoding_config().n_shards(),
-                        sliver_refs.as_slice(),
-                    );
-                    let quilt_decoder =
-                        quilt_decoder.with_quilt_index(quilt_metadata.index().clone());
-                    let blob = quilt_decoder.get_blob_by_id(blob_id).unwrap();
-                    blobs.push(blob);
-                }
-                Err(e) => {
-                    tracing::warn!("Error retrieving slivers: {:?}", e);
-                    failed_blobs.push(blob_id.clone());
-                }
+                slivers.extend(sliver_data);
+            }
+        }
+
+        let slivers = slivers.iter().collect::<Vec<&SliverData<Secondary>>>();
+        let mut blobs = Vec::new();
+        let mut failed_blobs = Vec::new();
+
+        let quilt_decoder = QuiltDecoder::new_with_quilt_index(
+            self.encoding_config().n_shards(),
+            &slivers,
+            quilt_metadata.index().clone(),
+        );
+
+        for blob_id in blobs_ids {
+            if let Some(blob) = quilt_decoder.get_blob_by_id(blob_id) {
+                blobs.push(blob);
+            } else {
+                failed_blobs.push(blob_id.clone());
             }
         }
 
@@ -422,15 +425,12 @@ impl<T: ReadClient> Client<T> {
         let mut quilt_decoder =
             QuiltDecoder::new(self.encoding_config().n_shards(), slivers_refs.as_slice());
 
-        let quilt_index = quilt_decoder
-            .decode_quilt_index()
-            .expect("Failed to decode quilt index.")
-            .clone();
+        let quilt_index = quilt_decoder.decode_quilt_index()?;
 
         Ok(QuiltMetadataWithIndex {
             quilt_id: quilt_id.clone(),
             metadata: metadata.metadata().clone(),
-            index: quilt_index,
+            index: quilt_index.clone(),
         })
     }
 

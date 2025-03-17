@@ -1129,7 +1129,7 @@ impl<'a> ExpandedMessageMatrix<'a> {
     }
 }
 
-/// A decoder for the quilt index.
+/// A decoder for a quilt.
 #[derive(Debug)]
 pub struct QuiltDecoder<'a> {
     n_shards: NonZeroU16,
@@ -1165,12 +1165,20 @@ impl<'a> QuiltDecoder<'a> {
         }
     }
 
-    pub fn with_quilt_index(mut self, quilt_index: QuiltIndex) -> Self {
-        self.quilt_index = Some(quilt_index);
-        self
+    /// Creates a new QuiltDecoder with the given number of shards and slivers, and a quilt index.
+    pub fn new_with_quilt_index(
+        n_shards: NonZeroU16,
+        slivers: &'a [&'a SliverData<Secondary>],
+        quilt_index: QuiltIndex,
+    ) -> Self {
+        Self {
+            n_shards,
+            slivers: slivers.to_vec(),
+            quilt_index: Some(quilt_index),
+        }
     }
 
-    /// Decodes the quilt index from the provided slivers.
+    /// Decodes the quilt index.
     pub fn decode_quilt_index(&mut self) -> Result<&QuiltIndex, QuiltError> {
         let index = SliverIndex(0);
 
@@ -1178,9 +1186,7 @@ impl<'a> QuiltDecoder<'a> {
             .slivers
             .iter()
             .find(|s| s.index == index)
-            .ok_or_else(|| {
-                QuiltError::failed_to_extract_quilt_index(format!("sliver not found: {:?}", index))
-            })?;
+            .ok_or_else(|| QuiltError::missing_sliver(index))?;
 
         if first_sliver.symbols.data().len() < 8 {
             return Err(QuiltError::failed_to_extract_quilt_index_size());
@@ -1193,7 +1199,7 @@ impl<'a> QuiltDecoder<'a> {
                 .map_err(|_| QuiltError::failed_to_extract_quilt_index_size())?,
         );
 
-        tracing::debug!("data_size: {}", data_size);
+        tracing::info!("quilt index data_size: {}", data_size);
 
         // Calculate how many slivers we need based on the data size.
         let num_slivers_needed = (data_size as usize).div_ceil(first_sliver.symbols.data().len());
@@ -1203,27 +1209,33 @@ impl<'a> QuiltDecoder<'a> {
         let mut combined_data = Vec::with_capacity(index_size);
 
         // Add data from the first sliver (skipping the 8-byte size prefix).
-        combined_data.extend_from_slice(&first_sliver.symbols.data()[8..]);
+        let bytes_to_take = index_size.min(first_sliver.symbols.data().len() - 8);
+        combined_data.extend_from_slice(&first_sliver.symbols.data()[8..8 + bytes_to_take]);
 
         // Find and add data from subsequent slivers.
         for i in 1..num_slivers_needed {
+            tracing::info!(
+                "adding sliver {}, current combined_data length: {}",
+                i,
+                combined_data.len()
+            );
             let next_index = SliverIndex(i as u16);
             let next_sliver = self
                 .slivers
                 .iter()
                 .find(|s| s.index == next_index)
-                .ok_or_else(|| {
-                    QuiltError::failed_to_extract_quilt_index(format!(
-                        "sliver not found: {:?}",
-                        next_index
-                    ))
-                })?;
+                .ok_or_else(|| QuiltError::missing_sliver(next_index))?;
 
             // Add data from this sliver.
             let remaining_needed = index_size - combined_data.len();
             let sliver_data = next_sliver.symbols.data();
             let to_take = remaining_needed.min(sliver_data.len());
             combined_data.extend_from_slice(&sliver_data[..to_take]);
+            tracing::info!(
+                "added sliver {}, current combined_data length: {}",
+                i,
+                combined_data.len()
+            );
         }
 
         assert!(combined_data.len() == index_size);
@@ -1239,11 +1251,10 @@ impl<'a> QuiltDecoder<'a> {
             quilt_index.start_index = num_slivers_needed as u16;
         }
 
-        self.quilt_index
+        Ok(self
+            .quilt_index
             .as_ref()
-            .ok_or(QuiltError::failed_to_extract_quilt_index(format!(
-                "failed to extract quilt index"
-            )))
+            .expect("quilt index should be decoded"))
     }
 
     pub fn get_quilt_index(&self) -> Option<&QuiltIndex> {
@@ -1297,7 +1308,7 @@ impl<'a> QuiltDecoder<'a> {
     }
 
     /// Adds slivers to the decoder.
-    fn add_slivers(mut self, slivers: &'a [&'a SliverData<Secondary>]) -> Self {
+    pub fn add_slivers(mut self, slivers: &'a [&'a SliverData<Secondary>]) -> Self {
         self.slivers.extend(slivers);
         self
     }
@@ -2607,9 +2618,11 @@ mod tests {
             .collect();
 
         let mut decoder = QuiltDecoder::new(n_shards, &[]);
+        let result = decoder.decode_quilt_index();
+        tracing::info!("Result: {:?}", result);
         assert!(matches!(
             decoder.decode_quilt_index(),
-            Err(QuiltError::FailedToExtractQuiltIndex(_))
+            Err(QuiltError::MissingSliver(_))
         ));
         decoder = decoder.add_slivers(&slivers);
         let quilt_index = decoder
