@@ -14,6 +14,8 @@ pub use basic_encoding::{
 
 mod blob_encoding;
 pub use blob_encoding::{BlobDecoder, BlobDecoderEnum, BlobEncoder};
+mod quilt_encoding;
+pub use quilt_encoding::{BlobWithDesc, Quilt, QuiltDecoder, QuiltEncoder};
 
 mod common;
 pub use common::{EncodingAxis, Primary, Secondary, MAX_SOURCE_SYMBOLS_PER_BLOCK, MAX_SYMBOL_SIZE};
@@ -36,7 +38,6 @@ pub use config::{
 };
 
 mod errors;
-pub use blob_encoding::{BlobWithDesc, Quilt, QuiltDecoder, QuiltEncoder};
 pub use errors::{
     DataTooLargeError,
     DecodingVerificationError,
