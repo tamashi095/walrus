@@ -82,7 +82,7 @@ use crate::{
 };
 
 /// The list of HTTP status codes that are retriable.
-const RETRIABLE_RPC_ERRORS: &[&str] = &["429", "500", "502"];
+const RETRIABLE_RPC_ERRORS: &[&str] = &["429", "500", "502", "Request timeout"];
 /// The list of gRPC status codes that are retriable.
 const RETRIABLE_GRPC_ERRORS: &[tonic::Code] = &[
     tonic::Code::ResourceExhausted,
