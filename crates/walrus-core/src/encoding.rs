@@ -44,6 +44,7 @@ pub use errors::{
     DecodingVerificationError,
     EncodeError,
     InvalidDataSizeError,
+    QuiltError,
     RecoverySymbolError,
     SliverRecoveryError,
     SliverRecoveryOrVerificationError,

@@ -1,11 +1,11 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use core::num::NonZeroU16;
-use std::{
+use alloc::{
     fmt::Display,
     string::{String, ToString},
 };
+use core::num::NonZeroU16;
 
 use thiserror::Error;
 

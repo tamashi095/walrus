@@ -9,6 +9,7 @@ use alloc::{
 };
 use core::{cmp, fmt, num::NonZeroU16};
 
+use hex;
 use serde::{Deserialize, Serialize};
 use tracing::{Level, Span};
 
@@ -22,9 +23,8 @@ use super::{
     SliverPair,
 };
 use crate::{
-    encoding::{blob_encoding::BlobEncoder, config::EncodingConfigTrait as _},
-    errors::QuiltError,
-    metadata::{QuiltBlock, QuiltIndex, QuiltMetadataWithIndex},
+    encoding::{blob_encoding::BlobEncoder, config::EncodingConfigTrait as _, QuiltError},
+    metadata::{QuiltBlock, QuiltIndex, QuiltMetadata},
     BlobId,
     SliverIndex,
 };
@@ -69,7 +69,7 @@ impl Quilt {
     ) -> Result<Vec<u8>, QuiltError> {
         // Verify inputs make sense.
         if row_size == 0
-            || data.len() == 0
+            || data.is_empty()
             || symbol_size == 0
             || row_size % symbol_size != 0
             || data.len() % row_size != 0
@@ -140,7 +140,7 @@ impl Quilt {
     /// to re-encode the blobs.
     pub fn new_from_quilt_blob(
         quilt_blob: Vec<u8>,
-        metadata: &QuiltMetadataWithIndex,
+        metadata: &QuiltMetadata,
         n_shards: NonZeroU16,
     ) -> Result<Self, QuiltError> {
         let encoding_config = EncodingConfig::new(n_shards);
@@ -513,9 +513,7 @@ impl<'a> QuiltEncoder<'a> {
     }
 
     /// Encodes the blobs into a quilt and returns the slivers and metadata.
-    pub fn encode_with_metadata(
-        &self,
-    ) -> Result<(Vec<SliverPair>, QuiltMetadataWithIndex), QuiltError> {
+    pub fn encode_with_metadata(&self) -> Result<(Vec<SliverPair>, QuiltMetadata), QuiltError> {
         let _guard = self.span.enter();
 
         tracing::debug!("starting to encode blob with metadata");
@@ -526,8 +524,8 @@ impl<'a> QuiltEncoder<'a> {
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
 
         let (sliver_pairs, metadata) = encoder.encode_with_metadata();
-        let quilt_metadata = QuiltMetadataWithIndex {
-            quilt_id: metadata.blob_id().clone(),
+        let quilt_metadata = QuiltMetadata {
+            quilt_id: *metadata.blob_id(),
             metadata: metadata.metadata().clone(),
             index: quilt.quilt_index.clone(),
         };
@@ -1144,7 +1142,7 @@ mod tests {
             .expect("Should decode and verify quilt")
             .expect("Should decode quilt");
 
-        assert_eq!(metadata_with_id, quilt_metadata.verified_metadata_with_id());
+        assert_eq!(metadata_with_id.metadata(), quilt_metadata.metadata());
 
         let quilt = Quilt::new_from_quilt_blob(quilt_blob, &quilt_metadata, config.n_shards())
             .expect("Should create quilt");
