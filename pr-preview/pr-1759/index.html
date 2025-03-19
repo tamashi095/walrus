@@ -245,40 +245,6 @@ Walrus behind the scenes. See the <a href="./walrus-sites/intro.html">Walrus Sit
 details on how this works.</p>
 </div>
 </div>
-<div id="admonition-disclaimer-about-the-walrus-testnet" class="admonition admonish-danger" role="note" aria-labelledby="admonition-disclaimer-about-the-walrus-testnet-title">
-<div class="admonition-title">
-<div id="admonition-disclaimer-about-the-walrus-testnet-title">
-<p>Disclaimer about the Walrus Testnet</p>
-</div>
-<a class="admonition-anchor-link" href="#admonition-disclaimer-about-the-walrus-testnet"></a>
-</div>
-<div>
-<p>The current Testnet release of Walrus and Walrus Sites is a preview intended to showcase
-the technology and solicit feedback from builders, users, and storage-node operators.
-All transactions are executed on the Sui Testnet and use Testnet WAL and SUI which have no
-value. The state of the store <strong>can and will be wiped</strong> at any point and possibly with no warning.
-Do not rely on this Testnet for any production purposes, it comes with no availability or
-persistence guarantees.</p>
-<p>Furthermore, encodings and blob IDs may be incompatible with the future Testnet and Mainnet, and
-developers will be responsible for migrating any Testnet applications and data to Mainnet. Detailed
-migration guides will be provided when Mainnet becomes available.</p>
-<p>Also see the <a href="../legal/testnet_tos.html">Testnet terms of service</a> under which this Testnet is made
-available.</p>
-</div>
-</div>
-<div id="admonition-public-access" class="admonition admonish-danger" role="note" aria-labelledby="admonition-public-access-title">
-<div class="admonition-title">
-<div id="admonition-public-access-title">
-<p>Public access</p>
-</div>
-<a class="admonition-anchor-link" href="#admonition-public-access"></a>
-</div>
-<div>
-<p><strong>All blobs stored in Walrus are public and discoverable by all.</strong> Therefore you must not use Walrus
-to store anything that contains secrets or private data without additional measures to protect
-confidentiality.</p>
-</div>
-</div>
 <h2 id="features"><a class="header" href="#features">Features</a></h2>
 <ul>
 <li>
@@ -316,6 +282,19 @@ with traditional caches and content distribution networks (CDNs), while ensuring
 can also be run using local tools to maximize decentralization.</p>
 </li>
 </ul>
+<div id="admonition-public-access" class="admonition admonish-danger" role="note" aria-labelledby="admonition-public-access-title">
+<div class="admonition-title">
+<div id="admonition-public-access-title">
+<p>Public access</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-public-access"></a>
+</div>
+<div>
+<p><strong>All blobs stored in Walrus are public and discoverable by all.</strong> Therefore you must not use Walrus
+to store anything that contains secrets or private data without additional measures to protect
+confidentiality.</p>
+</div>
+</div>
 <h2 id="architecture-and-operations"><a class="header" href="#architecture-and-operations">Architecture and operations</a></h2>
 <p>Walrus's architecture ensures that content remains accessible and retrievable even when many
 storage nodes are unavailable or malicious. Under the hood it uses modern error correction
