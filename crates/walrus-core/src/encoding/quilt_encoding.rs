@@ -23,7 +23,7 @@ use super::{
 };
 use crate::{
     encoding::{blob_encoding::BlobEncoder, config::EncodingConfigTrait as _},
-    error::QuiltError,
+    errors::QuiltError,
     metadata::{QuiltBlock, QuiltIndex, QuiltMetadataWithIndex},
     BlobId,
     SliverIndex,
