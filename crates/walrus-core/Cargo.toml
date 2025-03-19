@@ -18,7 +18,7 @@ base64.workspace = true
 bcs.workspace = true
 enum_dispatch = { workspace = true }
 fastcrypto.workspace = true
-hex = "0.4.3"
+hex.workspace = true
 p256 = { workspace = true, features = ["pem", "pkcs8"] }
 rand.workspace = true
 raptorq.workspace = true

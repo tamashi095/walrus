@@ -545,7 +545,7 @@ impl<'a> QuiltEncoder<'a> {
 /// * `Result<usize, QuiltError>` - The minimum length needed, or an error if impossible.
 fn compute_symbol_size(blobs_sizes: &[usize], nc: usize, nr: usize) -> Result<usize, QuiltError> {
     if blobs_sizes.len() > nc {
-        return Err(QuiltError::too_many_blobs(blobs_sizes.len(), nc));
+        return Err(QuiltError::too_many_blobs(blobs_sizes.len(), nc - 1));
     }
 
     let mut min_val = blobs_sizes.iter().sum::<usize>().div_ceil(nc).div_ceil(nr);
@@ -784,7 +784,7 @@ mod tests {
 
     param_test! {
         test_find_min_length: [
-            case_1: (&[2, 1, 2, 1], 3, 3, Err(QuiltError::too_many_blobs(4, 3))),
+            case_1: (&[2, 1, 2, 1], 3, 3, Err(QuiltError::too_many_blobs(4, 2))),
             case_2: (&[1000, 1, 1], 4, 7, Ok(72)),
             case_3: (&[], 3, 1, Ok(8)),
             case_4: (&[1], 3, 2, Ok(4)),
