@@ -382,13 +382,6 @@ impl BlobMetadata {
             BlobMetadata::V1(inner) => inner,
         }
     }
-
-    /// Returns the unencoded length of the blob.
-    pub fn unencoded_length(&self) -> u64 {
-        match self {
-            BlobMetadata::V1(inner) => inner.unencoded_length,
-        }
-    }
 }
 
 /// Metadata about a blob, without its corresponding [`BlobId`].

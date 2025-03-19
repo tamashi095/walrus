@@ -765,7 +765,10 @@ mod tests {
     use walrus_test_utils::param_test;
 
     use super::*;
-    use crate::encoding::{RaptorQEncodingConfig, ReedSolomonEncodingConfig};
+    use crate::{
+        encoding::{RaptorQEncodingConfig, ReedSolomonEncodingConfig},
+        metadata::BlobMetadataApi as _,
+    };
 
     /// Get the minimum required columns.
     fn min_required_columns(blobs: &[usize], length: usize) -> usize {
