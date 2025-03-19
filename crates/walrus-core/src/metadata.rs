@@ -49,17 +49,17 @@ pub enum VerificationError {
 /// Represents a blob quilted into a single quilt blob.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltBlock {
-    /// The blob_id of the quilted blob.
-    pub blob_id: BlobId,
+    /// The blob_id of the quilted blob, it is calculated from the blob independent of the quilt.
+    blob_id: BlobId,
     /// The unencoded length of the blob.
-    pub unencoded_length: u64,
+    unencoded_length: u64,
     /// The start sliver index of the block.
     #[serde(skip)]
-    pub start_index: u16,
+    start_index: u16,
     /// The end sliver index of the block.
-    pub end_index: u16,
-    /// The description of the block.
-    pub desc: String,
+    end_index: u16,
+    /// The description of the block, it can be used to locate the blob in the quilt.
+    desc: String,
 }
 
 impl QuiltBlock {
@@ -74,14 +74,39 @@ impl QuiltBlock {
         }
     }
 
+    /// Set the start index of the block.
+    pub fn set_start_index(&mut self, start_index: u16) {
+        self.start_index = start_index;
+    }
+
     /// Returns the start index of the block.
     pub fn start_index(&self) -> u16 {
         self.start_index
     }
 
+    /// Set the end index of the block.
+    pub fn set_end_index(&mut self, end_index: u16) {
+        self.end_index = end_index;
+    }
+
     /// Returns the end index of the block.
     pub fn end_index(&self) -> u16 {
         self.end_index
+    }
+
+    /// Returns the description of the block.
+    pub fn desc(&self) -> &str {
+        &self.desc
+    }
+
+    /// Returns the blob_id of the block.
+    pub fn blob_id(&self) -> &BlobId {
+        &self.blob_id
+    }
+
+    /// Returns the unencoded length of the block.
+    pub fn unencoded_length(&self) -> u64 {
+        self.unencoded_length
     }
 }
 

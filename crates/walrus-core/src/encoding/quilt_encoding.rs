@@ -175,7 +175,7 @@ impl Quilt {
     fn get_blob(&self, quilt_block: &QuiltBlock) -> Result<Vec<u8>, QuiltError> {
         let start_col = quilt_block.start_index() as usize;
         let end_col = quilt_block.end_index() as usize;
-        let mut blob = vec![0u8; quilt_block.unencoded_length as usize];
+        let mut blob = vec![0u8; quilt_block.unencoded_length() as usize];
 
         let mut written = 0;
         for col in start_col..end_col {
@@ -309,7 +309,10 @@ impl fmt::Debug for DebugQuiltIndex<'_> {
             list.entry(&format_args!(
                 "\nQuiltBlock {{\n    blob_id: {:x?},\n    unencoded_length: {},\
                 \n    end_index: {}\n    desc: {:?}\n}}",
-                block.blob_id, block.unencoded_length, block.end_index, block.desc
+                block.blob_id(),
+                block.unencoded_length(),
+                block.end_index(),
+                block.desc()
             ));
         }
         list.finish()?;
@@ -462,11 +465,10 @@ impl<'a> QuiltEncoder<'a> {
                 offset += symbol_size;
             }
 
-            assert_eq!(blob_id, &quilt_index.quilt_blocks[i].blob_id);
-
-            quilt_index.quilt_blocks[i].start_index = current_col as u16;
+            assert_eq!(blob_id, quilt_index.quilt_blocks[i].blob_id());
+            quilt_index.quilt_blocks[i].set_start_index(current_col as u16);
             current_col += cols_needed;
-            quilt_index.quilt_blocks[i].end_index = current_col as u16;
+            quilt_index.quilt_blocks[i].set_end_index(current_col as u16);
         }
 
         // Create the final index data with size prefix.
@@ -676,7 +678,7 @@ impl<'a> QuiltDecoder<'a> {
         if let Some(quilt_index) = &mut self.quilt_index {
             quilt_index
                 .quilt_blocks
-                .sort_by_key(|block| block.end_index);
+                .sort_by_key(|block| block.end_index());
             quilt_index.populate_start_indices(num_slivers_needed as u16);
         }
 
@@ -715,13 +717,13 @@ impl<'a> QuiltDecoder<'a> {
         let end_idx = quilt_block.end_index() as usize;
 
         // Extract and reconstruct the blob.
-        let mut blob = Vec::with_capacity(quilt_block.unencoded_length as usize);
+        let mut blob = Vec::with_capacity(quilt_block.unencoded_length() as usize);
 
         // Collect data from the appropriate slivers.
         for i in start_idx..end_idx {
             let sliver_idx = SliverIndex(i as u16);
             if let Some(sliver) = self.slivers.iter().find(|s| s.index == sliver_idx) {
-                let remaining_needed = quilt_block.unencoded_length as usize - blob.len();
+                let remaining_needed = quilt_block.unencoded_length() as usize - blob.len();
                 blob.extend_from_slice(
                     &sliver.symbols.data()[..remaining_needed.min(sliver.symbols.data().len())],
                 );
@@ -952,10 +954,10 @@ mod tests {
 
             assert_eq!(
                 quilt
-                    .quilt_index
+                    .quilt_index()
                     .get_quilt_block_by_id(blob_id)
                     .expect("Block should exist for this blob ID")
-                    .desc,
+                    .desc(),
                 blob_with_desc.desc,
                 "Mismatch in blob description"
             );
