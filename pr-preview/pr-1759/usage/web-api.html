@@ -279,17 +279,22 @@ important to ensure only authorized parties may access it, or other measures to 
 especially in a future Mainnet deployment.</p>
 </div>
 </div>
-<h3 id="notes-on-publisher-operation"><a class="header" href="#notes-on-publisher-operation">Notes on publisher operation</a></h3>
+<h3 id="daemon-metrics"><a class="header" href="#daemon-metrics">Daemon metrics</a></h3>
+<p>Services by default export a metrics end-point accessible via:</p>
+<pre><code>http://127.0.0.1:27182/metrics
+</code></pre>
+<p>It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
+<h2 id="publisher-operation-and-configuration"><a class="header" href="#publisher-operation-and-configuration">Publisher operation and configuration</a></h2>
 <p>We list here a few important details on how the publisher deals with funds and objects on Sui.</p>
-<h4 id="number-of-sub-wallets"><a class="header" href="#number-of-sub-wallets">Number of sub-wallets</a></h4>
+<h3 id="number-of-sub-wallets-and-upload-concurrency"><a class="header" href="#number-of-sub-wallets-and-upload-concurrency">Number of sub-wallets and upload concurrency</a></h3>
 <p>As mentioned above, the publisher uses sub-wallets to allow storing blobs in parallel. By default,
-the publisher uses 8 sub-wallets, meaning it can store 8 blobs at the same time.</p>
-<h4 id="funds-in-sub-wallets"><a class="header" href="#funds-in-sub-wallets">Funds in sub-wallets</a></h4>
+the publisher uses 8 sub-wallets, meaning it can handle 8 blob store HTTP requests concurrently.</p>
+<h3 id="sui-coin-management-in-sub-wallets"><a class="header" href="#sui-coin-management-in-sub-wallets">SUI coin management in sub-wallets</a></h3>
 <p>Each of the sub-wallets requires funds to interact with the chain and purchase storage. For this
 reason, a background process checks periodically if the sub-wallets have enough funds. In steady
 state, each of the sub-wallets will have a balance of 0.5-1.0 SUI and WAL. The amount and triggers
 for coin refills can be configured through CLI arguments.</p>
-<h4 id="lifecycle-of-created-blob-objects"><a class="header" href="#lifecycle-of-created-blob-objects">Lifecycle of created <code>Blob</code> objects</a></h4>
+<h4 id="lifecycle-of-created-blob-on-chain-objects"><a class="header" href="#lifecycle-of-created-blob-on-chain-objects">Lifecycle of created <code>Blob</code> on-chain objects</a></h4>
 <p>Each store operation in Walrus creates a <code>Blob</code> object on Sui. This blob object represents the
 (partial) ownership over the associated data, and allows certain data management operations (e.g.,
 in the case of deletable blobs).</p>
@@ -312,12 +317,13 @@ with many blob objects.</li>
 </li>
 </ul>
 <h2 id="public-services"><a class="header" href="#public-services">Using a public aggregator or publisher</a></h2>
+<!-- TODO(): Update section based on mainnet services. -->
 <p>For some use cases (e.g., a public website), or to just try out the HTTP API, a publicly accessible
 aggregator and/or publisher is required. Several entities run such aggregators and publishers, see
 the lists of public <a href="#public-aggregators">aggregators</a> and <a href="#public-publishers">publishers</a> below.</p>
 <p>Public publishers limit requests to 10 MiB by default. If you want to upload larger files, you need
 to <a href="#local-daemon">run your own publisher</a> or use the <a href="./client-cli.html">CLI</a>.</p>
-<p>Also, note that the publisher consumes (Testnet) SUI and WAL on the service side, and a Mainnet
+<p>Also, note that the publisher consumes SUI and WAL on the service side, and a Mainnet
 deployment would likely not be able to provide uncontrolled public access to publishing without
 requiring some authentication and compensation for the funds used.</p>
 <h3 id="public-aggregators"><a class="header" href="#public-aggregators">Public aggregators</a></h3>

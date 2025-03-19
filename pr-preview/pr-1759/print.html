@@ -759,7 +759,7 @@ full node at <code>https://fullnode.mainnet.sui.io:443</code> for this. See
 </code></pre>
 <p>Finally, to publish blobs on Walrus you will need some mainnet WAL to pay for storage and upload
 costs.</p>
-<p>TODO: how to get WAL.</p>
+<!-- TODO (): TODO: how to get WAL. -->
 <p>The system-wide wallet will be used by Walrus if no other path is specified. If you want to use a
 different Sui wallet, you can specify this in the <a href="usage/setup.html#configuration">Walrus configuration file</a> or
 when <a href="usage/./interacting.html">running the CLI</a>.</p>
@@ -934,22 +934,25 @@ subsidies_package: 0xd843c37d213ea683ec3519abe4646fd618f52d7fce1c4e9875a4144d53e
 <p>These are inferred automatically from the object IDs above, and there is no need to
 manually input them into the Walrus client configuration file.</p>
 <h2 id="testnet-configuration"><a class="header" href="#testnet-configuration">Testnet configuration</a></h2>
-<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites: Sui wallet and Testnet SUI</a></h3>
-<div id="admonition-quick-wallet-setup" class="admonition admonish-tip" role="note" aria-labelledby="admonition-quick-wallet-setup-title">
+<div id="admonition-disclaimer-about-the-walrus-testnet" class="admonition admonish-danger" role="note" aria-labelledby="admonition-disclaimer-about-the-walrus-testnet-title">
 <div class="admonition-title">
-<div id="admonition-quick-wallet-setup-title">
-<p>Quick wallet setup</p>
+<div id="admonition-disclaimer-about-the-walrus-testnet-title">
+<p>Disclaimer about the Walrus Testnet</p>
 </div>
-<a class="admonition-anchor-link" href="usage/networks.html#admonition-quick-wallet-setup"></a>
+<a class="admonition-anchor-link" href="usage/networks.html#admonition-disclaimer-about-the-walrus-testnet"></a>
 </div>
 <div>
-<p>If you just want to set up a new Sui wallet for Walrus, you can skip this section and use the
-<code>walrus generate-sui-wallet</code> command after <a href="usage/networks.html#installation">installing Walrus</a>. In that case, make
-sure to set the <code>wallet_config</code> parameter in the <a href="usage/networks.html#advanced-configuration-optional">Walrus
-configuration</a> to the newly generated wallet. Also, make sure to
-obtain some Testnet SUI tokens from the <a href="https://faucet.sui.io/?network=testnet">Sui Testnet faucet</a>.</p>
+<p>All transactions are executed on the Sui Testnet and use Testnet WAL and SUI which have no
+value. The state of the store <strong>can and will be wiped</strong> at any point and possibly with no warning.
+Do not rely on this Testnet for any production purposes, it comes with no availability or
+persistence guarantees.</p>
+<p>New features on testnet may break deployed testnet apps, since this is the network in which we test
+new updates including for compatibility with eco-system applications.</p>
+<p>Also see the <a href="usage/../legal/testnet_tos.html">Testnet terms of service</a> under which this Testnet is made
+available.</p>
 </div>
 </div>
+<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites: Sui wallet and Testnet SUI</a></h3>
 <p>Interacting with Walrus requires a valid Sui Testnet wallet with some amount of SUI tokens. The
 normal way to set this up is via the Sui CLI; see the <a href="https://docs.sui.io/guides/developer/getting-started/sui-install">installation
 instructions</a> in the Sui
@@ -1086,36 +1089,28 @@ their meaning.</p>
 <h2 id="walrus-system-information"><a class="header" href="#walrus-system-information">Walrus system information</a></h2>
 <p>Information about the Walrus system is available through the <code>walrus info</code> command. It provides an
 overview of current system parameters such as the current epoch, the number of storage nodes and
-shards in the system, the maximum blob size, and the current cost in (Testnet) WAL for storing
+shards in the system, the maximum blob size, and the current cost in WAL for storing
 blobs:</p>
 <pre><code class="language-console">$ walrus info
 
 Walrus system information
 
 Epochs and storage duration
-Current epoch: 6
-Epoch duration: 2days
-Blobs can be stored for at most 183 epochs in the future.
+Current epoch: 0
+Start time: 2025-03-14 10:14:01.612 UTC
+End time: 2025-03-28 10:14:01.612 UTC
+Epoch duration: 14days
+Blobs can be stored for at most 53 epochs in the future.
 
 Storage nodes
-Number of storage nodes: 58
+Number of storage nodes: 0
 Number of shards: 1000
 
 Blob size
-Maximum blob size: 13.3 GiB (14,273,391,930 B)
+Maximum blob size: 13.6 GiB (14,599,533,452 B)
 Storage unit: 1.00 MiB
 
-Approximate storage prices per epoch
-(Conversion rate: 1 WAL = 1,000,000,000 FROST)
-Price per encoded storage unit: 100 FROST
-Additional price for each write: 2,000 FROST
-Price to store metadata: 6,200 FROST
-Marginal price per additional 1 MiB (w/o metadata): 500 FROST
-
-Total price for example blob sizes
-16.0 MiB unencoded (135 MiB encoded): 13,500 FROST per epoch
-512 MiB unencoded (2.33 GiB encoded): 0.0002 WAL per epoch
-13.3 GiB unencoded (60.5 GiB encoded): 0.0062 WAL per epoch
+...
 </code></pre>
 <div id="admonition-frost-and-wal" class="admonition admonish-tip" role="note" aria-labelledby="admonition-frost-and-wal-title">
 <div class="admonition-title">
@@ -1165,24 +1160,12 @@ to a different wallet. Note, it is possible to store multiple blobs with a singl
 command.</p>
 </div>
 </div>
-<div id="admonition-obtaining-testnet-wal" class="admonition admonish-tip" role="note" aria-labelledby="admonition-obtaining-testnet-wal-title">
-<div class="admonition-title">
-<div id="admonition-obtaining-testnet-wal-title">
-<p>Obtaining Testnet WAL</p>
-</div>
-<a class="admonition-anchor-link" href="usage/client-cli.html#admonition-obtaining-testnet-wal"></a>
-</div>
-<div>
-<p>You can exchange Testnet SUI for Testnet WAL by running <code>walrus get-wal</code>. See the <a href="usage/./setup.html#testnet-wal-faucet">setup
-page</a> for further details.</p>
-</div>
-</div>
 <p>Storing one or multiple blobs on Walrus can be achieved through the following command:</p>
 <pre><code class="language-sh">walrus store &lt;FILES&gt; --epochs &lt;EPOCHS&gt;
 </code></pre>
 <p>The mandatory CLI argument <code>--epochs &lt;EPOCHS&gt;</code> indicates the number of epochs the blob should be
-stored for. There is an upper limit on the number of epochs a blob can be stored for, which is 183
-for the current Testnet deployment (corresponding to one year). In addition to a positive integer,
+stored for. There is an upper limit on the number of epochs a blob can be stored for, which is 53,
+corresponding to two years. In addition to a positive integer,
 you can also use <code>--epochs max</code> to store the blob for the maximum number of epochs.</p>
 <p>You can store a single file or multiple files, separated by spaces. Notably, this is compatible
 with glob patterns; for example, <code>walrus store *.png --epochs &lt;EPOCHS&gt;</code> will store all PNG files
@@ -1287,6 +1270,10 @@ The option <code>--include-expired</code> also lists expired blob objects.</p>
 <p>The <code>--wallet &lt;WALLET&gt;</code> argument may be used to specify a non-standard Sui wallet configuration
 file. And a <code>--gas-budget &lt;GAS_BUDGET&gt;</code> argument may be used to change the maximum amount of Sui (in
 MIST) that the command is allowed to use.</p>
+<h2 id="logging-and-metrics"><a class="header" href="#logging-and-metrics">Logging and metrics</a></h2>
+<p>The <code>walrus</code> CLI allows for multiple levels of logging, which can be turned on via an env variable:</p>
+<pre><code class="language-sh">RUST_LOG=trace walrus info
+</code></pre>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="json-mode"><a class="header" href="#json-mode">JSON mode</a></h1>
 <p>All Walrus client commands are also available in JSON mode. In this mode, all the command-line flags
@@ -1374,17 +1361,22 @@ important to ensure only authorized parties may access it, or other measures to 
 especially in a future Mainnet deployment.</p>
 </div>
 </div>
-<h3 id="notes-on-publisher-operation"><a class="header" href="#notes-on-publisher-operation">Notes on publisher operation</a></h3>
+<h3 id="daemon-metrics"><a class="header" href="#daemon-metrics">Daemon metrics</a></h3>
+<p>Services by default export a metrics end-point accessible via:</p>
+<pre><code>http://127.0.0.1:27182/metrics
+</code></pre>
+<p>It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
+<h2 id="publisher-operation-and-configuration"><a class="header" href="#publisher-operation-and-configuration">Publisher operation and configuration</a></h2>
 <p>We list here a few important details on how the publisher deals with funds and objects on Sui.</p>
-<h4 id="number-of-sub-wallets"><a class="header" href="#number-of-sub-wallets">Number of sub-wallets</a></h4>
+<h3 id="number-of-sub-wallets-and-upload-concurrency"><a class="header" href="#number-of-sub-wallets-and-upload-concurrency">Number of sub-wallets and upload concurrency</a></h3>
 <p>As mentioned above, the publisher uses sub-wallets to allow storing blobs in parallel. By default,
-the publisher uses 8 sub-wallets, meaning it can store 8 blobs at the same time.</p>
-<h4 id="funds-in-sub-wallets"><a class="header" href="#funds-in-sub-wallets">Funds in sub-wallets</a></h4>
+the publisher uses 8 sub-wallets, meaning it can handle 8 blob store HTTP requests concurrently.</p>
+<h3 id="sui-coin-management-in-sub-wallets"><a class="header" href="#sui-coin-management-in-sub-wallets">SUI coin management in sub-wallets</a></h3>
 <p>Each of the sub-wallets requires funds to interact with the chain and purchase storage. For this
 reason, a background process checks periodically if the sub-wallets have enough funds. In steady
 state, each of the sub-wallets will have a balance of 0.5-1.0 SUI and WAL. The amount and triggers
 for coin refills can be configured through CLI arguments.</p>
-<h4 id="lifecycle-of-created-blob-objects"><a class="header" href="#lifecycle-of-created-blob-objects">Lifecycle of created <code>Blob</code> objects</a></h4>
+<h4 id="lifecycle-of-created-blob-on-chain-objects"><a class="header" href="#lifecycle-of-created-blob-on-chain-objects">Lifecycle of created <code>Blob</code> on-chain objects</a></h4>
 <p>Each store operation in Walrus creates a <code>Blob</code> object on Sui. This blob object represents the
 (partial) ownership over the associated data, and allows certain data management operations (e.g.,
 in the case of deletable blobs).</p>
@@ -1407,12 +1399,13 @@ with many blob objects.</li>
 </li>
 </ul>
 <h2 id="public-services"><a class="header" href="#public-services">Using a public aggregator or publisher</a></h2>
+<!-- TODO(): Update section based on mainnet services. -->
 <p>For some use cases (e.g., a public website), or to just try out the HTTP API, a publicly accessible
 aggregator and/or publisher is required. Several entities run such aggregators and publishers, see
 the lists of public <a href="usage/web-api.html#public-aggregators">aggregators</a> and <a href="usage/web-api.html#public-publishers">publishers</a> below.</p>
 <p>Public publishers limit requests to 10 MiB by default. If you want to upload larger files, you need
 to <a href="usage/web-api.html#local-daemon">run your own publisher</a> or use the <a href="usage/./client-cli.html">CLI</a>.</p>
-<p>Also, note that the publisher consumes (Testnet) SUI and WAL on the service side, and a Mainnet
+<p>Also, note that the publisher consumes SUI and WAL on the service side, and a Mainnet
 deployment would likely not be able to provide uncontrolled public access to publishing without
 requiring some authentication and compensation for the funds used.</p>
 <h3 id="public-aggregators"><a class="header" href="#public-aggregators">Public aggregators</a></h3>
@@ -1669,27 +1662,6 @@ storage or availability.</li>
 from Sui smart contracts, or through the Sui SDK.</li>
 </ul>
 <p>Refer again to the <a href="dev-guide/../glossary.html">glossary</a> of terms as a reference.</p>
-<div id="admonition-disclaimer-about-the-walrus-testnet" class="admonition admonish-danger" role="note" aria-labelledby="admonition-disclaimer-about-the-walrus-testnet-title">
-<div class="admonition-title">
-<div id="admonition-disclaimer-about-the-walrus-testnet-title">
-<p>Disclaimer about the Walrus Testnet</p>
-</div>
-<a class="admonition-anchor-link" href="dev-guide/dev-guide.html#admonition-disclaimer-about-the-walrus-testnet"></a>
-</div>
-<div>
-<p>The current Testnet release of Walrus and Walrus Sites is a preview intended to showcase
-the technology and solicit feedback from builders, users, and storage-node operators.
-All transactions are executed on the Sui Testnet and use Testnet WAL and SUI which have no
-value. The state of the store <strong>can and will be wiped</strong> at any point and possibly with no warning.
-Do not rely on this Testnet for any production purposes, it comes with no availability or
-persistence guarantees.</p>
-<p>Furthermore, encodings and blob IDs may be incompatible with the future Testnet and Mainnet, and
-developers will be responsible for migrating any Testnet applications and data to Mainnet. Detailed
-migration guides will be provided when Mainnet becomes available.</p>
-<p>Also see the <a href="dev-guide/../legal/testnet_tos.html">Testnet terms of service</a> under which this Testnet is made
-available.</p>
-</div>
-</div>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="components"><a class="header" href="#components">Components</a></h1>
 <p>From a developer perspective, some Walrus components are objects and smart contracts on
@@ -1761,9 +1733,8 @@ through the <a href="dev-guide/../usage/client-cli.html#walrus-system-informatio
 maximum blob size is currently 13.3 GiB. You may store larger blobs by splitting them into
 smaller chunks.</p>
 <p>Blobs are stored for a certain number of <em>epochs</em>, as specified at the time they were stored. Walrus
-storage nodes ensure that within these epochs a read succeeds. The current Testnet uses a short
-epoch duration of two days for testing purposes, but Mainnet epochs are planned to be multiple
-weeks.</p>
+storage nodes ensure that within these epochs a read succeeds. The current mainnet uses an epoch
+duration of 2 weeks.</p>
 <h2 id="read-1"><a class="header" href="#read-1">Read</a></h2>
 <p>Walrus can also be used to <strong>read a blob</strong> after it is stored by providing its blob ID.
 A read is executed by performing the following steps:</p>
@@ -1808,29 +1779,17 @@ command will reclaim storage space for the user that invoked it, but will not ma
 unavailable until all other copies have been deleted or expire.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="sui-structures"><a class="header" href="#sui-structures">Sui Structures</a></h1>
-<p>This section is optional and enables advanced use cases.</p>
+<p>This section is optional and enables advanced use cases, leveraging Sui smart contract interactions
+with the Walrus smart contract.</p>
 <p>You can interact with Walrus purely through the client CLI, and JSON or HTTP APIs provided, without
 querying or executing transactions on Sui directly. However, Walrus uses Sui to manage its metadata
 and smart contract developers can read information about the Walrus system, as well as stored blobs,
 on Sui.</p>
-<p>The Move code of the Walrus Testnet contracts is available at
-<a href="https://github.com/MystenLabs/walrus-docs/blob/main/contracts">https://github.com/MystenLabs/walrus-docs/blob/main/contracts</a>. An example package using
-the Walrus contracts is available at
-<a href="https://github.com/MystenLabs/walrus-docs/blob/main/examples/move">https://github.com/MystenLabs/walrus-docs/blob/main/examples/move</a>.</p>
+<p>The <a href="https://github.com/MystenLabs/walrus/tree/main/contracts">Move code of the Walrus system contracts</a> is available and upi can find an <a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples">example smart
+contract</a> that implements a wrapped blob.</p>
 <p>The following sections provide further insights into the contract and an overview of how you may use
 Walrus objects in your own Sui smart contracts.</p>
-<div id="admonition-a-word-of-caution" class="admonition admonish-danger" role="note" aria-labelledby="admonition-a-word-of-caution-title">
-<div class="admonition-title">
-<div id="admonition-a-word-of-caution-title">
-<p>A word of caution</p>
-</div>
-<a class="admonition-anchor-link" href="dev-guide/sui-struct.html#admonition-a-word-of-caution"></a>
-</div>
-<div>
-<p>Walrus Mainnet will use new Move packages with <code>struct</code> layouts and function signatures that may not
-be compatible with this package. Move code that builds against this package will need to be rewritten.</p>
-</div>
-</div>
+<!-- TODO() : Review the Move structs and delete me -->
 <h2 id="blob-and-storage-objects"><a class="header" href="#blob-and-storage-objects">Blob and storage objects</a></h2>
 <p>Walrus blobs are represented as Sui objects of type <code>Blob</code>. A blob is first registered, indicating
 that the storage nodes should expect slivers from a Blob ID to be stored. Then a blob is certified,
@@ -2079,7 +2038,6 @@ system.</p>
 <li>Click the <code>Connect Wallet</code> button at the top right corner.</li>
 <li>Select the wallet (if the wallet was connected before, this and the next step won't be required).</li>
 <li>Approve the connection.</li>
-<li>(Make sure the selected wallet network is Testnet).</li>
 </ul>
 <h3 id="exchange-testnet-sui-to-wal"><a class="header" href="#exchange-testnet-sui-to-wal">Exchange Testnet SUI to WAL</a></h3>
 <p>To be able to stake you will need to have Testnet WAL in your wallet.
@@ -2121,7 +2079,7 @@ committee, you find all the storage nodes at the bottom of the page.</li>
 <h1 id="examples"><a class="header" href="#examples">Examples</a></h1>
 <p>As inspiration, we provide several simple examples in different programming languages to interact
 with Walrus through the various interfaces. They are located at
-<a href="https://github.com/MystenLabs/walrus-docs/tree/main/examples">https://github.com/MystenLabs/walrus-docs/tree/main/examples</a> and described below.</p>
+<a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples">https://github.com/MystenLabs/walrus/tree/main/docs/examples</a> and described below.</p>
 <p>In addition, we have built actual applications on top of Walrus. The prime example is <a href="usage/../walrus-sites/intro.html">Walrus
 Sites</a>, with code available in the
 <a href="https://github.com/MystenLabs/walrus-sites">https://github.com/MystenLabs/walrus-sites</a> repository.</p>
@@ -2134,28 +2092,28 @@ easily publish your own Walrus Sites using GitHub Actions (note that this is <em
 officially supported by the Walrus team at Mysten Labs).</p>
 <p>See also our list of existing and upcoming <a href="usage/./sdks.html">SDKs and other tools</a>.</p>
 <h2 id="python"><a class="header" href="#python">Python</a></h2>
-<p>The <a href="https://github.com/MystenLabs/walrus-docs/tree/main/examples/python">Python examples</a> folder
+<p>The <a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples/python">Python examples</a> folder
 contains a number of examples:</p>
 <ul>
-<li>How to <a href="https://github.com/MystenLabs/walrus-docs/blob/main/examples/python/hello_walrus_webapi.py">use the HTTP
+<li>How to <a href="https://github.com/MystenLabs/walrus/blob/main/docs/examples/python/hello_walrus_webapi.py">use the HTTP
 API</a>
 to store and read a blob.</li>
-<li>How to <a href="https://github.com/MystenLabs/walrus-docs/blob/main/examples/python/hello_walrus_jsonapi.py">use the JSON
+<li>How to <a href="https://github.com/MystenLabs/walrus/blob/main/docs/examples/python/hello_walrus_jsonapi.py">use the JSON
 API</a>
 to store, read, and check the availability of a blob. Checking the certification of a blob
 illustrates reading the Blob Sui object that certifies (see the <a href="usage/../dev-guide/sui-struct.html">Walrus Sui
 reference</a>).</li>
-<li>How to <a href="https://github.com/MystenLabs/walrus-docs/blob/main/examples/python/track_walrus_events.py">track Walrus related
+<li>How to <a href="https://github.com/MystenLabs/walrus/blob/main/examples/docs/python/track_walrus_events.py">track Walrus related
 Events</a>.</li>
 </ul>
 <h2 id="javascript"><a class="header" href="#javascript">JavaScript</a></h2>
-<p>A <a href="https://github.com/MystenLabs/walrus-docs/tree/main/examples/javascript">JavaScript example</a> is
+<p>A <a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples/javascript">JavaScript example</a> is
 provided showing how to upload and download a blob through a web form using the HTTP API.</p>
 <h2 id="move"><a class="header" href="#move">Move</a></h2>
 <p>For more complex applications, you may want to interact with Walrus on-chain objects. For that
-purpose, the currently deployed Walrus contracts are included <a href="https://github.com/MystenLabs/walrus-docs/tree/main/contracts">in our GitHub
+purpose, the currently deployed Walrus contracts are included <a href="https://github.com/MystenLabs/walrus/tree/main/contracts">in our GitHub
 repository</a>.</p>
-<p>Furthermore, we provide a simple <a href="https://github.com/MystenLabs/walrus-docs/tree/main/examples/move">example
+<p>Furthermore, we provide a simple <a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples/move">example
 contract</a> that imports and uses
 the Walrus objects.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
@@ -2174,8 +2132,7 @@ the Walrus objects.</p>
 <h2 id="latest-binary"><a class="header" href="#latest-binary">Latest binary</a></h2>
 <p>Before undertaking any other steps, make sure you have the <a href="usage/./setup.html#installation">latest <code>walrus</code>
 binary</a>. If you have multiple versions in different locations, find the
-binary that will actually be used with <code>which walrus</code>. For the current Testnet, a binary version of
-at 1.9 or later is required.</p>
+binary that will actually be used with <code>which walrus</code>.</p>
 <h2 id="old-hardware-or-incompatible-vms"><a class="header" href="#old-hardware-or-incompatible-vms">Old hardware or incompatible VMs</a></h2>
 <p>Our standard Ubuntu binary is known to cause problems on certain old hardware and in certain
 virtualized environments. If you experience errors like "Illegal instruction (core dumped)",
@@ -2201,7 +2158,8 @@ including the path to the Walrus configuration file and the Sui wallet.</p>
 </div>
 <h2 id="correct-sui-network-configuration"><a class="header" href="#correct-sui-network-configuration">Correct Sui network configuration</a></h2>
 <p>If you get an error like "the specified Walrus system object does not exist", make sure your wallet
-is set up for Sui <strong>Testnet</strong> and you use the latest <a href="usage/./setup.html#configuration">configuration</a>.</p>
+is set up for the correct Sui network (mainnet or testnet as you may require) and you use the latest
+<a href="usage/./setup.html#configuration">configuration</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="introduction-to-walrus-sites"><a class="header" href="#introduction-to-walrus-sites">Introduction to Walrus Sites</a></h1>
 <p><em>Walrus Sites</em> are "web"-sites that use Sui and Walrus as their underlying technology. They are a

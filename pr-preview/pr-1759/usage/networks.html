@@ -251,22 +251,25 @@ subsidies_package: 0xd843c37d213ea683ec3519abe4646fd618f52d7fce1c4e9875a4144d53e
 <p>These are inferred automatically from the object IDs above, and there is no need to
 manually input them into the Walrus client configuration file.</p>
 <h2 id="testnet-configuration"><a class="header" href="#testnet-configuration">Testnet configuration</a></h2>
-<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites: Sui wallet and Testnet SUI</a></h3>
-<div id="admonition-quick-wallet-setup" class="admonition admonish-tip" role="note" aria-labelledby="admonition-quick-wallet-setup-title">
+<div id="admonition-disclaimer-about-the-walrus-testnet" class="admonition admonish-danger" role="note" aria-labelledby="admonition-disclaimer-about-the-walrus-testnet-title">
 <div class="admonition-title">
-<div id="admonition-quick-wallet-setup-title">
-<p>Quick wallet setup</p>
+<div id="admonition-disclaimer-about-the-walrus-testnet-title">
+<p>Disclaimer about the Walrus Testnet</p>
 </div>
-<a class="admonition-anchor-link" href="#admonition-quick-wallet-setup"></a>
+<a class="admonition-anchor-link" href="#admonition-disclaimer-about-the-walrus-testnet"></a>
 </div>
 <div>
-<p>If you just want to set up a new Sui wallet for Walrus, you can skip this section and use the
-<code>walrus generate-sui-wallet</code> command after <a href="#installation">installing Walrus</a>. In that case, make
-sure to set the <code>wallet_config</code> parameter in the <a href="#advanced-configuration-optional">Walrus
-configuration</a> to the newly generated wallet. Also, make sure to
-obtain some Testnet SUI tokens from the <a href="https://faucet.sui.io/?network=testnet">Sui Testnet faucet</a>.</p>
+<p>All transactions are executed on the Sui Testnet and use Testnet WAL and SUI which have no
+value. The state of the store <strong>can and will be wiped</strong> at any point and possibly with no warning.
+Do not rely on this Testnet for any production purposes, it comes with no availability or
+persistence guarantees.</p>
+<p>New features on testnet may break deployed testnet apps, since this is the network in which we test
+new updates including for compatibility with eco-system applications.</p>
+<p>Also see the <a href="../legal/testnet_tos.html">Testnet terms of service</a> under which this Testnet is made
+available.</p>
 </div>
 </div>
+<h3 id="prerequisites"><a class="header" href="#prerequisites">Prerequisites: Sui wallet and Testnet SUI</a></h3>
 <p>Interacting with Walrus requires a valid Sui Testnet wallet with some amount of SUI tokens. The
 normal way to set this up is via the Sui CLI; see the <a href="https://docs.sui.io/guides/developer/getting-started/sui-install">installation
 instructions</a> in the Sui

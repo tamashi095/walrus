@@ -228,29 +228,17 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="sui-structures"><a class="header" href="#sui-structures">Sui Structures</a></h1>
-<p>This section is optional and enables advanced use cases.</p>
+<p>This section is optional and enables advanced use cases, leveraging Sui smart contract interactions
+with the Walrus smart contract.</p>
 <p>You can interact with Walrus purely through the client CLI, and JSON or HTTP APIs provided, without
 querying or executing transactions on Sui directly. However, Walrus uses Sui to manage its metadata
 and smart contract developers can read information about the Walrus system, as well as stored blobs,
 on Sui.</p>
-<p>The Move code of the Walrus Testnet contracts is available at
-<a href="https://github.com/MystenLabs/walrus-docs/blob/main/contracts">https://github.com/MystenLabs/walrus-docs/blob/main/contracts</a>. An example package using
-the Walrus contracts is available at
-<a href="https://github.com/MystenLabs/walrus-docs/blob/main/examples/move">https://github.com/MystenLabs/walrus-docs/blob/main/examples/move</a>.</p>
+<p>The <a href="https://github.com/MystenLabs/walrus/tree/main/contracts">Move code of the Walrus system contracts</a> is available and upi can find an <a href="https://github.com/MystenLabs/walrus/tree/main/docs/examples">example smart
+contract</a> that implements a wrapped blob.</p>
 <p>The following sections provide further insights into the contract and an overview of how you may use
 Walrus objects in your own Sui smart contracts.</p>
-<div id="admonition-a-word-of-caution" class="admonition admonish-danger" role="note" aria-labelledby="admonition-a-word-of-caution-title">
-<div class="admonition-title">
-<div id="admonition-a-word-of-caution-title">
-<p>A word of caution</p>
-</div>
-<a class="admonition-anchor-link" href="#admonition-a-word-of-caution"></a>
-</div>
-<div>
-<p>Walrus Mainnet will use new Move packages with <code>struct</code> layouts and function signatures that may not
-be compatible with this package. Move code that builds against this package will need to be rewritten.</p>
-</div>
-</div>
+<!-- TODO() : Review the Move structs and delete me -->
 <h2 id="blob-and-storage-objects"><a class="header" href="#blob-and-storage-objects">Blob and storage objects</a></h2>
 <p>Walrus blobs are represented as Sui objects of type <code>Blob</code>. A blob is first registered, indicating
 that the storage nodes should expect slivers from a Blob ID to be stored. Then a blob is certified,
