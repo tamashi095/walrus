@@ -685,8 +685,8 @@ you can use from your browser:</p>
 <li><a href="https://walruscan.com/testnet/home">Explore</a> blob uploads and meta-data on the Walrus explorer.</li>
 <li><a href="https://flatland.walrus.site/">Mint a toy NFT</a> on the flatland application.</li>
 </ul>
-<p>The above dapps are on the Walrus <em>testnet</em>, which provides a sandbox for experimentation, and
-uses tokens with no value. To use or develop against the Walrus mainnet you will need to use real
+<p>The above dapps are on the Walrus <em>Testnet</em>, which provides a sandbox for experimentation, and
+uses tokens with no value. To use or develop against the Walrus Mainnet you will need to use real
 WAL and SUI tokens.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="setup"><a class="header" href="#setup">Setup</a></h1>
@@ -738,7 +738,7 @@ full node at <code>https://fullnode.mainnet.sui.io:443</code> for this. See
 │ 0x65dca966dc... │ 1000000000         │ 1.00             │
 ╰─────────────────┴────────────────────┴──────────────────╯
 </code></pre>
-<p>Finally, to publish blobs on Walrus you will need some mainnet WAL to pay for storage and upload
+<p>Finally, to publish blobs on Walrus you will need some Mainnet WAL to pay for storage and upload
 costs.</p>
 <!-- TODO (): TODO: how to get WAL. -->
 <p>The system-wide wallet will be used by Walrus if no other path is specified. If you want to use a
@@ -810,7 +810,7 @@ versions. An overview in XML format is available at
 <h3 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h3>
 <p>Walrus is open-source software published under the Apache 2 license. The code is developed in a
 <code>git</code> repository at <a href="https://github.com/MystenLabs/walrus">https://github.com/MystenLabs/walrus</a>.</p>
-<p>The latest version of mainnet and testnet are available under the branches <code>mainnet</code> and <code>testnet</code>
+<p>The latest version of Mainnet and Testnet are available under the branches <code>mainnet</code> and <code>testnet</code>
 respectively, and the latest version under the <code>main</code> branch. We welcome reports of issues and bug
 fixes. Follow the instructions in the <code>README.md</code> file to build and use Walrus from source.</p>
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
@@ -892,12 +892,12 @@ communication_config:
 </code></pre>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="available-networks"><a class="header" href="#available-networks">Available Networks</a></h1>
-<p>Walrus mainnet operates a production quality storage network on the Sui mainnet. The Walrus testnet
-operates on the Sui testnet and is used to test new features of Walrus before they graduate to the
-mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
+<p>Walrus Mainnet operates a production quality storage network on the Sui Mainnet. The Walrus Testnet
+operates on the Sui Testnet and is used to test new features of Walrus before they graduate to the
+Mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
 <h2 id="mainnet-configuration"><a class="header" href="#mainnet-configuration">Mainnet configuration</a></h2>
 <h3 id="mainnet-parameters"><a class="header" href="#mainnet-parameters">Mainnet parameters</a></h3>
-<p>The client parameters for the Walrus mainnet are:</p>
+<p>The client parameters for the Walrus Mainnet are:</p>
 <pre><code class="language-yaml"># These are the only mandatory fields. These objects are specific for a particular Walrus
 # deployment but then do not change over time.
 system_object: 0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2
@@ -975,7 +975,7 @@ don't have it yet),</p>
 different Sui wallet, you can specify this in the <a href="usage/networks.html#configuration">Walrus configuration file</a> or
 when <a href="usage/./interacting.html">running the CLI</a>.</p>
 <h3 id="testnet-parameters"><a class="header" href="#testnet-parameters">Testnet parameters</a></h3>
-<p>The configuration parameters for the Walrus testnet currently are:</p>
+<p>The configuration parameters for the Walrus Testnet currently are:</p>
 <pre><code class="language-yaml"># These are the only mandatory fields. These objects are specific for a particular Walrus
 # deployment but then do not change over time.
 system_object: 0x98ebc47370603fe81d9e15491b2f1443d619d1dab720d586e429ed233e1255c1
@@ -1044,8 +1044,9 @@ file.</p>
 <p>In addition, one can spin up a local grafana instance to visualize the metrics collected by the
 storage nodes. This can be done via <code>cd docker/grafana-local; docker compose up</code>. This should work
 with the default storage node configuration.</p>
-<p>Note that while the Walrus storage nodes of this testbed run on your local machine, the Sui devnet
-is used by default to deploy and interact with the contracts. To run the testbed fully locally, simply
+<p>Note that while the Walrus storage nodes of this testbed run on your local machine, the Sui Devnet
+is used by default to deploy and interact with the contracts. To run the testbed fully locally,
+simply
 <a href="https://docs.sui.io/guides/developer/getting-started/local-network">start a local network with <code>sui start --with-faucet --force-regenesis</code></a>
 (requires <code>sui</code> to be v1.28.0 or higher) and specify <code>localnet</code> when starting the Walrus testbed.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
@@ -1344,10 +1345,8 @@ especially in a future Mainnet deployment.</p>
 </div>
 </div>
 <h3 id="daemon-metrics"><a class="header" href="#daemon-metrics">Daemon metrics</a></h3>
-<p>Services by default export a metrics end-point accessible via:</p>
-<pre><code>http://127.0.0.1:27182/metrics
-</code></pre>
-<p>It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
+<p>Services by default export a metrics end-point accessible via <code>curl http://127.0.0.1:27182/metrics</code>.
+It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
 <h2 id="publisher-operation-and-configuration"><a class="header" href="#publisher-operation-and-configuration">Publisher operation and configuration</a></h2>
 <p>We list here a few important details on how the publisher deals with funds and objects on Sui.</p>
 <h3 id="number-of-sub-wallets-and-upload-concurrency"><a class="header" href="#number-of-sub-wallets-and-upload-concurrency">Number of sub-wallets and upload concurrency</a></h3>
@@ -1715,7 +1714,7 @@ through the <a href="dev-guide/../usage/client-cli.html#walrus-system-informatio
 maximum blob size is currently 13.3 GiB. You may store larger blobs by splitting them into
 smaller chunks.</p>
 <p>Blobs are stored for a certain number of <em>epochs</em>, as specified at the time they were stored. Walrus
-storage nodes ensure that within these epochs a read succeeds. The current mainnet uses an epoch
+storage nodes ensure that within these epochs a read succeeds. The current Mainnet uses an epoch
 duration of 2 weeks.</p>
 <h2 id="read-1"><a class="header" href="#read-1">Read</a></h2>
 <p>Walrus can also be used to <strong>read a blob</strong> after it is stored by providing its blob ID.
@@ -1810,7 +1809,7 @@ public struct Blob has key, store {
 <p>Public functions associated with these objects can be found in the respective
 <a href="https://github.com/MystenLabs/walrus/tree/main/contracts/walrus/sources/system/storage_resource.move"><code>storage_resource</code> move module</a>
 and <a href="https://github.com/MystenLabs/walrus/tree/main/contracts/walrus/sources/system/blob.move"><code>blob</code> move module</a>. Storage resources can be split and merged in time and data capacity, and can be
-transferred between users allowing complex "blobfi" contracts to be created.</p>
+transferred between users allowing complex contracts to be created.</p>
 <h2 id="events"><a class="header" href="#events">Events</a></h2>
 <p>Walrus uses <a href="https://github.com/MystenLabs/walrus/blob/main/contracts/walrus/sources/system/events.move">custom Sui events</a> extensively to notify storage nodes of updates concerning stored Blobs and
 the state of the network. Applications may also use Sui RPC facilities to observe Walrus related
@@ -1872,10 +1871,8 @@ a path configured by the <code>/opt/walrus/config/walrus-node.yaml</code> file. 
 mandatory and optional configuration parameters will be made available with the binary.</p>
 <p>Here are some important config params from a shortened version of the <code>walrus-node.yaml</code> config
 file:</p>
-<!-- TODO() : change the testnet url below.>
-
-```yaml
-storage_path: /opt/walrus/db
+<!-- TODO() : change the Testnet url below. -->
+<pre><code class="language-yaml">storage_path: /opt/walrus/db
 metrics_address: 127.0.0.1:9184
 rest_api_address: 0.0.0.0:9185
 sui:
@@ -1889,10 +1886,9 @@ blob_recovery:
   max_concurrent_metadata_requests: 1
   sliver_request_timeout_secs: 300
   invalidity_sync_timeout_secs: 300
-```
-
-For monitoring, you can configure Grafana Agent to fetch metrics from `localhost:9184/metrics`
-(or whatever you've configured `metrics_address` to be).
+</code></pre>
+<p>For monitoring, you can configure Grafana Agent to fetch metrics from <code>localhost:9184/metrics</code>
+(or whatever you've configured <code>metrics_address</code> to be).</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="operating-an-aggregator"><a class="header" href="#operating-an-aggregator">Operating an aggregator</a></h1>
 <!-- TODO (#141): Add further details and example cache setup. -->
@@ -2062,7 +2058,7 @@ including the path to the Walrus configuration file and the Sui wallet.</p>
 </div>
 <h2 id="correct-sui-network-configuration"><a class="header" href="#correct-sui-network-configuration">Correct Sui network configuration</a></h2>
 <p>If you get an error like "the specified Walrus system object does not exist", make sure your wallet
-is set up for the correct Sui network (mainnet or testnet as you may require) and you use the latest
+is set up for the correct Sui network (Mainnet or Testnet as you may require) and you use the latest
 <a href="usage/./setup.html#configuration">configuration</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="introduction-to-walrus-sites"><a class="header" href="#introduction-to-walrus-sites">Introduction to Walrus Sites</a></h1>

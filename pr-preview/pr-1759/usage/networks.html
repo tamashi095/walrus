@@ -228,12 +228,12 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="available-networks"><a class="header" href="#available-networks">Available Networks</a></h1>
-<p>Walrus mainnet operates a production quality storage network on the Sui mainnet. The Walrus testnet
-operates on the Sui testnet and is used to test new features of Walrus before they graduate to the
-mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
+<p>Walrus Mainnet operates a production quality storage network on the Sui Mainnet. The Walrus Testnet
+operates on the Sui Testnet and is used to test new features of Walrus before they graduate to the
+Mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
 <h2 id="mainnet-configuration"><a class="header" href="#mainnet-configuration">Mainnet configuration</a></h2>
 <h3 id="mainnet-parameters"><a class="header" href="#mainnet-parameters">Mainnet parameters</a></h3>
-<p>The client parameters for the Walrus mainnet are:</p>
+<p>The client parameters for the Walrus Mainnet are:</p>
 <pre><code class="language-yaml"># These are the only mandatory fields. These objects are specific for a particular Walrus
 # deployment but then do not change over time.
 system_object: 0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2
@@ -311,7 +311,7 @@ don't have it yet),</p>
 different Sui wallet, you can specify this in the <a href="#configuration">Walrus configuration file</a> or
 when <a href="./interacting.html">running the CLI</a>.</p>
 <h3 id="testnet-parameters"><a class="header" href="#testnet-parameters">Testnet parameters</a></h3>
-<p>The configuration parameters for the Walrus testnet currently are:</p>
+<p>The configuration parameters for the Walrus Testnet currently are:</p>
 <pre><code class="language-yaml"># These are the only mandatory fields. These objects are specific for a particular Walrus
 # deployment but then do not change over time.
 system_object: 0x98ebc47370603fe81d9e15491b2f1443d619d1dab720d586e429ed233e1255c1
@@ -380,8 +380,9 @@ file.</p>
 <p>In addition, one can spin up a local grafana instance to visualize the metrics collected by the
 storage nodes. This can be done via <code>cd docker/grafana-local; docker compose up</code>. This should work
 with the default storage node configuration.</p>
-<p>Note that while the Walrus storage nodes of this testbed run on your local machine, the Sui devnet
-is used by default to deploy and interact with the contracts. To run the testbed fully locally, simply
+<p>Note that while the Walrus storage nodes of this testbed run on your local machine, the Sui Devnet
+is used by default to deploy and interact with the contracts. To run the testbed fully locally,
+simply
 <a href="https://docs.sui.io/guides/developer/getting-started/local-network">start a local network with <code>sui start --with-faucet --force-regenesis</code></a>
 (requires <code>sui</code> to be v1.28.0 or higher) and specify <code>localnet</code> when starting the Walrus testbed.</p>
 

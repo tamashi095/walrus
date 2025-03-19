@@ -250,10 +250,8 @@ a path configured by the <code>/opt/walrus/config/walrus-node.yaml</code> file. 
 mandatory and optional configuration parameters will be made available with the binary.</p>
 <p>Here are some important config params from a shortened version of the <code>walrus-node.yaml</code> config
 file:</p>
-<!-- TODO() : change the testnet url below.>
-
-```yaml
-storage_path: /opt/walrus/db
+<!-- TODO() : change the Testnet url below. -->
+<pre><code class="language-yaml">storage_path: /opt/walrus/db
 metrics_address: 127.0.0.1:9184
 rest_api_address: 0.0.0.0:9185
 sui:
@@ -267,10 +265,9 @@ blob_recovery:
   max_concurrent_metadata_requests: 1
   sliver_request_timeout_secs: 300
   invalidity_sync_timeout_secs: 300
-```
-
-For monitoring, you can configure Grafana Agent to fetch metrics from `localhost:9184/metrics`
-(or whatever you've configured `metrics_address` to be).
+</code></pre>
+<p>For monitoring, you can configure Grafana Agent to fetch metrics from <code>localhost:9184/metrics</code>
+(or whatever you've configured <code>metrics_address</code> to be).</p>
 
                     </main>
 

@@ -280,10 +280,8 @@ especially in a future Mainnet deployment.</p>
 </div>
 </div>
 <h3 id="daemon-metrics"><a class="header" href="#daemon-metrics">Daemon metrics</a></h3>
-<p>Services by default export a metrics end-point accessible via:</p>
-<pre><code>http://127.0.0.1:27182/metrics
-</code></pre>
-<p>It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
+<p>Services by default export a metrics end-point accessible via <code>curl http://127.0.0.1:27182/metrics</code>.
+It can be changed using the <code>-a, --metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
 <h2 id="publisher-operation-and-configuration"><a class="header" href="#publisher-operation-and-configuration">Publisher operation and configuration</a></h2>
 <p>We list here a few important details on how the publisher deals with funds and objects on Sui.</p>
 <h3 id="number-of-sub-wallets-and-upload-concurrency"><a class="header" href="#number-of-sub-wallets-and-upload-concurrency">Number of sub-wallets and upload concurrency</a></h3>
