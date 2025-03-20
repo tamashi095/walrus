@@ -406,7 +406,7 @@ share a newly created blob by adding the <code>--share</code> option to the <cod
 <p>You can use the <code>walrus extend</code> command to extend the lifetime of a shared blob object. Shared blobs
 can only contain permanent blobs and cannot be deleted before their expiry.</p>
 <h2 id="blob-object-and-blob-id-utilities"><a class="header" href="#blob-object-and-blob-id-utilities">Blob object and blob ID utilities</a></h2>
-<p>The <code>walrus blob-id &lt;FILE&gt;</code> may be used to derive the blob ID of any file. The blob ID is a
+<p>The command <code>walrus blob-id &lt;FILE&gt;</code> may be used to derive the blob ID of any file. The blob ID is a
 commitment to the file, and any blob with the same ID will decode to the same content. The blob
 ID is a 256 bit number and represented on some Sui explorer as a decimal large number. The
 command <code>walrus convert-blob-id &lt;BLOB_ID_DECIMAL&gt;</code> may be used to convert it to a base64 URL safe
@@ -414,13 +414,30 @@ encoding used by the command line tools and other APIs.</p>
 <p>The <code>walrus list-blobs</code> command lists all the non expired Sui blob object that the current account
 owns, including their blob ID, object ID, and metadata about expiry and deletable status.
 The option <code>--include-expired</code> also lists expired blob objects.</p>
-<p>The Sui storage cost associated with blob objects may be reclaimed by deleting the Sui blob object.
+<p>The Sui storage cost associated with blob objects may be reclaimed by burning the Sui blob object.
 This does not lead to the Walrus blob being deleted, but means that operations such as extending
 its lifetime, deleting it, or modifying attributes are no more available.
-The <code>walrus burn-blobs --object-ids &lt;BLOB_IDS&gt;</code> command may be used to delete a specific list of
-blobs IDs. The <code>--all</code> flag deletes all blobs under the user account, and <code>--all-expired</code> deletes
-all expired blobs under the user account.</p>
+The <code>walrus burn-blobs --object-ids &lt;BLOB_OBJ_IDS&gt;</code> command may be used to burn a specific list of
+blobs object IDs. The <code>--all</code> flag burns all blobs under the user account,
+and <code>--all-expired</code> burns all expired blobs under the user account.</p>
+<h2 id="blob-attributes"><a class="header" href="#blob-attributes">Blob attributes</a></h2>
+<p>Walrus allows a set of key-value attribute pairs to be associated with a blob object. While the key
+and values may be arbitrary strings to accommodate any needs of dapps, specific keys are converted
+to HTTP headers when serving blobs through aggregators.</p>
 <!-- TODO():  attributes about HTTP headers understood by the aggregator? -->
+<p>The command</p>
+<pre><code class="language-sh">walrus set-blob-attribute &lt;BLOB_OBJ_ID&gt; --attr "key1" "value1" --attr "key2" "value2"
+</code></pre>
+<p>sets attributes <code>key1</code> and <code>key2</code> to values <code>value1</code> and <code>value2</code> respectively. The command
+<code>walrus get-blob-attribute &lt;BLOB_OBJ_ID&gt;</code> returns all attributes associated with a blob ID. Finally,</p>
+<pre><code class="language-sh">walrus remove-blob-attribute-fields &lt;BLOB_OBJ_ID&gt; --keys "key1,key2"
+</code></pre>
+<p>deletes the attributes with
+keys listed (separated by commas or spaces). All attributes of a blob object may be deleted by
+the command <code>walrus remove-blob-attribute &lt;BLOB_OBJ_ID&gt;</code>.</p>
+<p>Note that attributes are associated with blob object IDs on Sui, rather than the blob themselves on
+Walrus. This means that the gas for storage is reclaimed by deleting attributes. And also that the
+same blob contents may have different attributes for different blob objects for the same blob ID.</p>
 <h2 id="changing-the-default-configuration"><a class="header" href="#changing-the-default-configuration">Changing the default configuration</a></h2>
 <p>Use the <code>--config</code> option to specify a custom path to the
 <a href="../usage/setup.html#configuration">configuration location</a>.</p>
