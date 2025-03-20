@@ -254,18 +254,6 @@ impl SshConnectionManager {
             }
         }
     }
-
-    /// Kill a command running in the background of the specified instances.
-    pub async fn kill<I>(&self, instances: I, command_id: &str) -> SshResult<()>
-    where
-        I: IntoIterator<Item = Instance>,
-    {
-        let ssh_command = format!("(tmux kill-session -t {command_id} || true)");
-        let targets = instances.into_iter().map(|x| (x, ssh_command.clone()));
-        self.execute_per_instance(targets, CommandContext::default())
-            .await?;
-        Ok(())
-    }
 }
 
 /// Representation of an ssh connection.

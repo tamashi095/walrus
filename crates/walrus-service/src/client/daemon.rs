@@ -132,6 +132,7 @@ impl WalrusWriteClient for Client<SuiContractClient> {
                 store_when,
                 persistence,
                 post_store,
+                None,
             )
             .await?;
 
