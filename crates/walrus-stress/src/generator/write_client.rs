@@ -104,7 +104,7 @@ impl WriteClient {
                 &[blob],
                 random_encoding_type(),
                 epochs_to_store,
-                StoreWhen::Always,
+                StoreWhen::AlwaysIgnoreResources,
                 BlobPersistence::Permanent,
                 PostStoreAction::Keep,
                 Some(&self.metrics),
