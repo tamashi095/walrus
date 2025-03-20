@@ -244,12 +244,28 @@ staking_object: 0x10b9d30c28448939ce6c4d6c6e0ffce4a7f8a4ada8248bdad09ef8b70e4a39
 # adds subsidies to the rewards of the staking pools.
 subsidies_object: 0xb606eb177899edc2130c93bf65985af7ec959a2755dc126c953755e59324209e
 </code></pre>
-<p>In case you wish to explore the Walrus contracts their parameters are:</p>
+<p>In case you wish to explore the Walrus contracts their package IDs are:</p>
 <pre><code class="language-yaml">package_id: 0xfdc88f7d7cf30afab2f82e8380d11ee8f70efb90e863d1de8616fae1bb09ea77
 subsidies_package: 0xd843c37d213ea683ec3519abe4646fd618f52d7fce1c4e9875a4144d53e21ebc
 </code></pre>
 <p>These are inferred automatically from the object IDs above, and there is no need to
 manually input them into the Walrus client configuration file.</p>
+<!-- markdownlint-disable code-fence-style -->
+<div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
+<div class="admonition-title">
+<div id="admonition-tip-title">
+<p>Tip</p>
+</div>
+<a class="admonition-anchor-link" href="#admonition-tip"></a>
+</div>
+<div>
+<p>The easiest way to obtain the latest configuration is by downloading it from GitHub:</p>
+<pre><code class="language-sh">curl https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/docs/config/client_config_mainnet.yaml \
+    -o ~/.config/walrus/client_config.yaml
+</code></pre>
+</div>
+</div>
+<!-- markdownlint-enable code-fence-style -->
 <h2 id="testnet-configuration"><a class="header" href="#testnet-configuration">Testnet configuration</a></h2>
 <div id="admonition-disclaimer-about-the-walrus-testnet" class="admonition admonish-danger" role="note" aria-labelledby="admonition-disclaimer-about-the-walrus-testnet-title">
 <div class="admonition-title">
@@ -307,9 +323,11 @@ don't have it yet),</p>
 │ 0x65dca966dc... │ 1000000000         │ 1.00             │
 ╰─────────────────┴────────────────────┴──────────────────╯
 </code></pre>
+<!-- markdownlint-disable link-fragments -->
 <p>The system-wide wallet will be used by Walrus if no other path is specified. If you want to use a
 different Sui wallet, you can specify this in the <a href="#configuration">Walrus configuration file</a> or
 when <a href="./interacting.html">running the CLI</a>.</p>
+<!-- markdownlint-disable link-fragments -->
 <h3 id="testnet-parameters"><a class="header" href="#testnet-parameters">Testnet parameters</a></h3>
 <p>The configuration parameters for the Walrus Testnet currently are:</p>
 <pre><code class="language-yaml"># These are the only mandatory fields. These objects are specific for a particular Walrus
@@ -331,12 +349,12 @@ exchange_objects:
 subsidies_object: 0x4b23c353c35a4dde72fe862399ebe59423933d3c2c0a3f2733b9f74cb3b4933d
 </code></pre>
 <!-- markdownlint-disable code-fence-style -->
-<div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
+<div id="admonition-tip-1" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-1-title">
 <div class="admonition-title">
-<div id="admonition-tip-title">
+<div id="admonition-tip-1-title">
 <p>Tip</p>
 </div>
-<a class="admonition-anchor-link" href="#admonition-tip"></a>
+<a class="admonition-anchor-link" href="#admonition-tip-1"></a>
 </div>
 <div>
 <p>The easiest way to obtain the latest configuration is by downloading it from GitHub:</p>

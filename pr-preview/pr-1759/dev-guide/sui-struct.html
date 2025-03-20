@@ -274,6 +274,7 @@ public struct Blob has key, store {
     deletable: bool,
 }
 </code></pre>
+<!-- markdownlint-disable line-length -->
 <p>Public functions associated with these objects can be found in the respective
 <a href="https://github.com/MystenLabs/walrus/tree/main/contracts/walrus/sources/system/storage_resource.move"><code>storage_resource</code> move module</a>
 and <a href="https://github.com/MystenLabs/walrus/tree/main/contracts/walrus/sources/system/blob.move"><code>blob</code> move module</a>. Storage resources can be split and merged in time and data capacity, and can be
@@ -282,6 +283,7 @@ transferred between users allowing complex contracts to be created.</p>
 <p>Walrus uses <a href="https://github.com/MystenLabs/walrus/blob/main/contracts/walrus/sources/system/events.move">custom Sui events</a> extensively to notify storage nodes of updates concerning stored Blobs and
 the state of the network. Applications may also use Sui RPC facilities to observe Walrus related
 events.</p>
+<!-- markdownlint-enable line-length -->
 <p>When a blob is first registered, a <code>BlobRegistered</code> event is emitted that informs storage nodes
 that they should expect slivers associated with its Blob ID. Eventually when the blob is
 certified, a <code>BlobCertified</code> is emitted containing information about the blob ID and the epoch
@@ -297,13 +299,14 @@ between epochs. And associated events such as <code>ShardsReceived</code>, <code
 and <code>ShardRecoveryStart</code> indicate storage node level events related to epoch transitions,
 shard migrations and epoch parameters.</p>
 <h2 id="system-and-staking-information"><a class="header" href="#system-and-staking-information">System and staking information</a></h2>
+<!-- markdownlint-disable line-length -->
 <p>The <a href="https://github.com/MystenLabs/walrus/blob/main/contracts/walrus/sources/system/system_state_inner.move">Walrus system object</a> contains metadata about the available and used storage, as well as the
 price of storage per KiB of storage in FROST. The committee
 structure within the system object can be used to read the current epoch number, as well as
 information about the committee. Committee changes between epochs are managed by a set of
 <a href="https://github.com/MystenLabs/walrus/tree/main/contracts/walrus/sources/staking">staking contracts</a>
 that implement a full delegated proof of stake system based on the WAL token.</p>
-<!-- TODO (#146): say more about staking contracts. -->
+<!-- markdownlint-enable line-length -->
 
                     </main>
 
