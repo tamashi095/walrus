@@ -1285,6 +1285,7 @@ terminal then follow on-screen instructions. See <a href="usage/setup.html#windo
 if you are on Windows.</p>
 <pre><code class="language-sh">curl --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/scripts/walrus-install.sh | sh
 </code></pre>
+<p>Make sure that your <code>"$HOME"/.local/bin</code> directory is in your <code>$PATH</code>.</p>
 <p>Once this is done, you should be able to simply type <code>walrus</code> in your terminal. For example you can
 get usage instructions (see <a href="usage/./interacting.html">the next chapter</a> for further details):</p>
 <pre><code class="language-terminal">$ walrus --help
@@ -1313,9 +1314,12 @@ Note that due to DoS protection, it may not be possible to download the binaries
 <p>To download <code>walrus</code> to your Microsoft Windows computer, run the following in your
 PowerShell then follow on-screen instructions.
 .</p>
-<pre><code class="language-PowerShell">Invoke-WebRequest -Uri https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-windows-x86_64.exe -OutFile walrus.exe
+<pre><code class="language-PowerShell">(New-Object System.Net.WebClient).DownloadFile(
+  "https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-windows-x86_64.exe",
+  "walrus.exe"
+)
 </code></pre>
-<p>From there, you'll need to place the <code>walrus</code> executable somewhere in your <code>PATH</code>.</p>
+<p>From there, you'll need to place <code>walrus.exe</code> somewhere in your <code>PATH</code>.</p>
 <h3 id="previous-versions-optional"><a class="header" href="#previous-versions-optional">Previous versions (optional)</a></h3>
 <p>In addition to the latest version of the <code>walrus</code> binary, the GCS bucket also contains previous
 versions. An overview in XML format is available at
