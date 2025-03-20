@@ -1256,7 +1256,7 @@ existing shared blob with the <code>walrus fund-shared-blob</code> command. Addi
 share a newly created blob by adding the <code>--share</code> option to the <code>walrus store</code> command.</p>
 <p>You can use the <code>walrus extend</code> command to extend the lifetime of a shared blob object. Shared blobs
 can only contain permanent blobs and cannot be deleted before their expiry.</p>
-<h2 id="blob-id-utilities"><a class="header" href="#blob-id-utilities">Blob ID utilities</a></h2>
+<h2 id="blob-object-and-blob-id-utilities"><a class="header" href="#blob-object-and-blob-id-utilities">Blob object and blob ID utilities</a></h2>
 <p>The <code>walrus blob-id &lt;FILE&gt;</code> may be used to derive the blob ID of any file. The blob ID is a
 commitment to the file, and any blob with the same ID will decode to the same content. The blob
 ID is a 256 bit number and represented on some Sui explorer as a decimal large number. The
@@ -1265,6 +1265,13 @@ encoding used by the command line tools and other APIs.</p>
 <p>The <code>walrus list-blobs</code> command lists all the non expired Sui blob object that the current account
 owns, including their blob ID, object ID, and metadata about expiry and deletable status.
 The option <code>--include-expired</code> also lists expired blob objects.</p>
+<p>The Sui storage cost associated with blob objects may be reclaimed by deleting the Sui blob object.
+This does not lead to the Walrus blob being deleted, but means that operations such as extending
+its lifetime, deleting it, or modifying attributes are no more available.
+The <code>walrus burn-blobs --object-ids &lt;BLOB_IDS&gt;</code> command may be used to delete a specific list of
+blobs IDs. The <code>--all</code> flag deletes all blobs under the user account, and <code>--all-expired</code> deletes
+all expired blobs under the user account.</p>
+<!-- TODO():  attributes about HTTP headers understood by the aggregator? -->
 <h2 id="changing-the-default-configuration"><a class="header" href="#changing-the-default-configuration">Changing the default configuration</a></h2>
 <p>Use the <code>--config</code> option to specify a custom path to the
 <a href="usage/../usage/setup.html#configuration">configuration location</a>.</p>
@@ -1273,8 +1280,10 @@ file. And a <code>--gas-budget &lt;GAS_BUDGET&gt;</code> argument may be used to
 MIST) that the command is allowed to use.</p>
 <h2 id="logging-and-metrics"><a class="header" href="#logging-and-metrics">Logging and metrics</a></h2>
 <p>The <code>walrus</code> CLI allows for multiple levels of logging, which can be turned on via an env variable:</p>
-<pre><code class="language-sh">RUST_LOG=trace walrus info
+<pre><code class="language-sh">RUST_LOG=walrus=trace walrus info
 </code></pre>
+<p>By default <code>info</code> level logs are enabled, but <code>error</code>, <code>debug</code> and <code>trace</code> can give a more
+intimate understanding of what a command does, or how it fails.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="json-mode"><a class="header" href="#json-mode">JSON mode</a></h1>
 <p>All Walrus client commands are also available in JSON mode. In this mode, all the command-line flags
