@@ -238,7 +238,7 @@ impl ProtocolCommands for TargetProtocol {
                         "--max-size-log2 {}",
                         parameters.client_parameters.max_size_log2
                     ),
-                    format!("--gas-refill-period-millis {}", 1000 * 60 * 60 * 24),
+                    format!("--gas-refill-period-millis 1000"),
                 ]
                 .join(" ");
 

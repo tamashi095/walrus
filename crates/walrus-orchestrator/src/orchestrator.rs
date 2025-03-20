@@ -309,6 +309,10 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         // Select the instances to run.
         let (clients, _) = self.select_instances(parameters)?;
 
+        for client in &clients {
+            display::config("Client address", client.main_ip);
+        }
+
         // Deploy the load generators.
         let targets = self
             .protocol_commands
