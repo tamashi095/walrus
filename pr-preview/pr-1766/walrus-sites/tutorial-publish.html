@@ -253,22 +253,29 @@ locations, publishing the <code>./walrus-snake</code> site is as simple as calli
 <a class="admonition-anchor-link" href="#admonition-tip"></a>
 </div>
 <div>
-<p>Currently on Walrus Testnet, the duration of an epoch is two days. If you want your site to stay up
-longer, specify the number of epochs with the <code>--epochs</code> flag (maximum 183 epochs).</p>
+<p>Depending on the network, the duration of an epoch may vary. Currently on Walrus Testnet, the
+duration of an epoch is two days. On Mainnet, the duration of an epoch is two weeks. If you want
+your site to stay up longer, specify the number of epochs with the <code>--epochs</code> flag.</p>
 </div>
 </div>
 <p>The end of the output should look like the following:</p>
 <pre><code class="language-txt">Execution completed
 Resource operations performed:
-  - created resource /Oi-Regular.ttf with blob ID 76npyqDyGF10-jP_ov-UBHpi-RaRFnxcWgslueGEfr0
-  - created resource /file.svg with blob ID w70pYgtLmi--38Jg1sTGaLlZkQtximNMHXjxDQdXKa0
-  - created resource /index.html with blob ID LVLk9VSnBrEgQ2HJHAgU3p8IarKypQpfn38aSeUZzzE
-  - created resource /walrus.svg with blob ID 866UDjMAy_BB8SsTcgjGEOFp2uAO9BbcVbLh5-_oBNE
+  - created resource /.DS_Store with blob ID PwNzE9_a9anYb8AZysafQZGqd4h0scsTGhzF2GPsWmQ
+  - created resource /Oi-Regular.ttf with blob ID KUTTV_95_c68oQhaRP97tDPOYu0vqCWiGL7mzOq1faU
+  - created resource /file.svg with blob ID oUpm044qBN1rkyIJYvMB4dUj6bRe3QEvJAN-cvlIFmk
+  - created resource /index.html with blob ID AR03hvxSlyfYl-7MhXct4y3rnIIGPHdnjiIF03BK_XY
+  - created resource /walrus.svg with blob ID xK8K1Q5khrl3eBT4jEiB-L_gyShEIOVWti8DcAoEjtw
 The site routes were modified
 
 Created new site: test site
-New site object ID: 0x407a308190eb82b266be9cc28b888d04c5b2e5a503c7d0ffd3f69681ea83b73a
-Browse the resulting site at: https://1lupgq2auevjruy7hs9z7tskqwjp5cc8c5ebhci4v57qyl4piy.walrus.site
+New site object ID: 0xe674c144119a37a0ed9cef26a962c3fdfbdbfd86a3b3db562ee81d5542a4eccf
+To browse the site, you have the following options:
+        1. Run a local portal, and browse the site through it: e.g. http://5qs1ypn4wn90d6mv7d7dkwvvl49hdrlpqulr11ngpykoifycwf.localhost:3000
+           (more info: https://docs.walrus.site/walrus-sites/portal.html#running-the-portal-locally)
+        2. Use a third-party portal (e.g. walrus.site), which will require a SuiNS name.
+           First, buy a SuiNS name at suins.io (e.g. example-domain), then point it to the site object ID.
+           Finally, browse it with: https://example-domain.walrus.site
 </code></pre>
 <p>This output tells you that, for each file in the folder, a new Walrus blob was created, and the
 respective blob ID. Further, it prints the object ID of the Walrus Site object on Sui (so you can
@@ -287,7 +294,7 @@ configuration</a> section.</p>
 <p>Then, you can update the existing site by running the <code>update</code> command, providing the directory
 where to find the updated files (still <code>./walrus-snake</code>) and the object ID of the existing site
 (<code>0x407a3081...</code>):</p>
-<pre><code class="language-sh">site-builder update --epochs 100 ./walrus-snake 0x407a3081...
+<pre><code class="language-sh">site-builder update --epochs 100 ./walrus-snake 0xe674c14...
 </code></pre>
 <p>The output this time should be:</p>
 <pre><code class="language-txt">Execution completed
@@ -296,8 +303,13 @@ Resource operations performed:
   - created resource /index.html with blob ID pcZaosgEFtmP2d2IV3QdVhnUjajvQzY2ev8d9U_D5VY
 The site routes were left unchanged
 
-Site object ID: 0x407a308190eb82b266be9cc28b888d04c5b2e5a503c7d0ffd3f69681ea83b73a
-Browse the resulting site at: https://1lupgq2auevjruy7hs9z7tskqwjp5cc8c5ebhci4v57qyl4piy.walrus.site
+Site object ID: 0xe674c144119a37a0ed9cef26a962c3fdfbdbfd86a3b3db562ee81d5542a4eccf
+To browse the site, you have the following options:
+        1. Run a local portal, and browse the site through it: e.g. http://2ql9wtro4xf2x13pm9jjeyhhfj28okawz5hy453hkyfeholy6f.localhost:3000
+           (more info: https://docs.walrus.site/walrus-sites/portal.html#running-the-portal-locally)
+        2. Use a third-party portal (e.g. walrus.site), which will require a SuiNS name.
+           First, buy a SuiNS name at suins.io (e.g. example-domain), then point it to the site object ID.
+           Finally, browse it with: https://example-domain.walrus.site
 </code></pre>
 <p>Compared to the <code>publish</code> action, we can see that now the only actions performed were to delete the
 old <code>index.html</code>, and update it with the newer one.</p>
