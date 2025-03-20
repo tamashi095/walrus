@@ -83,6 +83,7 @@
 
         <!-- Custom theme stylesheets -->
         <link rel="stylesheet" href="docs/mdbook-admonish.css">
+        <link rel="stylesheet" href="docs/theme/tabs.css">
 
     </head>
     <body class="sidebar-visible no-js">
@@ -3415,12 +3416,36 @@ we need.</p>
 <p>The environment variables are set in the <code>.env.local</code> file at the root of each portal directory.
 To just run a simple instance of a portal, you can use the environment variables specified
 in the <code>.env.example</code> file:</p>
-<pre><code class="language-sh">cp ./portal/server/.env.example ./portal/server/.env.local
+<div class="mdbook-tabs-container">
+<nav class="mdbook-tabs">
+<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
+<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
+</nav>
+<div class="mdbook-tab-content" data-tabname="Mainnet">
+<pre><code class="language-sh">cp ./portal/server/.env.mainnet.example ./portal/server/.env.local
 </code></pre>
+</div>
+<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<pre><code class="language-sh">cp ./portal/server/.env.testnet.example ./portal/server/.env.local
+</code></pre>
+</div>
+</div>
 <p>Likewise, if you want to run the service-worker portal, you can copy the <code>.env.example</code> file to
 <code>.env.local</code> in the <code>portal/worker</code> directory.</p>
-<pre><code class="language-sh">cp ./portal/worker/.env.example ./portal/worker/.env.local
+<div class="mdbook-tabs-container">
+<nav class="mdbook-tabs">
+<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
+<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
+</nav>
+<div class="mdbook-tab-content" data-tabname="Mainnet">
+<pre><code class="language-sh">cp ./portal/worker/.env.mainnet.example ./portal/worker/.env.local
 </code></pre>
+</div>
+<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<pre><code class="language-sh">cp ./portal/worker/.env.testnet.example ./portal/worker/.env.local
+</code></pre>
+</div>
+</div>
 <p>For a more detailed configuration, you can modify the <code>.env.local</code> files to suit your needs.
 As a reference, here are the definitions of the environment variables:</p>
 <div id="admonition-note" class="admonition admonish-note" role="note" aria-labelledby="admonition-note-title">
@@ -4772,6 +4797,7 @@ Palo Alto, CA 94301 <br />
         <script src="book.js"></script>
 
         <!-- Custom JS scripts -->
+        <script src="docs/theme/tabs.js"></script>
 
         <script>
         window.addEventListener('load', function() {
