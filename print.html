@@ -3072,10 +3072,18 @@ with the <code>--ws-resources</code> flag when running the <code>publish</code> 
     "/*": "/index.html",
     "/accounts/*": "/accounts.html",
     "/path/assets/*": "/assets/asset_router.html"
+  },
+  "metadata": {
+      "link": "https://subdomain.walrus.site",
+      "image_url": "https://www.walrus.xyz/walrus-site",
+      "description": "This is a walrus site.",
+      "project_url": "https://github.com/MystenLabs/walrus-sites/",
+      "creator": "MystenLabs"
   }
 }
 </code></pre>
-<p>We now describe in details the two sections of the configuration file, <code>headers</code> and <code>routes</code>.</p>
+<p>We now describe in details the two sections of the configuration file, <code>headers</code>, <code>routes</code> and
+<code>metadata</code>.</p>
 <h2 id="specifying-http-response-headers"><a class="header" href="#specifying-http-response-headers">Specifying HTTP response headers</a></h2>
 <p>The <code>headers</code> section allows you to specify custom HTTP response headers for specific resources.
 The keys in the <code>headers</code> object are the paths of the resources, and the values are lists of
@@ -3170,6 +3178,33 @@ previous one;</li>
 </ul>
 <p><code>/index.html</code>, <code>/accounts.html</code>, and <code>/assets/asset_router.html</code> are all existing resources on the
 Walrus Sites object on Sui.</p>
+<h2 id="displaying-the-site-object-on-wallets-and-explorers"><a class="header" href="#displaying-the-site-object-on-wallets-and-explorers">Displaying the Site Object on Wallets and Explorers</a></h2>
+<p>It's possible to make your Site object prettier by displaying information about it on Sui explorers
+and wallets by using the <code>metadata</code> field. This is useful for adding human-readable information
+about the site. For example, you can add a link to your site's homepage, an image of your site's
+logo, etc.</p>
+<p>As you can see from the example above, the fields correspond to the basic set of properties
+suggested by the
+<a href="https://docs.sui.io/standards/display#display-properties">Sui Display object standard</a>.</p>
+<pre><code class="language-JSON">"metadata": {
+      "link": "https://subdomain.walrus.site",
+      "image_url": "https://www.walrus.xyz/walrus-site",
+      "description": "This is a walrus site.",
+      "project_url": "https://github.com/MystenLabs/walrus-sites/",
+      "creator": "MystenLabs"
+  }
+</code></pre>
+<p>All metadata fields are optional, and can be omitted if not needed. There are some default values
+specified in the site-builder CLI, which can be overridden by the user.</p>
+<p>It is recommended to use the above fields like this:</p>
+<ul>
+<li><code>link</code>: Add a link to your site's homepage.</li>
+<li><code>image_url</code>: Include a URL to your site's logo which will be displayed on your wallet. For
+example you can place a link to your sites favicon.</li>
+<li><code>description</code>: Add a brief description of your site.</li>
+<li><code>project_url</code>: If your site is open-source, add a link to your site's GitHub repository.</li>
+<li><code>creator</code>: Add the name of your company, group, or individual creator of your site.</li>
+</ul>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="linking-from-and-to-walrus-sites"><a class="header" href="#linking-from-and-to-walrus-sites">Linking from and to Walrus Sites</a></h1>
 <div id="admonition-walrus-sites-links-are-currently-unavailable" class="admonition admonish-warning" role="note" aria-labelledby="admonition-walrus-sites-links-are-currently-unavailable-title">
