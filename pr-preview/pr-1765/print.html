@@ -3178,9 +3178,11 @@ previous one;</li>
 </ul>
 <p><code>/index.html</code>, <code>/accounts.html</code>, and <code>/assets/asset_router.html</code> are all existing resources on the
 Walrus Sites object on Sui.</p>
-<h2 id="prettifying-the-site-object"><a class="header" href="#prettifying-the-site-object">Prettifying the Site object</a></h2>
-<p>It's possible to prettify the site object on Sui explorers and wallets by using the <code>metadata</code>
-field. This is useful for adding human-readable information about the site.</p>
+<h2 id="displaying-the-site-object-on-wallets-and-explorers"><a class="header" href="#displaying-the-site-object-on-wallets-and-explorers">Displaying the Site Object on Wallets and Explorers</a></h2>
+<p>It's possible to make your Site object prettier by displaying information about it on Sui explorers
+and wallets by using the <code>metadata</code> field. This is useful for adding human-readable information
+about the site. For example, you can add a link to your site's homepage, an image of your site's
+logo, etc.</p>
 <p>As you can see from the example above, the fields correspond to the basic set of properties
 suggested by the
 <a href="https://docs.sui.io/standards/display#display-properties">Sui Display object standard</a>.</p>
@@ -3197,7 +3199,8 @@ specified in the site-builder CLI, which can be overridden by the user.</p>
 <p>It is recommended to use the above fields like this:</p>
 <ul>
 <li><code>link</code>: Add a link to your site's homepage.</li>
-<li><code>image_url</code>: Add a link to your site's logo.</li>
+<li><code>image_url</code>: Include a URL to your site's logo which will be displayed on your wallet. For
+example you can place a link to your sites favicon.</li>
 <li><code>description</code>: Add a brief description of your site.</li>
 <li><code>project_url</code>: If your site is open-source, add a link to your site's GitHub repository.</li>
 <li><code>creator</code>: Add the name of your company, group, or individual creator of your site.</li>
