@@ -301,6 +301,24 @@ Commands:
 <h2 id="configuration"><a class="header" href="#configuration">Configuration</a></h2>
 <p>The <code>site-builder</code> tool needs a configuration file to work. This file is called <code>sites-config.yaml</code>
 and looks like this:</p>
+<div class="mdbook-tabs-container">
+<nav class="mdbook-tabs">
+<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
+<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
+</nav>
+<div class="mdbook-tab-content" data-tabname="Mainnet">
+<pre><code class="language-yaml"># module: site
+# portal: walrus.site
+package:
+# general:
+#   rpc_url:
+#   wallet:
+#   walrus_binary: /path/to/walrus
+#   walrus_config: /path/to/devnet_deployment/client_config.yaml
+#   gas_budget: 500000000
+</code></pre>
+</div>
+<div class="mdbook-tab-content hidden" data-tabname="Testnet">
 <pre><code class="language-yaml"># module: site
 # portal: walrus.site
 package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
@@ -311,6 +329,8 @@ package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
 #   walrus_config: /path/to/devnet_deployment/client_config.yaml
 #   gas_budget: 500000000
 </code></pre>
+</div>
+</div>
 <p>As you can see, the configuration file is quite simple. The only mandatory field is the <code>package</code>
 field, which represents the Sui object ID of the Walrus Sites smart contract. You can find the
 latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/testnet">Walrus Sites

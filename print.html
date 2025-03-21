@@ -2733,6 +2733,24 @@ Commands:
 <h2 id="configuration-1"><a class="header" href="#configuration-1">Configuration</a></h2>
 <p>The <code>site-builder</code> tool needs a configuration file to work. This file is called <code>sites-config.yaml</code>
 and looks like this:</p>
+<div class="mdbook-tabs-container">
+<nav class="mdbook-tabs">
+<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
+<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
+</nav>
+<div class="mdbook-tab-content" data-tabname="Mainnet">
+<pre><code class="language-yaml"># module: site
+# portal: walrus.site
+package:
+# general:
+#   rpc_url:
+#   wallet:
+#   walrus_binary: /path/to/walrus
+#   walrus_config: /path/to/devnet_deployment/client_config.yaml
+#   gas_budget: 500000000
+</code></pre>
+</div>
+<div class="mdbook-tab-content hidden" data-tabname="Testnet">
 <pre><code class="language-yaml"># module: site
 # portal: walrus.site
 package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
@@ -2743,6 +2761,8 @@ package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
 #   walrus_config: /path/to/devnet_deployment/client_config.yaml
 #   gas_budget: 500000000
 </code></pre>
+</div>
+</div>
 <p>As you can see, the configuration file is quite simple. The only mandatory field is the <code>package</code>
 field, which represents the Sui object ID of the Walrus Sites smart contract. You can find the
 latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/testnet">Walrus Sites
@@ -3523,27 +3543,59 @@ manage the behavior of the portal. For example, if you host a publicly-accessibl
 serving sites that are not published by you.</p>
 </div>
 </div>
-<p>-<code>AGGREGATOR_URL</code>: The url to a Walrus aggregator that will fetch the site resources from Walrus.</p>
-<p>-<code>AMPLITUDE_API_KEY</code>: Provide it if you want to enable <a href="https://amplitude.com/">Amplitude</a> for your
+<ul>
+<li>
+<p><code>AGGREGATOR_URL</code>: The url to a Walrus aggregator that will fetch the site resources from Walrus.</p>
+</li>
+<li>
+<p><code>AMPLITUDE_API_KEY</code>: Provide it if you want to enable <a href="https://amplitude.com/">Amplitude</a> for your
 server analytics.</p>
-<p>-<code>EDGE_CONFIG</code>: If you host your portal on Vercel, you can use the <a href="https://vercel.com/docs/edge-config">Edge Config</a> to
+</li>
+<li>
+<p><code>EDGE_CONFIG</code>: If you host your portal on Vercel, you can use the <a href="https://vercel.com/docs/edge-config">Edge Config</a> to
 blocklist certain SuiNS subdomains or b36 object ids.</p>
-<p>-<code>EDGE_CONFIG_ALLOWLIST</code>: Similar to blocklist, but allows certain subdomains to use the premium rpc
-url list.</p>
-<p>-<code>ENABLE_ALLOWLIST</code>: Enable the allowlist feature.</p>
-<p>-<code>ENABLE_BLOCKLIST</code>: Enable the blocklist feature.</p>
-<p>-<code>ENABLE_SENTRY</code>: Enable Sentry error tracking.</p>
-<p>-<code>ENABLE_VERCEL_WEB_ANALYTICS</code>: Enable Vercel web analytics.</p>
-<p>-<code>LANDING_PAGE_OID_B36</code>: The b36 object id of the landing page Walrus Site. i.e. the page you get
+</li>
+<li>
+<p><code>EDGE_CONFIG_ALLOWLIST</code>: Similar to blocklist, but allows certain subdomains to use the premium
+rpc url list.</p>
+</li>
+<li>
+<p><code>ENABLE_ALLOWLIST</code>: Enable the allowlist feature.</p>
+</li>
+<li>
+<p><code>ENABLE_BLOCKLIST</code>: Enable the blocklist feature.</p>
+</li>
+<li>
+<p><code>ENABLE_SENTRY</code>: Enable Sentry error tracking.</p>
+</li>
+<li>
+<p><code>ENABLE_VERCEL_WEB_ANALYTICS</code>: Enable Vercel web analytics.</p>
+</li>
+<li>
+<p><code>LANDING_PAGE_OID_B36</code>: The b36 object id of the landing page Walrus Site. i.e. the page you get
 when you visit <code>localhost:3000</code>.</p>
-<p>-<code>PORTAL_DOMAIN_NAME_LENGTH</code>: If you connect your portal with a domain name, specify the length of
+</li>
+<li>
+<p><code>PORTAL_DOMAIN_NAME_LENGTH</code>: If you connect your portal with a domain name, specify the length of
 the domain name. e.g. <code>example.com</code> has a length of 11.</p>
-<p>-<code>PREMIUM_RPC_URL_LIST</code>: A list of rpc urls that are used when a site belongs to the allowlist.</p>
-<p>-<code>RPC_URL_LIST</code>: A list of rpc urls that are used when a site does not belong to the allowlist.</p>
-<p>-<code>SENTRY_AUTH_TOKEN</code>: If you enable Sentry error tracking, provide your Sentry auth token.</p>
-<p>-<code>SENTRY_DSN</code>: If you enable Sentry error tracking, provide your Sentry DSN.</p>
-<p>-<code>SENTRY_TRACES_SAMPLE_RATE</code>: If you enable Sentry error tracking, provide the sample rate for
+</li>
+<li>
+<p><code>PREMIUM_RPC_URL_LIST</code>: A list of rpc urls that are used when a site belongs to the allowlist.</p>
+</li>
+<li>
+<p><code>RPC_URL_LIST</code>: A list of rpc urls that are used when a site does not belong to the allowlist.</p>
+</li>
+<li>
+<p><code>SENTRY_AUTH_TOKEN</code>: If you enable Sentry error tracking, provide your Sentry auth token.</p>
+</li>
+<li>
+<p><code>SENTRY_DSN</code>: If you enable Sentry error tracking, provide your Sentry DSN.</p>
+</li>
+<li>
+<p><code>SENTRY_TRACES_SAMPLE_RATE</code>: If you enable Sentry error tracking, provide the sample rate for
 traces.</p>
+</li>
+</ul>
 <p>-<code>SITE_PACKAGE</code>: The Walrus Site package id. Depending on the network you are using, you will
 have to specify the correct package id.</p>
 <p>-<code>SUINS_CLIENT_NETWORK</code>: The network of the SuiNS client.</p>
@@ -3554,12 +3606,18 @@ site will not be served.</p>
 configuration parameters for the portal. Typically, you won't need to modify these, but if you do,
 here are the explanations for each parameter:</p>
 <ul>
-<li><code>MAX_REDIRECT_DEPTH</code>: The number of <a href="walrus-sites/./redirects.html">redirects</a> the portal will follow
-before stopping.</li>
-<li><code>SITE_NAMES</code>: Hard coded <code>name: objectID</code> mappings, to override the SuiNS names. For development
-only. Use this at your own risk, may render some sites with legitimate SuiNS names unusable.</li>
-<li><code>FALLBACK_PORTAL</code>: This is related only to the service worker portal. The fallback portal should
-be a server-side portal that is used in cases where some browsers do not support service workers.</li>
+<li>
+<p><code>MAX_REDIRECT_DEPTH</code>: The number of <a href="walrus-sites/./redirects.html">redirects</a> the portal will follow
+before stopping.</p>
+</li>
+<li>
+<p><code>SITE_NAMES</code>: Hard coded <code>name: objectID</code> mappings, to override the SuiNS names. For development
+only. Use this at your own risk, may render some sites with legitimate SuiNS names unusable.</p>
+</li>
+<li>
+<p><code>FALLBACK_PORTAL</code>: This is related only to the service worker portal. The fallback portal should
+be a server-side portal that is used in cases where some browsers do not support service workers.</p>
+</li>
 </ul>
 <h3 id="deploying-the-portal"><a class="header" href="#deploying-the-portal">Deploying the Portal</a></h3>
 <p>To run the portal locally you can either use a Docker container or a local development environment.</p>
