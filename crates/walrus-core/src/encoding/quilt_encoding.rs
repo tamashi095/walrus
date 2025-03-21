@@ -35,8 +35,10 @@ const QUILT_INDEX_SIZE_PREFIX_SIZE: usize = 8;
 ///
 /// The data is organized as a 2D matrix where:
 /// - Each blob occupies a continuous range of columns (secondary slivers).
-/// - The first column's initial 8 bytes contain the unencoded length of the [`QuiltIndex`].
-/// - The [`QuiltIndex`] is stored in the first columns(s).
+/// - The first column's initial [`QUILT_INDEX_SIZE_PREFIX_SIZE`] bytes contain the unencoded
+///   length of the [`QuiltIndex`]. It is guaranteed the column size is more than
+///   [`QUILT_INDEX_SIZE_PREFIX_SIZE`].
+/// - The [`QuiltIndex`] is stored in the first one or multiple columns.
 /// - The blob layout is defined by the [`QuiltIndex`].
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Quilt {
@@ -44,10 +46,10 @@ pub struct Quilt {
     data: Vec<u8>,
     /// The size of each row in bytes.
     row_size: usize,
-    /// The internal structure of the quilt.
-    quilt_index: QuiltIndex,
     /// The size of each symbol in bytes.
     symbol_size: usize,
+    /// The internal structure of the quilt.
+    quilt_index: QuiltIndex,
 }
 
 impl Quilt {
@@ -212,6 +214,11 @@ impl Quilt {
     /// Returns the quilt index.
     pub fn quilt_index(&self) -> &QuiltIndex {
         &self.quilt_index
+    }
+
+    /// Returns the data of the quilt.
+    pub fn data(&self) -> &[u8] {
+        &self.data
     }
 }
 

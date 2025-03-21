@@ -112,12 +112,11 @@ impl QuiltBlock {
 
 /// A index over the blobs in a quilt.
 ///
-/// Each [QuiltBlock] represents a blob in the quilt.
-/// The blobs are located by the secondary sliver index, each blob is
+/// Each [QuiltBlock] represents a blob stored in the quilt. And each blob is
 /// mapped to a continuous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndex {
-    /// The structure of the quilt.
+    /// Location/identity index of the blob in the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
 
@@ -155,13 +154,12 @@ impl QuiltIndex {
         self.quilt_blocks.is_empty()
     }
 
-    /// Populate start_index.
+    /// Populate start_indices of the blocks, since the start index is not stored in wire format.
     pub fn populate_start_indices(&mut self, first_start: u16) {
         if let Some(first_block) = self.quilt_blocks.first_mut() {
             first_block.start_index = first_start;
         }
 
-        // For each subsequent block, set its start_index to the previous block's end_index
         for i in 1..self.quilt_blocks.len() {
             let prev_end_index = self.quilt_blocks[i - 1].end_index;
             self.quilt_blocks[i].start_index = prev_end_index;
@@ -169,10 +167,10 @@ impl QuiltIndex {
     }
 }
 
-/// Metadata associated with a quilt containing index.
+/// Metadata associated with a quilt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltMetadata {
-    /// The BlobId of the quilt.
+    /// The BlobId of the quilt blob ([`crate::encoding::Quilt::data()`]).
     pub quilt_id: BlobId,
     /// The blob metadata of the quilt blob.
     pub metadata: BlobMetadata,
@@ -181,17 +179,17 @@ pub struct QuiltMetadata {
 }
 
 impl QuiltMetadata {
-    /// Returns the quilt index.
+    /// Returns the quilt index [`QuiltIndex`].
     pub fn index(&self) -> &QuiltIndex {
         &self.index
     }
 
-    /// Returns the blob metadata of the quilt.
+    /// Returns the [`BlobMetadata`] of the quilt.
     pub fn metadata(&self) -> &BlobMetadata {
         &self.metadata
     }
 
-    /// Returns the blob ID of the quilt.
+    /// Returns the [`BlobId`] of the quilt.
     pub fn blob_id(&self) -> &BlobId {
         &self.quilt_id
     }
