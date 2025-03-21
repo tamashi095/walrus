@@ -780,18 +780,19 @@ adapt most of those.</p>
 </div>
 </div>
 <h3 id="nix-install"><a class="header" href="#nix-install">Install via script</a></h3>
-<p>To download and install <code>walrus</code> to your <code>"$HOME"/.local/bin</code> directory, run the following in your
-terminal then follow on-screen instructions. See <a href="usage/setup.html#windows-install">Windows instructions</a>
-if you are on Windows.</p>
-<pre><code class="language-sh"># Fresh install
+<p>To download and install <code>walrus</code> to your <code>"$HOME"/.local/bin</code> directory, run one of the following
+commands in your terminal then follow on-screen instructions. See <a href="usage/setup.html#windows-install">Windows
+instructions</a> if you are on Windows.</p>
+<pre><code class="language-sh"># Run a first-time install.
 curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/scripts/walrus-install.sh | sh
 
-# Update an existing installation
+# Update an existing installation (overwrites prior version of walrus).
 curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/scripts/walrus-install.sh | sh -s -- -f
 </code></pre>
-<p>Make sure that your <code>"$HOME"/.local/bin</code> directory is in your <code>$PATH</code>.</p>
-<p>Once this is done, you should be able to simply type <code>walrus</code> in your terminal. For example you can
-get usage instructions (see <a href="usage/./interacting.html">the next chapter</a> for further details):</p>
+<p>Make sure that the <code>"$HOME"/.local/bin</code> directory is in your <code>$PATH</code>.</p>
+<p>Once this is done, you should be able to run walrus by using the <code>walrus</code> command in your terminal.</p>
+<p>You can see usage instructions as follows (see <a href="usage/./interacting.html">the next chapter</a> for further
+details):</p>
 <pre><code class="language-terminal">$ walrus --help
 Walrus client
 
@@ -815,7 +816,7 @@ Note that due to DoS protection, it may not be possible to download the binaries
 </div>
 </div>
 <h3 id="windows-install"><a class="header" href="#windows-install">Install on Windows</a></h3>
-<p>To download <code>walrus</code> to your Microsoft Windows computer, run the following in your PowerShell.</p>
+<p>To download <code>walrus</code> to your Microsoft Windows computer, run the following in a PowerShell.</p>
 <pre><code class="language-PowerShell">(New-Object System.Net.WebClient).DownloadFile(
   "https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-windows-x86_64.exe",
   "walrus.exe"
