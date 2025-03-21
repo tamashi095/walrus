@@ -2798,8 +2798,7 @@ locations, publishing the <code>./walrus-snake</code> site is as simple as calli
 </div>
 <div>
 <p>Depending on the network, the duration of an epoch may vary. Currently on Walrus Testnet, the
-duration of an epoch is two days. On Mainnet, the duration of an epoch is two weeks. If you want
-your site to stay up longer, specify the number of epochs with the <code>--epochs</code> flag.</p>
+duration of an epoch is two days. On Mainnet, the duration of an epoch is two weeks.</p>
 </div>
 </div>
 <p>The end of the output should look like the following:</p>
@@ -2893,7 +2892,10 @@ old <code>index.html</code>, and update it with the newer one.</p>
 </div>
 <div>
 <p>Browsing sites with b36 subdomains (e.g. <code>https://1lupgq2auevjruy7hs9z7tskqwjp5cc8c5ebhci4v57qyl4piy.walrus.site</code>)
-is no longer possible. Please <a href="walrus-sites/./tutorial-suins.html#get-a-suins-name">use SuiNS names instead</a>.
+is no longer possible using the <code>walrus.site</code> portal. B36 subdomains are still supported if you use
+a local server, or an alternative portal.</p>
+<p>To browse walrus sites using the <code>walrus.site</code> portal, please
+<a href="walrus-sites/./tutorial-suins.html#get-a-suins-name">use SuiNS names instead</a>.
 ``</p>
 <p>Walrus Sites require to use SuiNS names (this is like DNS for Sui) to assign a human-readable name
 to a Walrus Site. To do so, you simply have to get a SuiNS name you like, and point it to the
@@ -3647,7 +3649,7 @@ does not result in an infinite loading loop.</p>
 <a href="https://walrus.site">https://walrus.site</a> has a maximum redirect depth of 3.</p>
 <h2 id="there-is-a-special-__wal__-path"><a class="header" href="#there-is-a-special-__wal__-path">There is a special <code>__wal__</code> path</a></h2>
 <p>Anything under the <code>/__wal__/*</code> path is reserved by the portal for health checks and other
-portal-specific operations. If you use this path inside your site, the resources served under that path will not be loaded correctly.</p>
+portal-specific operations. If you use this path inside your site, your site will not work.</p>
 <h2 id="service-worker-portal-limitations"><a class="header" href="#service-worker-portal-limitations">Service-worker portal limitations</a></h2>
 <p>The following limitations only apply to portals based on service workers.</p>
 <div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
