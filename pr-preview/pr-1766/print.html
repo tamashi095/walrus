@@ -3649,7 +3649,8 @@ does not result in an infinite loading loop.</p>
 <a href="https://walrus.site">https://walrus.site</a> has a maximum redirect depth of 3.</p>
 <h2 id="there-is-a-special-__wal__-path"><a class="header" href="#there-is-a-special-__wal__-path">There is a special <code>__wal__</code> path</a></h2>
 <p>Anything under the <code>/__wal__/*</code> path is reserved by the portal for health checks and other
-portal-specific operations. If you use this path inside your site, your site will not work.</p>
+portal-specific operations. If you use this path inside your site, the resources served under that
+path will not be loaded correctly.</p>
 <h2 id="service-worker-portal-limitations"><a class="header" href="#service-worker-portal-limitations">Service-worker portal limitations</a></h2>
 <p>The following limitations only apply to portals based on service workers.</p>
 <div id="admonition-tip" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-title">
