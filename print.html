@@ -2292,8 +2292,8 @@ package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
 </div>
 <p>As you can see, the configuration file is quite simple. The only mandatory field is the <code>package</code>
 field, which represents the Sui object ID of the Walrus Sites smart contract. You can find the
-latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/testnet">Walrus Sites
-repository</a> on the <code>testnet</code> branch.</p>
+latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/mainnet">Walrus Sites
+repository</a> on the <code>mainnet</code> branch.</p>
 <div id="admonition-walrus-sites-stable-branch" class="admonition admonish-danger" role="note" aria-labelledby="admonition-walrus-sites-stable-branch-title">
 <div class="admonition-title">
 <div id="admonition-walrus-sites-stable-branch-title">
@@ -2302,7 +2302,7 @@ repository</a> on the <code>testnet</code> branch.</p>
 <a class="admonition-anchor-link" href="walrus-sites/tutorial-install.html#admonition-walrus-sites-stable-branch"></a>
 </div>
 <div>
-<p>The stable branch of Walrus Sites is <code>testnet</code>.
+<p>The stable branch of Walrus Sites is <code>mainnet</code>.
 Make sure that you always pull the latest changes from there.</p>
 </div>
 </div>
@@ -2977,6 +2977,18 @@ portals:</p>
 <li>service-worker based portals running in the browser.</li>
 </ol>
 <p>Currently, only a server-side portal is served at <a href="https://walrus.site">https://walrus.site</a>.</p>
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+<a class="admonition-anchor-link" href="walrus-sites/portal.html#admonition-warning"></a>
+</div>
+<div>
+<p>We are sunsetting the testnet portal! From now on, you can only access the mainnet portal
+at <a href="https://walrus.site">https://walrus.site</a>.</p>
+</div>
+</div>
 <div id="admonition-hosting-of-the-service-worker" class="admonition admonish-note" role="note" aria-labelledby="admonition-hosting-of-the-service-worker-title">
 <div class="admonition-title">
 <div id="admonition-hosting-of-the-service-worker-title">
@@ -2998,7 +3010,7 @@ available in the <code>walrus-sites</code> repository. For more information, see
 <a class="admonition-anchor-link" href="walrus-sites/portal.html#admonition-walrus-sites-stable-branch"></a>
 </div>
 <div>
-<p>The stable branch of Walrus Sites is <code>testnet</code>.</p>
+<p>The stable branch of Walrus Sites is <code>mainnet</code>.</p>
 </div>
 </div>
 <h2 id="running-a-local-portal"><a class="header" href="#running-a-local-portal">Running a local portal</a></h2>
@@ -3009,7 +3021,7 @@ accessing external portals, or for development purposes.</p>
 cd walrus-sites
 </code></pre>
 <p>Make sure you are on the stable branch:</p>
-<pre><code class="language-sh">git checkout testnet
+<pre><code class="language-sh">git checkout mainnet
 </code></pre>
 <p>Next, we will see how to configure the portal so it can support the functionality that
 we need.</p>
@@ -3122,12 +3134,18 @@ the domain name. e.g. <code>example.com</code> has a length of 11.</p>
 <p><code>SENTRY_TRACES_SAMPLE_RATE</code>: If you enable Sentry error tracking, provide the sample rate for
 traces.</p>
 </li>
-</ul>
-<p>-<code>SITE_PACKAGE</code>: The Walrus Site package id. Depending on the network you are using, you will
+<li>
+<p><code>SITE_PACKAGE</code>: The Walrus Site package id. Depending on the network you are using, you will
 have to specify the correct package id.</p>
-<p>-<code>SUINS_CLIENT_NETWORK</code>: The network of the SuiNS client.</p>
-<p>-<code>B36_DOMAIN_RESOLUTION_SUPPORT</code>: Define if b36 domain resolution is supported. Otherwise the
+</li>
+<li>
+<p><code>SUINS_CLIENT_NETWORK</code>: The network of the SuiNS client.</p>
+</li>
+<li>
+<p><code>B36_DOMAIN_RESOLUTION_SUPPORT</code>: Define if b36 domain resolution is supported. Otherwise the
 site will not be served.</p>
+</li>
+</ul>
 <h4 id="constants"><a class="header" href="#constants">Constants</a></h4>
 <p>You can find the <code>constants.ts</code> file in the <code>portal/common/lib</code> directory. It holds key
 configuration parameters for the portal. Typically, you won't need to modify these, but if you do,
