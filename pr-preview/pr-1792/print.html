@@ -707,12 +707,15 @@ epoch with <code>--end-epoch</code>.</p>
 </li>
 <li>
 <p><strong>RedStuff with Reed-Solomon codes.</strong> The erasure code underlying
-RedStuff was changed from RaptorQ to Reed-Solomon (RS) codes. Extended benchmarking suggest the
-performance is similar, and the use of RS codes ensures blobs can always be reconstructed
-given a threshold of slivers.</p>
+RedStuff was changed from RaptorQ to Reed-Solomon (RS) codes. Intense benchmarking suggests their
+performance, for our parameter set, is similar, and the use of RS codes provides perfect
+robustness, in that blobs can always be reconstructed given a threshold of slivers. We
+thank <a href="https://www.jneu.net/">Joachim Neu</a> for extensive feedback on this topic.</p>
 </li>
 <li>
-<p>TLS handing for storage node.</p>
+<p><strong>TLS handing for storage node.</strong> Storage nodes can now be configured to serve TLS certificates
+that are publicly trusted, such as those issues by cloud providers and public authorities such as
+Let's Encrypt. This allows javascript clients to directly store and retrieve blobs from Walrus.</p>
 </li>
 <li>
 <p><strong>JWT authentication for publisher.</strong> Now the publisher can be configured to only provide
@@ -730,7 +733,11 @@ basic information of storage nodes. This is useful when allocating stake as well
 the network.</p>
 </li>
 <li>
-<p>Walrus Sites.</p>
+<p><strong>Walrus Sites Updates.</strong> The Mainnet Walrus Sites public portal will be hosted on the
+<code>wal.app</code> domain name. Now Walrus Sites support deletable blobs to make their updates more
+capital efficient. Those operating their own portals may also use their own domain names to serve
+a Walrus Site. The <a href="blog/">Staking</a>, <a href="blog/">Docs</a>, <a href="blog/">Snowreads</a>, and <a href="blog/">Flatland</a> Walrus Sites are now on
+Mainnet.</p>
 </li>
 </ul>
 <h2 id="testnet-future-plans"><a class="header" href="#testnet-future-plans">Testnet future plans</a></h2>
@@ -2026,7 +2033,7 @@ storage node.</li>
 </ul>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="operating-a-storage-node"><a class="header" href="#operating-a-storage-node">Operating a storage node</a></h1>
-<!-- TODO (#141): Update and add further details, also on monitoring. -->
+<!-- TODO (WAL-118): Update and add further details, also on monitoring. -->
 <p>The binary of the storage node is not yet publicly available. Prior to official network launch the
 code will be open-sourced.</p>
 <p>A basic systemd service running the Storage Node could look like this:</p>
@@ -2048,7 +2055,7 @@ a path configured by the <code>/opt/walrus/config/walrus-node.yaml</code> file. 
 mandatory and optional configuration parameters will be made available with the binary.</p>
 <p>Here are some important config params from a shortened version of the <code>walrus-node.yaml</code> config
 file:</p>
-<!-- TODO(WAL-118) : change the Testnet url below. -->
+<!-- TODO(WAL-118): change the Testnet URL below. -->
 <pre><code class="language-yaml">storage_path: /opt/walrus/db
 metrics_address: 127.0.0.1:9184
 rest_api_address: 0.0.0.0:9185
@@ -2068,7 +2075,7 @@ blob_recovery:
 (or whatever you've configured <code>metrics_address</code> to be).</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="operating-an-aggregator"><a class="header" href="#operating-an-aggregator">Operating an aggregator</a></h1>
-<!-- TODO (#141): Add further details and example cache setup. -->
+<!-- TODO (WAL-118): Add further details and example cache setup. -->
 <p>Below is an example of an aggregator node which hosts a HTTP endpoint that can be used
 to fetch data from Walrus over the web.</p>
 <p>The aggregator process is run via the <code>walrus</code> client binary in <a href="operator-guide/../usage/web-api.html">daemon mode</a>.

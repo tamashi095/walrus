@@ -229,7 +229,7 @@
                     <main>
                         <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="operating-a-storage-node"><a class="header" href="#operating-a-storage-node">Operating a storage node</a></h1>
-<!-- TODO (#141): Update and add further details, also on monitoring. -->
+<!-- TODO (WAL-118): Update and add further details, also on monitoring. -->
 <p>The binary of the storage node is not yet publicly available. Prior to official network launch the
 code will be open-sourced.</p>
 <p>A basic systemd service running the Storage Node could look like this:</p>
@@ -251,7 +251,7 @@ a path configured by the <code>/opt/walrus/config/walrus-node.yaml</code> file. 
 mandatory and optional configuration parameters will be made available with the binary.</p>
 <p>Here are some important config params from a shortened version of the <code>walrus-node.yaml</code> config
 file:</p>
-<!-- TODO(WAL-118) : change the Testnet url below. -->
+<!-- TODO(WAL-118): change the Testnet URL below. -->
 <pre><code class="language-yaml">storage_path: /opt/walrus/db
 metrics_address: 127.0.0.1:9184
 rest_api_address: 0.0.0.0:9185
