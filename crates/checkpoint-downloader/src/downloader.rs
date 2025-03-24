@@ -339,10 +339,16 @@ impl ParallelCheckpointDownloaderInner {
         rng: &mut StdRng,
     ) -> CheckpointEntry {
         let mut backoff = create_backoff(rng, config);
+        tracing::info!("ZZZZ downloading checkpoint {}", sequence_number);
         loop {
             let result = client.get_full_checkpoint(sequence_number).await;
             let Ok(checkpoint) = result else {
                 let err = result.err();
+                tracing::info!(
+                    "ZZZZ failed to download checkpoint {} {:?}",
+                    sequence_number,
+                    err
+                );
                 handle_checkpoint_error(err.as_ref(), sequence_number);
 
                 let delay = backoff.next().expect("backoff should not be exhausted");
@@ -350,6 +356,10 @@ impl ParallelCheckpointDownloaderInner {
                 tokio::time::sleep(delay).await;
                 continue;
             };
+            tracing::info!(
+                "ZZZZ successfully downloaded checkpoint {}",
+                sequence_number
+            );
 
             return CheckpointEntry::new(sequence_number, Ok(checkpoint));
         }
@@ -362,6 +372,7 @@ impl ParallelCheckpointDownloaderInner {
         _config: &ParallelDownloaderConfig,
         _rng: &mut StdRng,
     ) -> CheckpointEntry {
+        tracing::info!("ZZZZ downloading checkpoint in test {}", sequence_number);
         let res = client.get_full_checkpoint(sequence_number).await;
         let Ok(checkpoint) = res else {
             let err = res.err();
@@ -369,8 +380,17 @@ impl ParallelCheckpointDownloaderInner {
             let err = err
                 .map(|e| e.into())
                 .unwrap_or_else(|| anyhow!("Failed to download checkpoint"));
+            tracing::info!(
+                "ZZZZ failed to download checkpoint in test {} {}",
+                sequence_number,
+                err
+            );
             return CheckpointEntry::new(sequence_number, Err(err));
         };
+        tracing::info!(
+            "ZZZZ successfully downloaded checkpoint in test {}",
+            sequence_number
+        );
         CheckpointEntry {
             sequence_number,
             result: Ok(checkpoint),

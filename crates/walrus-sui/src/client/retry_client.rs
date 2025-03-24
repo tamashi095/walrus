@@ -978,10 +978,13 @@ impl RetriableRpcClient {
         sequence: u64,
     ) -> Result<CheckpointData, RetriableClientError> {
         Ok(tokio::time::timeout(
-            self.request_timeout,
+            Duration::from_secs(10),
             self.client.get_full_checkpoint(sequence),
         )
         .await??)
+
+        // let r = self.client.get_full_checkpoint(sequence).await?;
+        // Ok(r)
     }
 
     /// Gets the full checkpoint data for the given sequence number.

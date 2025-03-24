@@ -472,12 +472,14 @@ mod tests {
 
         // Do not fail any nodes in the sui cluster.
         let mut do_not_fail_nodes = sui_cluster
+            .lock()
+            .await
             .cluster()
             .all_node_handles()
             .iter()
             .map(|n| n.with(|n| n.get_sim_node_id()))
             .collect::<HashSet<_>>();
-        do_not_fail_nodes.insert(sui_cluster.sim_node_handle().id());
+        do_not_fail_nodes.insert(sui_cluster.lock().await.sim_node_handle().id());
 
         let fail_triggered_clone = fail_triggered.clone();
         register_fail_points(DB_FAIL_POINTS, move || {
@@ -564,6 +566,88 @@ mod tests {
         }
     }
 
+    #[walrus_simtest]
+    async fn walrus_sui_restart() {
+        let _guard = ProtocolConfig::apply_overrides_for_testing(|_, mut config| {
+            // TODO: remove once Sui simtest can work with these features.
+            config.set_enable_jwk_consensus_updates_for_testing(false);
+            config.set_random_beacon_for_testing(false);
+            config
+        });
+
+        let (sui_cluster, _walrus_cluster, _client) =
+            test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
+                Duration::from_secs(60 * 60),
+                TestNodesConfig {
+                    node_weights: vec![1, 2, 3, 3, 4],
+                    ..Default::default()
+                },
+                Some(10),
+                ClientCommunicationConfig::default_for_test(),
+                false,
+            )
+            .await
+            .unwrap();
+
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        // Do not fail any nodes in the sui cluster.
+        let all_sui_node = sui_cluster
+            .lock()
+            .await
+            .cluster()
+            .all_node_handles()
+            .iter()
+            .map(|n| n.with(|n| n.get_sim_node_id()))
+            .collect::<Vec<_>>();
+        let all_validator_nodes = sui_cluster
+            .lock()
+            .await
+            .cluster()
+            .all_validator_handles()
+            .iter()
+            .map(|n| n.with(|n| n.get_sim_node_id()))
+            .collect::<Vec<_>>();
+
+        // Get all fullnode handles and create Vec<SuiNodeHandle>, which is in all_sui_node but not
+        // in all_validator_nodes.
+        let all_fullnode_handles = all_sui_node
+            .iter()
+            .filter(|node| !all_validator_nodes.contains(node))
+            .map(|n| n.clone())
+            .collect::<Vec<_>>();
+
+        assert_eq!(all_fullnode_handles.len(), 1);
+        tracing::info!("ZZZZ all_fullnode_handles: {:?}", all_fullnode_handles,);
+        let fail_triggered = Arc::new(AtomicBool::new(false));
+        let fail_triggered_clone = fail_triggered.clone();
+        let fail_time = Arc::new(Mutex::new(Instant::now()));
+        let fail_time_clone = fail_time.clone();
+        let resume_trigger = Arc::new(AtomicBool::new(false));
+        let resume_trigger_clone = resume_trigger.clone();
+
+        // {
+        //     tracing::info!("ZZZZ spawn new fullnode");
+        //     let mut sui_cluster = sui_cluster.lock().await;
+        //     let new_fullnode = sui_cluster.cluster_mut().spawn_new_fullnode().await;
+        //     sui_cluster.cluster_mut().fullnode_handle = new_fullnode;
+        // }
+
+        register_fail_points(DB_FAIL_POINTS, move || {
+            crash_target_node_1(
+                all_fullnode_handles[0],
+                fail_triggered_clone.clone(),
+                fail_time_clone.clone(),
+                resume_trigger_clone.clone(),
+                Duration::from_millis(5000),
+            );
+        });
+
+        tokio::time::sleep(Duration::from_secs(200)).await;
+
+        assert!(fail_triggered.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
     /// Helper function to get health info for a single node.
     async fn wait_until_node_is_active(
         node: &SimStorageNodeHandle,
@@ -624,6 +708,56 @@ mod tests {
                 .collect::<Vec<_>>(),
         )
         .await
+    }
+    // Simulates node crash and restart with sim node id.
+    // We only trigger the crash once.
+    fn crash_target_node_1(
+        target_node_id: sui_simulator::task::NodeId,
+        fail_triggered: Arc<AtomicBool>,
+        fail_time: Arc<Mutex<Instant>>,
+        resume_trigger: Arc<AtomicBool>,
+        crash_duration: Duration,
+    ) {
+        if fail_triggered.load(std::sync::atomic::Ordering::SeqCst)
+            && resume_trigger.load(std::sync::atomic::Ordering::SeqCst)
+        {
+            // We only need to trigger failure once.
+            return;
+        }
+
+        // let current_node = sui_simulator::current_simnode_id();
+        // if target_node_id != current_node {
+        //     return;
+        // }
+
+        if fail_triggered.load(std::sync::atomic::Ordering::SeqCst) {
+            if fail_time.lock().unwrap().elapsed() > Duration::from_secs(120) {
+                tracing::warn!("ZZZZ resuming node {target_node_id}");
+                let handle = sui_simulator::runtime::Handle::current();
+                handle.resume(target_node_id);
+                resume_trigger.store(true, std::sync::atomic::Ordering::SeqCst);
+            }
+            return;
+        }
+
+        tracing::warn!(
+            "ZZZZ crashing node {target_node_id} for {:?}",
+            crash_duration
+        );
+        fail_triggered.store(true, std::sync::atomic::Ordering::SeqCst);
+        // sui_simulator::task::kill_current_node(Some(crash_duration));
+
+        let handle = sui_simulator::runtime::Handle::current();
+        // handle.restart(target_node_id);
+
+        handle.pause(target_node_id);
+        {
+            *fail_time.lock().unwrap() = Instant::now();
+        }
+
+        // sleep using tokio::time::sleep for 10 seconds in a blocking thread
+        // tokio::runtime::Handle::current().block_on(tokio::time::sleep(Duration::from_secs(60)));
+        // tracing::warn!("ZZZZ done sleeping");
     }
 
     // Simulates node crash and restart with sim node id.

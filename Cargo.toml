@@ -153,3 +153,24 @@ panic = 'abort'
 debug = 1 # Keep debug symbols
 inherits = "release"
 strip = 'debuginfo' # remove extensive debug info to keep the binary size smaller
+
+[patch."https://github.com/MystenLabs/sui"]
+move-core-types = { path = "../sui_1/external-crates/move/crates/move-core-types" }
+move-package = { path = "../sui_1/external-crates/move/crates/move-package" } 
+mysten-metrics = { path = "../sui_1/crates/mysten-metrics" }
+sui-config = { path = "../sui_1/crates/sui-config" }
+sui-json-rpc-types = { path = "../sui_1/crates/sui-json-rpc-types" }
+sui-keys = { path = "../sui_1/crates/sui-keys" }
+sui-macros = { path = "../sui_1/crates/sui-macros" }
+sui-move-build = { path = "../sui_1/crates/sui-move-build" }
+sui-package-management = { path = "../sui_1/crates/sui-package-management" }
+sui-package-resolver = { path = "../sui_1/crates/sui-package-resolver" }
+sui-protocol-config = { path = "../sui_1/crates/sui-protocol-config" }
+sui-rpc-api = { path = "../sui_1/crates/sui-rpc-api" }
+sui-sdk = { path = "../sui_1/crates/sui-sdk" }
+sui-simulator = { path = "../sui_1/crates/sui-simulator"}
+sui-storage = { path = "../sui_1/crates/sui-storage" }
+sui-types = { path = "../sui_1/crates/sui-types" }
+telemetry-subscribers = { path = "../sui_1/crates/telemetry-subscribers" }
+test-cluster = { path = "../sui_1/crates/test-cluster" }
+typed-store = { path = "../sui_1/crates/typed-store" }
