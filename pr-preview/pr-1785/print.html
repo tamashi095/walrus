@@ -779,20 +779,20 @@ a UNIX-based system for the directory structure, commands, etc. If you use Windo
 adapt most of those.</p>
 </div>
 </div>
-<p>You can download the latest build from our Google Cloud Storage (GCS) bucket (correctly setting the
-<code>$SYSTEM</code> variable):</p>
-<pre><code class="language-sh">SYSTEM= # set this to your system: ubuntu-x86_64, ubuntu-x86_64-generic, macos-x86_64, macos-arm64, windows-x86_64.exe
-curl https://storage.googleapis.com/mysten-walrus-binaries/walrus-mainnet-latest-$SYSTEM -o walrus
-chmod +x walrus
+<h3 id="nix-install"><a class="header" href="#nix-install">Install via script</a></h3>
+<p>To download and install <code>walrus</code> to your <code>"$HOME"/.local/bin</code> directory, run one of the following
+commands in your terminal then follow on-screen instructions. See <a href="usage/setup.html#windows-install">Windows
+instructions</a> if you are on Windows.</p>
+<pre><code class="language-sh"># Run a first-time install.
+curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/scripts/walrus-install.sh | sh
+
+# Update an existing installation (overwrites prior version of walrus).
+curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/scripts/walrus-install.sh | sh -s -- -f
 </code></pre>
-<p>On Ubuntu, you should generally use the <code>ubuntu-x86_64</code> version. However, this is incompatible with
-old hardware and certain virtualized environments (throwing an "Illegal instruction (core dumped)"
-error); in these cases you can use the <code>ubuntu-x86_64-generic</code> version.</p>
-<p>To be able to run it simply as <code>walrus</code>, move the binary to any directory included in your <code>$PATH</code>
-environment variable. Standard locations are <code>/usr/local/bin/</code>, <code>$HOME/bin/</code>, or
-<code>$HOME/.local/bin/</code>.</p>
-<p>Once this is done, you should be able to simply type <code>walrus</code> in your terminal. For example you can
-get usage instructions (see <a href="usage/./interacting.html">the next chapter</a> for further details):</p>
+<p>Make sure that the <code>"$HOME"/.local/bin</code> directory is in your <code>$PATH</code>.</p>
+<p>Once this is done, you should be able to run Walrus by using the <code>walrus</code> command in your terminal.</p>
+<p>You can see usage instructions as follows (see <a href="usage/./interacting.html">the next chapter</a> for further
+details):</p>
 <pre><code class="language-terminal">$ walrus --help
 Walrus client
 
@@ -815,6 +815,14 @@ Note that due to DoS protection, it may not be possible to download the binaries
 <code>wget</code>.</p>
 </div>
 </div>
+<h3 id="windows-install"><a class="header" href="#windows-install">Install on Windows</a></h3>
+<p>To download <code>walrus</code> to your Microsoft Windows computer, run the following in a PowerShell.</p>
+<pre><code class="language-PowerShell">(New-Object System.Net.WebClient).DownloadFile(
+  "https://storage.googleapis.com/mysten-walrus-binaries/walrus-testnet-latest-windows-x86_64.exe",
+  "walrus.exe"
+)
+</code></pre>
+<p>From there, you'll need to place <code>walrus.exe</code> somewhere in your <code>PATH</code>.</p>
 <h3 id="previous-versions-optional"><a class="header" href="#previous-versions-optional">Previous versions (optional)</a></h3>
 <p>In addition to the latest version of the <code>walrus</code> binary, the GCS bucket also contains previous
 versions. An overview in XML format is available at
@@ -830,10 +838,31 @@ fixes. Follow the instructions in the <code>README.md</code> file to build and u
 information, see the <a href="usage/../dev-guide/sui-struct.html#system-and-staking-information">developer guide</a>.
 These need to be configured in a file <code>~/.config/walrus/client_config.yaml</code>. Additionally, a
 <code>subsidies</code> object can be specified, which will subsidize storage bought with the client.</p>
-<p>The Walrus Mainnet uses the following objects:</p>
-<pre><code class="language-yaml">system_object: 0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2
-staking_object: 0x10b9d30c28448939ce6c4d6c6e0ffce4a7f8a4ada8248bdad09ef8b70e4a3904
-subsidies_object: 0xb606eb177899edc2130c93bf65985af7ec959a2755dc126c953755e59324209e
+<p>You can access Testnet and Mainnet via the following configuration. Note that this example Walrus
+CLI configuration refers to the standard location for Sui configuration
+(<code>"~/.sui/sui_config/client.yaml"</code>).</p>
+<pre><code class="language-yaml">contexts:
+  mainnet:
+    system_object: 0x2134d52768ea07e8c43570ef975eb3e4c27a39fa6396bef985b5abc58d03ddd2
+    staking_object: 0x10b9d30c28448939ce6c4d6c6e0ffce4a7f8a4ada8248bdad09ef8b70e4a3904
+    subsidies_object: 0xb606eb177899edc2130c93bf65985af7ec959a2755dc126c953755e59324209e
+    exchange_objects: []
+    wallet_config:
+      path: ~/.sui/sui_config/client.yaml
+      active_env: mainnet
+  testnet:
+    system_object: 0x98ebc47370603fe81d9e15491b2f1443d619d1dab720d586e429ed233e1255c1
+    staking_object: 0x20266a17b4f1a216727f3eef5772f8d486a9e3b5e319af80a5b75809c035561d
+    exchange_objects:
+      - 0x59ab926eb0d94d0d6d6139f11094ea7861914ad2ecffc7411529c60019133997
+      - 0x89127f53890840ab6c52fca96b4a5cf853d7de52318d236807ad733f976eef7b
+      - 0x9f9b4f113862e8b1a3591d7955fadd7c52ecc07cf24be9e3492ce56eb8087805
+      - 0xb60118f86ecb38ec79e74586f1bb184939640911ee1d63a84138d080632ee28a
+    subsidies_object: 0x4b23c353c35a4dde72fe862399ebe59423933d3c2c0a3f2733b9f74cb3b4933d
+    wallet_config:
+      path: ~/.sui/sui_config/client.yaml
+      active_env: testnet
+default_context: mainnet
 </code></pre>
 <!-- markdownlint-disable code-fence-style -->
 <div id="admonition-tip-1" class="admonition admonish-tip" role="note" aria-labelledby="admonition-tip-1-title">
@@ -1453,135 +1482,137 @@ requiring some authentication and compensation for the funds used.</p>
 <h3 id="public-aggregators"><a class="header" href="#public-aggregators">Public aggregators</a></h3>
 <p>The following is a list of know public aggregators; they are checked periodically, but each of them
 may still be temporarily unavailable:</p>
+<!-- markdownlint-disable proper-names -->
 <ul>
-<li><code>https://aggregator.walrus-testnet.walrus.space</code></li>
-<li><code>https://wal-aggregator-testnet.staketab.org</code></li>
-<li><code>https://walrus-testnet-aggregator.redundex.com</code></li>
-<li><code>https://walrus-testnet.blockscope.net</code></li>
-<li><code>https://walrus-testnet-aggregator.nodes.guru</code></li>
-<li><code>https://walrus-cache-testnet.overclock.run</code></li>
-<li><code>https://walrus-testnet-aggregator.stakin-nodes.com</code></li>
-<li><code>https://testnet-aggregator-walrus.kiliglab.io</code></li>
-<li><code>https://walrus-cache-testnet.latitude-sui.com</code></li>
-<li><code>https://walrus-testnet-aggregator.nodeinfra.com</code></li>
-<li><code>https://walrus-testnet-aggregator.stakingdefenseleague.com</code></li>
-<li><code>https://walrus-aggregator.rubynodes.io</code></li>
-<li><code>https://walrus-testnet-aggregator.brightlystake.com</code></li>
-<li><code>https://walrus-testnet-aggregator.nami.cloud</code></li>
-<li><code>https://aggregator.testnet.walrus.mirai.cloud</code></li>
-<li><code>https://walrus-testnet-aggregator.stakecraft.com</code></li>
-<li><code>https://agg.test.walrus.eosusa.io</code></li>
-<li><code>https://walrus-agg.testnet.obelisk.sh</code></li>
-<li><code>https://walrus-test-aggregator.thepassivetrust.com</code></li>
-<li><code>https://walrus-testnet-aggregator.natsai.xyz</code></li>
-<li><code>https://walrus.testnet.aggregator.stakepool.dev.br</code></li>
-<li><code>https://aggregator.walrus.banansen.dev</code></li>
-<li><code>https://testnet.aggregator.walrus.silentvalidator.com</code></li>
-<li><code>https://testnet-aggregator.walrus.graphyte.dev</code></li>
-<li><code>https://walrus-testnet-aggregator.imperator.co</code></li>
-<li><code>https://walrus-testnet-aggregator.unemployedstake.co.uk</code></li>
-<li><code>https://aggregator.walrus-01.tududes.com</code></li>
-<li><code>https://walrus-aggregator-testnet.n1stake.com</code></li>
-<li><code>https://suiftly-testnet-agg.mhax.io</code></li>
-<li><code>https://walrus-testnet-aggregator.trusted-point.com</code></li>
-<li><code>https://walrus-testnet-aggregator.veera.com</code></li>
-<li><code>https://aggregator.testnet.walrus.atalma.io</code></li>
 <li><code>https://153-gb3-val-walrus-aggregator.stakesquid.com</code></li>
+<li><code>https://agg.test.walrus.eosusa.io</code></li>
+<li><code>https://aggregator.testnet.walrus.atalma.io</code></li>
+<li><code>https://aggregator.testnet.walrus.mirai.cloud</code></li>
+<li><code>https://aggregator.walrus-01.tududes.com</code></li>
+<li><code>https://aggregator.walrus-testnet.walrus.space</code></li>
+<li><code>https://aggregator.walrus.banansen.dev</code></li>
 <li><code>https://sui-walrus-testnet.bwarelabs.com/aggregator</code></li>
-<li><code>https://walrus-testnet.chainbase.online/aggregator</code></li>
-<li><code>https://walrus-tn.juicystake.io:9443</code></li>
+<li><code>https://suiftly-testnet-agg.mhax.io</code></li>
+<li><code>https://testnet-aggregator-walrus.kiliglab.io</code></li>
+<li><code>https://testnet-aggregator.walrus.graphyte.dev</code></li>
+<li><code>https://testnet.aggregator.walrus.silentvalidator.com</code></li>
+<li><code>https://wal-aggregator-testnet.staketab.org</code></li>
 <li><code>https://walrus-agg-testnet.chainode.tech:9002</code></li>
-<li><code>https://walrus-testnet-aggregator.starduststaking.com</code></li>
+<li><code>https://walrus-agg.testnet.obelisk.sh</code></li>
 <li><code>https://walrus-aggregator-testnet.cetus.zone</code></li>
+<li><code>https://walrus-aggregator-testnet.n1stake.com</code></li>
+<li><code>https://walrus-aggregator-testnet.suisec.tech</code></li>
+<li><code>https://walrus-aggregator.rubynodes.io</code></li>
+<li><code>https://walrus-cache-testnet.latitude-sui.com</code></li>
+<li><code>https://walrus-cache-testnet.overclock.run</code></li>
+<li><code>https://walrus-test-aggregator.thepassivetrust.com</code></li>
+<li><code>https://walrus-testnet-aggregator.brightlystake.com</code></li>
+<li><code>https://walrus-testnet-aggregator.dzdaic.com</code></li>
 <li><code>https://walrus-testnet-aggregator.everstake.one</code></li>
-<li><code>http://walrus.testnet.pops.one:9000</code></li>
-<li><code>http://scarlet-brussels-376c2.walrus.bdnodes.net:9000</code></li>
+<li><code>https://walrus-testnet-aggregator.imperator.co</code></li>
+<li><code>https://walrus-testnet-aggregator.luckyresearch.org/</code></li>
+<li><code>https://walrus-testnet-aggregator.nami.cloud</code></li>
+<li><code>https://walrus-testnet-aggregator.natsai.xyz</code></li>
+<li><code>https://walrus-testnet-aggregator.nodeinfra.com</code></li>
+<li><code>https://walrus-testnet-aggregator.nodes.guru</code></li>
+<li><code>https://walrus-testnet-aggregator.redundex.com</code></li>
+<li><code>https://walrus-testnet-aggregator.stakecraft.com</code></li>
+<li><code>https://walrus-testnet-aggregator.stakely.io</code></li>
+<li><code>https://walrus-testnet-aggregator.stakin-nodes.com</code></li>
+<li><code>https://walrus-testnet-aggregator.stakingdefenseleague.com</code></li>
+<li><code>https://walrus-testnet-aggregator.starduststaking.com</code></li>
+<li><code>https://walrus-testnet-aggregator.talentum.id</code></li>
+<li><code>https://walrus-testnet-aggregator.trusted-point.com</code></li>
+<li><code>https://walrus-testnet-aggregator.unemployedstake.co.uk</code></li>
+<li><code>https://walrus-testnet-aggregator.veera.com</code></li>
+<li><code>https://walrus-testnet.blockscope.net</code></li>
+<li><code>https://walrus-testnet.chainbase.online/aggregator</code></li>
+<li><code>https://walrus-testnet.validators.services.kyve.network/aggregate</code></li>
+<li><code>https://walrus-tn.juicystake.io:9443</code></li>
+<li><code>https://walrus.testnet.aggregator.stakepool.dev.br</code></li>
 <li><code>http://aggregator.testnet.sui.rpcpool.com:9000</code></li>
-<li><code>http://walrus.krates.ai:9000</code></li>
-<li><code>http://walrus.globalstake.io:9000</code></li>
-<li><code>http://walrus-testnet.staking4all.org:9000</code></li>
-<li><code>http://walrus-testnet.rpc101.org:9000</code></li>
-<li><code>http://93.115.27.108:9000</code></li>
-<li><code>http://65.21.139.112:9000</code></li>
-<li><code>http://162.19.18.19:9000</code></li>
+<li><code>http://scarlet-brussels-376c2.walrus.bdnodes.net:9000</code></li>
 <li><code>http://walrus-aggregator.stakeme.pro:9000</code></li>
 <li><code>http://walrus-storage.testnet.nelrann.org:9000</code></li>
-<li><code>http://walrus-testnet.senseinode.com:9000</code></li>
 <li><code>http://walrus-testnet.equinoxdao.xyz:9000</code></li>
-<li><code>https://walrus-testnet-aggregator.stakely.io</code></li>
-<li><code>https://walrus-testnet-aggregator.talentum.id</code></li>
-<li><code>http://37.27.230.228:9000</code></li>
-<li><code>https://walrus-testnet-aggregator.luckyresearch.org/</code></li>
+<li><code>http://walrus-testnet.rpc101.org:9000</code></li>
+<li><code>http://walrus-testnet.senseinode.com:9000</code></li>
+<li><code>http://walrus-testnet.staking4all.org:9000</code></li>
 <li><code>http://walrus-testnet.suicore.com:9000</code></li>
-<li><code>https://walrus-testnet.validators.services.kyve.network/aggregate</code></li>
-<li><code>https://walrus-aggregator-testnet.suisec.tech</code></li>
-<li><code>https://walrus-testnet-aggregator.dzdaic.com</code></li>
+<li><code>http://walrus.globalstake.io:9000</code></li>
+<li><code>http://walrus.krates.ai:9000</code></li>
+<li><code>http://walrus.testnet.pops.one:9000</code></li>
+<li><code>http://162.19.18.19:9000</code></li>
+<li><code>http://37.27.230.228:9000</code></li>
+<li><code>http://65.21.139.112:9000</code></li>
+<li><code>http://93.115.27.108:9000</code></li>
 </ul>
 <h3 id="public-publishers"><a class="header" href="#public-publishers">Public publishers</a></h3>
 <ul>
-<li><code>https://publisher.walrus-testnet.walrus.space</code></li>
-<li><code>https://wal-publisher-testnet.staketab.org</code></li>
-<li><code>https://walrus-testnet-publisher.redundex.com</code></li>
-<li><code>https://walrus-testnet-publisher.nodes.guru</code></li>
-<li><code>https://walrus-testnet-publisher.stakin-nodes.com</code></li>
-<li><code>https://testnet-publisher-walrus.kiliglab.io</code></li>
-<li><code>https://walrus-testnet-publisher.nodeinfra.com</code></li>
-<li><code>https://walrus-publisher.rubynodes.io</code></li>
-<li><code>https://walrus-testnet-publisher.brightlystake.com</code></li>
-<li><code>https://walrus-testnet-publisher.nami.cloud</code></li>
-<li><code>https://publisher.testnet.walrus.mirai.cloud</code></li>
-<li><code>https://walrus-testnet-publisher.stakecraft.com</code></li>
-<li><code>https://pub.test.walrus.eosusa.io</code></li>
-<li><code>https://walrus-pub.testnet.obelisk.sh</code></li>
-<li><code>https://walrus-testnet-publisher.stakingdefenseleague.com</code></li>
-<li><code>https://walrus-testnet.thepassivetrust.com</code></li>
-<li><code>https://walrus-testnet-publisher.natsai.xyz</code></li>
-<li><code>https://walrus.testnet.publisher.stakepool.dev.br</code></li>
-<li><code>https://publisher.walrus.banansen.dev</code></li>
-<li><code>https://testnet.publisher.walrus.silentvalidator.com</code></li>
-<li><code>https://testnet-publisher.walrus.graphyte.dev</code></li>
-<li><code>https://walrus-testnet-publisher.imperator.co</code></li>
-<li><code>https://walrus-testnet-publisher.unemployedstake.co.uk</code></li>
-<li><code>https://publisher.walrus-01.tududes.com</code></li>
-<li><code>https://walrus-publisher-testnet.n1stake.com</code></li>
-<li><code>https://suiftly-testnet-pub.mhax.io</code></li>
-<li><code>https://walrus-testnet-publisher.trusted-point.com</code></li>
-<li><code>https://walrus-testnet-publisher.veera.com</code></li>
-<li><code>https://publisher.testnet.walrus.atalma.io</code></li>
 <li><code>https://153-gb3-val-walrus-publisher.stakesquid.com</code></li>
+<li><code>https://pub.test.walrus.eosusa.io</code></li>
+<li><code>https://publisher.testnet.walrus.atalma.io</code></li>
+<li><code>https://publisher.testnet.walrus.mirai.cloud</code></li>
+<li><code>https://publisher.walrus-01.tududes.com</code></li>
+<li><code>https://publisher.walrus-testnet.walrus.space</code></li>
+<li><code>https://publisher.walrus.banansen.dev</code></li>
 <li><code>https://sui-walrus-testnet.bwarelabs.com/publisher</code></li>
-<li><code>https://walrus-testnet.chainbase.online/publisher</code></li>
-<li><code>https://walrus-testnet.blockscope.net:11444</code></li>
+<li><code>https://suiftly-testnet-pub.mhax.io</code></li>
+<li><code>https://testnet-publisher-walrus.kiliglab.io</code></li>
+<li><code>https://testnet-publisher.walrus.graphyte.dev</code></li>
+<li><code>https://testnet.publisher.walrus.silentvalidator.com</code></li>
+<li><code>https://wal-publisher-testnet.staketab.org</code></li>
+<li><code>https://walrus-pub.testnet.obelisk.sh</code></li>
 <li><code>https://walrus-publish-testnet.chainode.tech:9003</code></li>
-<li><code>https://walrus-testnet-publisher.starduststaking.com</code></li>
-<li><code>http://walrus-publisher-testnet.overclock.run:9001</code></li>
+<li><code>https://walrus-publisher-testnet.n1stake.com</code></li>
+<li><code>https://walrus-publisher.rubynodes.io</code></li>
+<li><code>https://walrus-testnet-published.luckyresearch.org</code></li>
+<li><code>https://walrus-testnet-publisher.brightlystake.com</code></li>
+<li><code>https://walrus-testnet-publisher.dzdaic.com</code></li>
 <li><code>https://walrus-testnet-publisher.everstake.one</code></li>
-<li><code>http://walrus.testnet.pops.one:9001</code></li>
+<li><code>https://walrus-testnet-publisher.imperator.co</code></li>
+<li><code>https://walrus-testnet-publisher.nami.cloud</code></li>
+<li><code>https://walrus-testnet-publisher.natsai.xyz</code></li>
+<li><code>https://walrus-testnet-publisher.nodeinfra.com</code></li>
+<li><code>https://walrus-testnet-publisher.nodes.guru</code></li>
+<li><code>https://walrus-testnet-publisher.redundex.com</code></li>
+<li><code>https://walrus-testnet-publisher.stakecraft.com</code></li>
+<li><code>https://walrus-testnet-publisher.stakely.io</code></li>
+<li><code>https://walrus-testnet-publisher.stakin-nodes.com</code></li>
+<li><code>https://walrus-testnet-publisher.stakingdefenseleague.com</code></li>
+<li><code>https://walrus-testnet-publisher.starduststaking.com</code></li>
+<li><code>https://walrus-testnet-publisher.talentum.id</code></li>
+<li><code>https://walrus-testnet-publisher.trusted-point.com</code></li>
+<li><code>https://walrus-testnet-publisher.unemployedstake.co.uk</code></li>
+<li><code>https://walrus-testnet-publisher.veera.com</code></li>
+<li><code>https://walrus-testnet.blockscope.net:11444</code></li>
+<li><code>https://walrus-testnet.chainbase.online/publisher</code></li>
+<li><code>https://walrus-testnet.thepassivetrust.com</code></li>
+<li><code>https://walrus-testnet.validators.services.kyve.network/publish</code></li>
+<li><code>https://walrus.testnet.publisher.stakepool.dev.br</code></li>
 <li><code>http://ivory-dakar-e5812.walrus.bdnodes.net:9001</code></li>
 <li><code>http://publisher.testnet.sui.rpcpool.com:9001</code></li>
-<li><code>http://walrus.krates.ai:9001</code></li>
-<li><code>http://walrus-publisher-testnet.latitude-sui.com:9001</code></li>
-<li><code>http://walrus-tn.juicystake.io:9090</code></li>
-<li><code>http://walrus.globalstake.io:9001</code></li>
-<li><code>http://walrus-testnet.staking4all.org:9001</code></li>
-<li><code>http://walrus-testnet.rpc101.org:9001</code></li>
 <li><code>http://walrus-publisher-testnet.cetus.zone:9001</code></li>
-<li><code>http://93.115.27.108:9001</code></li>
-<li><code>http://65.21.139.112:9001</code></li>
-<li><code>http://162.19.18.19:9001</code></li>
+<li><code>http://walrus-publisher-testnet.latitude-sui.com:9001</code></li>
+<li><code>http://walrus-publisher-testnet.overclock.run:9001</code></li>
+<li><code>http://walrus-publisher-testnet.suisec.tech:9001</code></li>
 <li><code>http://walrus-publisher.stakeme.pro:9001</code></li>
 <li><code>http://walrus-storage.testnet.nelrann.org:9001</code></li>
-<li><code>http://walrus-testnet.senseinode.com:9001</code></li>
 <li><code>http://walrus-testnet.equinoxdao.xyz:9001</code></li>
-<li><code>https://walrus-testnet-publisher.stakely.io</code></li>
-<li><code>https://walrus-testnet-publisher.talentum.id</code></li>
-<li><code>http://37.27.230.228:9001</code></li>
-<li><code>https://walrus-testnet-published.luckyresearch.org</code></li>
+<li><code>http://walrus-testnet.rpc101.org:9001</code></li>
+<li><code>http://walrus-testnet.senseinode.com:9001</code></li>
+<li><code>http://walrus-testnet.staking4all.org:9001</code></li>
 <li><code>http://walrus-testnet.suicore.com:9001</code></li>
-<li><code>https://walrus-testnet.validators.services.kyve.network/publish</code></li>
-<li><code>http://walrus-publisher-testnet.suisec.tech:9001</code></li>
-<li><code>https://walrus-testnet-publisher.dzdaic.com</code></li>
+<li><code>http://walrus-tn.juicystake.io:9090</code></li>
+<li><code>http://walrus.globalstake.io:9001</code></li>
+<li><code>http://walrus.krates.ai:9001</code></li>
+<li><code>http://walrus.testnet.pops.one:9001</code></li>
+<li><code>http://162.19.18.19:9001</code></li>
+<li><code>http://37.27.230.228:9001</code></li>
+<li><code>http://65.21.139.112:9001</code></li>
+<li><code>http://93.115.27.108:9001</code></li>
 </ul>
+<!-- markdownlint-enable proper-names -->
 <h2 id="http-api-usage"><a class="header" href="#http-api-usage">HTTP API Usage</a></h2>
 <p>For the following examples, we assume you set the <code>AGGREGATOR</code> and <code>PUBLISHER</code> environment variables
 to your desired aggregator and publisher, respectively. For example:</p>
@@ -2292,8 +2323,8 @@ package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
 </div>
 <p>As you can see, the configuration file is quite simple. The only mandatory field is the <code>package</code>
 field, which represents the Sui object ID of the Walrus Sites smart contract. You can find the
-latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/testnet">Walrus Sites
-repository</a> on the <code>testnet</code> branch.</p>
+latest version of the package in the <a href="https://github.com/MystenLabs/walrus-sites/tree/mainnet">Walrus Sites
+repository</a> on the <code>mainnet</code> branch.</p>
 <div id="admonition-walrus-sites-stable-branch" class="admonition admonish-danger" role="note" aria-labelledby="admonition-walrus-sites-stable-branch-title">
 <div class="admonition-title">
 <div id="admonition-walrus-sites-stable-branch-title">
@@ -2302,7 +2333,7 @@ repository</a> on the <code>testnet</code> branch.</p>
 <a class="admonition-anchor-link" href="walrus-sites/tutorial-install.html#admonition-walrus-sites-stable-branch"></a>
 </div>
 <div>
-<p>The stable branch of Walrus Sites is <code>testnet</code>.
+<p>The stable branch of Walrus Sites is <code>mainnet</code>.
 Make sure that you always pull the latest changes from there.</p>
 </div>
 </div>
@@ -2977,6 +3008,18 @@ portals:</p>
 <li>service-worker based portals running in the browser.</li>
 </ol>
 <p>Currently, only a server-side portal is served at <a href="https://walrus.site">https://walrus.site</a>.</p>
+<div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
+<div class="admonition-title">
+<div id="admonition-warning-title">
+<p>Warning</p>
+</div>
+<a class="admonition-anchor-link" href="walrus-sites/portal.html#admonition-warning"></a>
+</div>
+<div>
+<p>We are sunsetting the testnet portal! From now on, you can only access the mainnet portal
+at <a href="https://walrus.site">https://walrus.site</a>.</p>
+</div>
+</div>
 <div id="admonition-hosting-of-the-service-worker" class="admonition admonish-note" role="note" aria-labelledby="admonition-hosting-of-the-service-worker-title">
 <div class="admonition-title">
 <div id="admonition-hosting-of-the-service-worker-title">
@@ -2998,7 +3041,7 @@ available in the <code>walrus-sites</code> repository. For more information, see
 <a class="admonition-anchor-link" href="walrus-sites/portal.html#admonition-walrus-sites-stable-branch"></a>
 </div>
 <div>
-<p>The stable branch of Walrus Sites is <code>testnet</code>.</p>
+<p>The stable branch of Walrus Sites is <code>mainnet</code>.</p>
 </div>
 </div>
 <h2 id="running-a-local-portal"><a class="header" href="#running-a-local-portal">Running a local portal</a></h2>
@@ -3009,7 +3052,7 @@ accessing external portals, or for development purposes.</p>
 cd walrus-sites
 </code></pre>
 <p>Make sure you are on the stable branch:</p>
-<pre><code class="language-sh">git checkout testnet
+<pre><code class="language-sh">git checkout mainnet
 </code></pre>
 <p>Next, we will see how to configure the portal so it can support the functionality that
 we need.</p>
@@ -3122,12 +3165,18 @@ the domain name. e.g. <code>example.com</code> has a length of 11.</p>
 <p><code>SENTRY_TRACES_SAMPLE_RATE</code>: If you enable Sentry error tracking, provide the sample rate for
 traces.</p>
 </li>
-</ul>
-<p>-<code>SITE_PACKAGE</code>: The Walrus Site package id. Depending on the network you are using, you will
+<li>
+<p><code>SITE_PACKAGE</code>: The Walrus Site package id. Depending on the network you are using, you will
 have to specify the correct package id.</p>
-<p>-<code>SUINS_CLIENT_NETWORK</code>: The network of the SuiNS client.</p>
-<p>-<code>B36_DOMAIN_RESOLUTION_SUPPORT</code>: Define if b36 domain resolution is supported. Otherwise the
+</li>
+<li>
+<p><code>SUINS_CLIENT_NETWORK</code>: The network of the SuiNS client.</p>
+</li>
+<li>
+<p><code>B36_DOMAIN_RESOLUTION_SUPPORT</code>: Define if b36 domain resolution is supported. Otherwise the
 site will not be served.</p>
+</li>
+</ul>
 <h4 id="constants"><a class="header" href="#constants">Constants</a></h4>
 <p>You can find the <code>constants.ts</code> file in the <code>portal/common/lib</code> directory. It holds key
 configuration parameters for the portal. Typically, you won't need to modify these, but if you do,
@@ -3185,8 +3234,8 @@ bun run worker
 side portal) or <code>localhost:8080</code> for the service worker (but check the output of the serve
 command).</p>
 <h2 id="next-steps"><a class="header" href="#next-steps">Next Steps</a></h2>
-<p>As a next step, you can bring your own domain to the portal. This is useful if you want to use a
-custom domain name for your site. Learn how to do this in the <a href="walrus-sites/./bring-your-own-domain.html">next section</a>.</p>
+<p>As a next step, you can bring your own domain to the portal. This is useful if you want to use Walrus Sites
+to host your site under a custom domain name. Learn how to do this in the <a href="walrus-sites/./bring-your-own-domain.html">next section</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="bringing-your-own-domain"><a class="header" href="#bringing-your-own-domain">Bringing your own domain</a></h1>
 <p>In the previous section, we learned how to <a href="walrus-sites/./portal.html">deploy a Walrus Sites portal</a>. Now,
