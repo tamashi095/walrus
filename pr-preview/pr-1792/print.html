@@ -682,12 +682,14 @@ network can now be used to
 <a href="https://wal.app">upload and browse Walrus Sites</a>, as
 well as <a href="blog/">stake and unstake</a> to determine future committees using the live
 <a href="https://www.walrus.xyz/wal-token">Mainnet WAL token</a>.
-The Walrus protocol health is overseen by an
+On Mainnet the Walrus security properties
+should hold. And Walrus is now ready to satisfy the needs of real applications.</p>
+<p>The Walrus protocol health is overseen by an
 <a href="https://www.walrus.xyz/">independent foundation</a> that is now
 <a href="https://www.walrus.xyz/blog/walrus-foundation-fundraising">well resourced</a> to support future
-development and growth.</p>
-<p>All this to say: Walrus is ready for prime time. On Mainnet the Walrus security properties
-should hold. And Walrus is now ready to satisfy the needs of real applications.</p>
+development and growth. Walrus is <a href="https://github.com/MystenLabs/walrus">open source</a>.
+And, the community is collecting tools, resources and dapps for Walrus under
+<a href="https://github.com/MystenLabs/awesome-walrus">Awesome Walrus!</a></p>
 <p>This is a significant milestone a little over 12 months after an initial small team started
 designing the Walrus protocol. And a special thanks is due to the community of storage operators
 that supported the development of Walrus through consecutive Testnet(s), as well as all
@@ -738,11 +740,18 @@ basic information of storage nodes. This is useful when allocating stake as well
 the network.</p>
 </li>
 <li>
-<p><strong>Walrus Sites Updates.</strong> The Mainnet Walrus Sites public portal will be hosted on the
+<p><strong>Walrus Sites updates.</strong> The Mainnet Walrus Sites public portal will be hosted on the
 <code>wal.app</code> domain name. Now Walrus Sites support deletable blobs to make their updates more
 capital efficient. Those operating their own portals may also use their own domain names to serve
 a Walrus Site. The <a href="blog/">Staking</a>, <a href="blog/">Docs</a>, <a href="blog/">Snowreads</a>, and <a href="blog/">Flatland</a> Walrus Sites are now on
 Mainnet.</p>
+</li>
+<li>
+<p><strong>A subsidies contract.</strong> The Mainnet release of Walrus requires WAL for storing blobs, however
+to enable early adopters to try the system, transition to it, the Walrus foundation operates a
+smart contract to
+<a href="https://github.com/MystenLabs/walrus/tree/main/contracts/subsidies">acquire subsidized storage</a>.
+The CLI client uses it automatically when storing blobs.</p>
 </li>
 </ul>
 <h2 id="testnet-future-plans"><a class="header" href="#testnet-future-plans">Testnet future plans</a></h2>
@@ -757,7 +766,8 @@ and development activities.</p>
 <h2 id="open-source-walrus-codebase"><a class="header" href="#open-source-walrus-codebase">Open source Walrus codebase</a></h2>
 <p>The Walrus codebase, including all smart contracts in Move, services in Rust, and documentation, is
 now open sourced under an Apache 2.0 license, and hosted on
-<a href="https://github.com/MystenLabs/walrus">github</a>.</p>
+<a href="https://github.com/MystenLabs/walrus">github</a>. Since the main Walrus repository is now open to all,
+and contains both documentation and smart contracts, we are retiring the <code>walrus-docs</code> repository.</p>
 <p>Developers may find the Rust CLI client, and associated aggregator and publisher services of most
 interest. These can be extended to specialize services to specific operational needs. They are
 also a good illustration of how to interface with Walrus using Rust clients. A cleaner and more
