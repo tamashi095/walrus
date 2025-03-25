@@ -490,6 +490,7 @@ impl Client<SuiContractClient> {
 
     /// Stores a list of blobs to Walrus, retrying if it fails because of epoch change.
     #[tracing::instrument(skip_all, fields(blob_id))]
+    #[allow(clippy::too_many_arguments)]
     pub async fn reserve_and_store_blobs_retry_committees(
         &self,
         blobs: &[&[u8]],
