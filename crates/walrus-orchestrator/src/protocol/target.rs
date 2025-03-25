@@ -70,7 +70,6 @@ impl Display for ProtocolClientParameters {
 
 impl ProtocolParameters for ProtocolClientParameters {}
 
-// NOTE: Ugly hack -- the keystore path in every `sui-wallet-{i}.yaml` must match `parameters.settings.working_dir`.
 pub struct TargetProtocol;
 
 impl TargetProtocol {
@@ -116,47 +115,6 @@ impl ProtocolCommands for TargetProtocol {
     where
         I: Iterator<Item = &'a Instance>,
     {
-        // Generate a command to upload the contract configs to all instances.
-        // let client_config_source = &parameters.client_parameters.client_config_path;
-        // let file = File::open(client_config_source).expect("Failed to open client config file");
-        // let client_config: serde_yaml::Value =
-        //     serde_yaml::from_reader(BufReader::new(file)).expect("Failed to load client config");
-        // let serialized_client_config =
-        //     serde_yaml::to_string(&client_config).expect("failed to serialize client config");
-        // let client_config_destination = parameters.settings.working_dir.join("client_config.yaml");
-        // let upload_client_config_command = format!(
-        //     "echo -e '{serialized_client_config}' > {}",
-        //     client_config_destination.display()
-        // );
-
-        // Generate a client to upload one wallet per client.
-        // let mut upload_file_commands = Vec::new();
-        // for (i, _) in instances.enumerate() {
-        //     for filename in [
-        //         format!("sui-wallet-{i}.yaml"), //SuiClientConfig
-        //                                         // format!("sui-wallet-{i}.aliases"),
-        //                                         // format!("sui-wallet-{i}.keystore"),
-        //     ] {
-        //         let filepath = parameters.client_parameters.wallets_dir.join(&filename);
-        //         let file = File::open(filepath).expect("Failed to to read wallet files");
-        //         let serialized_file = if filename.ends_with(".yaml") {
-        //             let config: serde_yaml::Value = serde_yaml::from_reader(BufReader::new(file))
-        //                 .expect("Failed to load client config");
-        //             serde_yaml::to_string(&config).expect("failed to serialize wallet config file")
-        //         } else {
-        //             let config: serde_json::Value = serde_json::from_reader(BufReader::new(file))
-        //                 .expect("Failed to load client config");
-        //             serde_json::to_string(&config).expect("failed to serialize client config")
-        //         };
-        //         let file_destination = parameters.settings.working_dir.join(filename);
-        //         let upload_file_command = format!(
-        //             "echo -e '{serialized_file}' > {}",
-        //             file_destination.display()
-        //         );
-        //         upload_file_commands.push(upload_file_command);
-        //     }
-        // }
-
         // Generate commands to upload the client config and wallet files.
         let wallets_dir = &parameters.client_parameters.wallets_dir;
         let destination_dir = &parameters.settings.working_dir;
