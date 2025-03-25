@@ -1434,6 +1434,8 @@ important to ensure only authorized parties may access it, or other measures to 
 especially in a future Mainnet deployment.</p>
 </div>
 </div>
+<p>By default, PUT requests are limited to 10 MiB; you can increase this limit through the
+<code>--max-body-size</code> option.</p>
 <h3 id="daemon-metrics"><a class="header" href="#daemon-metrics">Daemon metrics</a></h3>
 <p>Services by default export a metrics end-point accessible via <code>curl http://127.0.0.1:27182/metrics</code>.
 It can be changed using the <code>--metrics-address &lt;METRICS_ADDRESS&gt;</code> CLI option.</p>
@@ -1469,20 +1471,181 @@ with many blob objects.</li>
 </ul>
 </li>
 </ul>
+<h2 id="http-api-usage"><a class="header" href="#http-api-usage">HTTP API Usage</a></h2>
+<p>For the following examples, we assume you set the <code>AGGREGATOR</code> and <code>PUBLISHER</code> environment variables
+to your desired aggregator and publisher, respectively. For example, the instances run by Mysten
+Labs on Walrus Testnet (see <a href="usage/web-api.html#public-services">below</a> for further public options):</p>
+<pre><code class="language-sh">AGGREGATOR=https://aggregator.walrus-testnet.walrus.space
+PUBLISHER=https://publisher.walrus-testnet.walrus.space
+</code></pre>
+<div id="admonition-api-specification" class="admonition admonish-tip" role="note" aria-labelledby="admonition-api-specification-title">
+<div class="admonition-title">
+<div id="admonition-api-specification-title">
+<p>API specification</p>
+</div>
+<a class="admonition-anchor-link" href="usage/web-api.html#admonition-api-specification"></a>
+</div>
+<div>
+<p>Walrus aggregators and publishers expose their API specifications at the path <code>/v1/api</code>. You can
+view this in the browser, for example, at <a href="https://aggregator.walrus-testnet.walrus.space/v1/api">https://aggregator.walrus-testnet.walrus.space/v1/api</a>.</p>
+</div>
+</div>
+<h3 id="store"><a class="header" href="#store">Store</a></h3>
+<p>You can interact with the daemon through simple HTTP PUT requests. For example, with
+<a href="https://curl.se">cURL</a>, you can store blobs using a publisher or daemon as follows:</p>
+<pre><code class="language-sh">curl -X PUT "$PUBLISHER/v1/blobs" -d "some string" # store the string `some string` for 1 storage epoch
+curl -X PUT "$PUBLISHER/v1/blobs?epochs=5" --upload-file "some/file" # store file `some/file` for 5 storage epochs
+curl -X PUT "$PUBLISHER/v1/blobs?send_object_to=$ADDRESS" --upload-file "some/file" # store file `some/file` and send the blob object to $ADDRESS
+curl -X PUT "$PUBLISHER/v1/blobs?deletable=true" --upload-file "some/file" # store file `some/file` as a deletable blob, instead of a permanent one
+</code></pre>
+<p>The store HTTP API end points return information about the blob stored in JSON format. When a blob
+is stored for the first time, a <code>newlyCreated</code> field contains information about the
+new blob:</p>
+<pre><code class="language-sh">$ curl -X PUT "$PUBLISHER/v1/blobs" -d "some other string"
+{
+  "newlyCreated": {
+    "blobObject": {
+      "id": "0xe91eee8c5b6f35b9a250cfc29e30f0d9e5463a21fd8d1ddb0fc22d44db4eac50",
+      "registeredEpoch": 34,
+      "blobId": "M4hsZGQ1oCktdzegB6HnI6Mi28S2nqOPHxK-W7_4BUk",
+      "size": 17,
+      "encodingType": "RS2",
+      "certifiedEpoch": 34,
+      "storage": {
+        "id": "0x4748cd83217b5ce7aa77e7f1ad6fc5f7f694e26a157381b9391ac65c47815faf",
+        "startEpoch": 34,
+        "endEpoch": 35,
+        "storageSize": 66034000
+      },
+      "deletable": false
+    },
+    "resourceOperation": {
+      "registerFromScratch": {
+        "encodedLength": 66034000,
+        "epochsAhead": 1
+      }
+    },
+    "cost": 132300
+  }
+}
+</code></pre>
+<p>The information returned is the content of the <a href="usage/../dev-guide/sui-struct.html">Sui blob object</a>.</p>
+<p>When the publisher finds a certified blob with the same blob ID and a sufficient validity period,
+it returns a <code>alreadyCertified</code> JSON structure:</p>
+<pre><code class="language-sh">$ curl -X PUT "$PUBLISHER/v1/blobs" -d "some other string"
+{
+  "alreadyCertified": {
+    "blobId": "M4hsZGQ1oCktdzegB6HnI6Mi28S2nqOPHxK-W7_4BUk",
+    "event": {
+      "txDigest": "4XQHFa9S324wTzYHF3vsBSwpUZuLpmwTHYMFv9nsttSs",
+      "eventSeq": "0"
+    },
+    "endEpoch": 35
+  }
+}
+</code></pre>
+<p>The field <code>event</code> returns the <a href="usage/../dev-guide/sui-struct.html">Sui event ID</a> that can be used to
+find the transaction that created the Sui Blob object on the Sui explorer or using a Sui SDK.</p>
+<h3 id="read"><a class="header" href="#read">Read</a></h3>
+<p>Blobs may be read from an aggregator or daemon using HTTP GET. For example, the following cURL
+command reads a blob and writes it to an output file:</p>
+<pre><code class="language-sh">curl "$AGGREGATOR/v1/blobs/&lt;some blob ID&gt;" -o &lt;some file name&gt;
+</code></pre>
+<p>Alternatively you may print the contents of a blob in the terminal with the cURL command:</p>
+<pre><code class="language-sh">curl "$AGGREGATOR/v1/blobs/&lt;some blob ID&gt;"
+</code></pre>
+<!-- TODO(WAL-710): Mention blob metadata attribute. -->
+<div id="admonition-content-sniffing" class="admonition admonish-tip" role="note" aria-labelledby="admonition-content-sniffing-title">
+<div class="admonition-title">
+<div id="admonition-content-sniffing-title">
+<p>Content sniffing</p>
+</div>
+<a class="admonition-anchor-link" href="usage/web-api.html#admonition-content-sniffing"></a>
+</div>
+<div>
+<p>Modern browsers will attempt to sniff the content type for such resources, and will generally do a
+good job of inferring content types for media. However, the aggregator on purpose prevents such
+sniffing from inferring dangerous executable types such as JavaScript or style sheet types.</p>
+</div>
+</div>
 <h2 id="public-services"><a class="header" href="#public-services">Using a public aggregator or publisher</a></h2>
-<!-- TODO(WAL-710): Update section based on mainnet services. -->
 <p>For some use cases (e.g., a public website), or to just try out the HTTP API, a publicly accessible
-aggregator and/or publisher is required. Several entities run such aggregators and publishers, see
-the lists of public <a href="usage/web-api.html#public-aggregators">aggregators</a> and <a href="usage/web-api.html#public-publishers">publishers</a> below.</p>
-<p>Public publishers limit requests to 10 MiB by default. If you want to upload larger files, you need
-to <a href="usage/web-api.html#local-daemon">run your own publisher</a> or use the <a href="usage/./client-cli.html">CLI</a>.</p>
-<p>Also, note that the publisher consumes SUI and WAL on the service side, and a Mainnet
-deployment would likely not be able to provide uncontrolled public access to publishing without
-requiring some authentication and compensation for the funds used.</p>
-<h3 id="public-aggregators"><a class="header" href="#public-aggregators">Public aggregators</a></h3>
-<p>The following is a list of know public aggregators; they are checked periodically, but each of them
-may still be temporarily unavailable:</p>
+aggregator and/or publisher is required. On Walrus Testnet, many entities run public aggregators and
+publishers. On Mainnet, there are no public publishers without authentication, as they consume both
+SUI and WAL.</p>
+<p>See the following subsections for <a href="usage/web-api.html#mainnet">public aggregators on Mainnet</a> and public
+<a href="usage/web-api.html#aggregators-testnet">aggregators</a> and <a href="usage/web-api.html#publishers-testnet">publishers</a> on Testnet. All of these
+are also available in JSON format <a href="usage/../assets/operators.json">here</a>.</p>
 <!-- markdownlint-disable proper-names -->
+<h3 id="mainnet"><a class="header" href="#mainnet">Mainnet</a></h3>
+<p>The following is a list of known public aggregators on Walrus Mainnet; they are checked
+periodically, but each of them may still be temporarily unavailable:</p>
+<ul>
+<li><code>https://aggregator.walrus.mainnet.mozcomputing.dev</code></li>
+<li><code>https://aggregator.walrus.silentvalidator.com</code></li>
+<li><code>https://mainnet-aggregator.hoh.zone</code></li>
+<li><code>https://mainnet-aggregator.walrus.graphyte.dev</code></li>
+<li><code>https://mainnet-walrus-aggregator.kiliglab.io</code></li>
+<li><code>https://sm1-walrus-mainnet-aggregator.stakesquid.com</code></li>
+<li><code>https://sui-walrus-mainnet-aggregator.bwarelabs.com</code></li>
+<li><code>https://suiftly.mhax.io</code></li>
+<li><code>https://wal-aggregator-mainnet.staketab.org:443</code></li>
+<li><code>https://walmain.agg.chainflow.io</code></li>
+<li><code>https://walrus-agg.mainnet.obelisk.sh</code></li>
+<li><code>https://walrus-aggregator-mainnet.chainode.tech:9002</code></li>
+<li><code>https://walrus-aggregator.n1stake.com</code></li>
+<li><code>https://walrus-aggregator.natsai.xyz</code></li>
+<li><code>https://walrus-aggregator.rockfin.io</code></li>
+<li><code>https://walrus-aggregator.rubynodes.io</code></li>
+<li><code>https://walrus-aggregator.stakely.io</code></li>
+<li><code>https://walrus-aggregator.stakin-nodes.com</code></li>
+<li><code>https://walrus-aggregator.starduststaking.com</code></li>
+<li><code>https://walrus-aggregator.talentum.id</code></li>
+<li><code>https://walrus-aggregator.thcloud.ai</code></li>
+<li><code>https://walrus-aggregator.thepassivetrust.com</code></li>
+<li><code>https://walrus-cache-mainnet.latitude.sh</code></li>
+<li><code>https://walrus-cache-mainnet.overclock.run</code></li>
+<li><code>https://walrus-main-aggregator.4everland.org</code></li>
+<li><code>https://walrus-mainnet-aggregator-1.zkv.xyz</code></li>
+<li><code>https://walrus-mainnet-aggregator.crouton.digital</code></li>
+<li><code>https://walrus-mainnet-aggregator.dzdaic.com</code></li>
+<li><code>https://walrus-mainnet-aggregator.everstake.one</code></li>
+<li><code>https://walrus-mainnet-aggregator.imperator.co</code></li>
+<li><code>https://walrus-mainnet-aggregator.luckyresearch.org</code></li>
+<li><code>https://walrus-mainnet-aggregator.nami.cloud</code></li>
+<li><code>https://walrus-mainnet-aggregator.nodeinfra.com</code></li>
+<li><code>https://walrus-mainnet-aggregator.redundex.com</code></li>
+<li><code>https://walrus-mainnet-aggregator.rpc101.org</code></li>
+<li><code>https://walrus-mainnet-aggregator.stakecraft.com</code></li>
+<li><code>https://walrus-mainnet-aggregator.stakeengine.co.uk</code></li>
+<li><code>https://walrus-mainnet-aggregator.stakingdefenseleague.com</code></li>
+<li><code>https://walrus-mainnet-aggregator.trusted-point.com</code></li>
+<li><code>https://walrus.aggregator.stakepool.dev.br</code></li>
+<li><code>https://walrus.blockscope.net</code></li>
+<li><code>https://walrus.chainbase.online/aggregator</code></li>
+<li><code>https://walrus.globalstake.io</code></li>
+<li><code>https://walrus.lakestake.io</code></li>
+<li><code>https://walrus.prostaking.com:9443</code></li>
+<li><code>https://walrus.staking4all.org</code></li>
+<li><code>https://walrus.veera.com</code></li>
+<li><code>https://walrusagg.pops.one</code></li>
+<li><code>http://agg.walrus.eosusa.io</code></li>
+<li><code>http://aggregator.mainnet.walrus.mirai.cloud</code></li>
+<li><code>http://aggregator.suicore.com</code></li>
+<li><code>http://aggregator.walrus-mainnet.h2o-nodes.com</code></li>
+<li><code>http://aggregator.walrus-mainnet.tududes.com</code></li>
+<li><code>http://aggregator.walrus-mainnet.walrus.space</code></li>
+<li><code>http://aggregator.walrus.atalma.io</code></li>
+<li><code>http://walrus-aggregator.brightlystake.com:9000</code></li>
+<li><code>http://walrus-aggregator.winsnip.site:9000</code></li>
+<li><code>http://walrus.equinoxdao.xyz:9000</code></li>
+<li><code>http://67.220.194.10:9000</code></li>
+<li><code>http://74.118.136.166:9000</code></li>
+</ul>
+<h3 id="testnet"><a class="header" href="#testnet">Testnet</a></h3>
+<h4 id="aggregators-testnet"><a class="header" href="#aggregators-testnet">Aggregators</a></h4>
+<p>The following is a list of known public aggregators on Walrus Testnet; they are checked
+periodically, but each of them may still be temporarily unavailable:</p>
 <ul>
 <li><code>https://153-gb3-val-walrus-aggregator.stakesquid.com</code></li>
 <li><code>https://agg.test.walrus.eosusa.io</code></li>
@@ -1547,7 +1710,9 @@ may still be temporarily unavailable:</p>
 <li><code>http://65.21.139.112:9000</code></li>
 <li><code>http://93.115.27.108:9000</code></li>
 </ul>
-<h3 id="public-publishers"><a class="header" href="#public-publishers">Public publishers</a></h3>
+<h4 id="publishers-testnet"><a class="header" href="#publishers-testnet">Publishers</a></h4>
+<p>The following is a list of known public publishers on Walrus Testnet; they are checked
+periodically, but each of them may still be temporarily unavailable:</p>
 <ul>
 <li><code>https://153-gb3-val-walrus-publisher.stakesquid.com</code></li>
 <li><code>https://pub.test.walrus.eosusa.io</code></li>
@@ -1613,101 +1778,8 @@ may still be temporarily unavailable:</p>
 <li><code>http://93.115.27.108:9001</code></li>
 </ul>
 <!-- markdownlint-enable proper-names -->
-<h2 id="http-api-usage"><a class="header" href="#http-api-usage">HTTP API Usage</a></h2>
-<p>For the following examples, we assume you set the <code>AGGREGATOR</code> and <code>PUBLISHER</code> environment variables
-to your desired aggregator and publisher, respectively. For example:</p>
-<pre><code class="language-sh">AGGREGATOR=https://aggregator.walrus-testnet.walrus.space
-PUBLISHER=https://publisher.walrus-testnet.walrus.space
-</code></pre>
-<div id="admonition-api-specification" class="admonition admonish-tip" role="note" aria-labelledby="admonition-api-specification-title">
-<div class="admonition-title">
-<div id="admonition-api-specification-title">
-<p>API specification</p>
-</div>
-<a class="admonition-anchor-link" href="usage/web-api.html#admonition-api-specification"></a>
-</div>
-<div>
-<p>Walrus aggregators and publishers expose their API specifications at the path <code>/v1/api</code>. You can
-view this in the browser, for example, at <a href="https://aggregator.walrus-testnet.walrus.space/v1/api">https://aggregator.walrus-testnet.walrus.space/v1/api</a>.</p>
-</div>
-</div>
-<h3 id="store"><a class="header" href="#store">Store</a></h3>
-<p>You can interact with the daemon through simple HTTP PUT requests. For example, with
-<a href="https://curl.se">cURL</a>, you can store blobs using a publisher or daemon as follows:</p>
-<pre><code class="language-sh">curl -X PUT "$PUBLISHER/v1/blobs" -d "some string" # store the string `some string` for 1 storage epoch
-curl -X PUT "$PUBLISHER/v1/blobs?epochs=5" --upload-file "some/file" # store file `some/file` for 5 storage epochs
-curl -X PUT "$PUBLISHER/v1/blobs?send_object_to=$ADDRESS" --upload-file "some/file" # store file `some/file` and send the blob object to $ADDRESS
-curl -X PUT "$PUBLISHER/v1/blobs?deletable=true" --upload-file "some/file" # store file `some/file` as a deletable blob, instead of a permanent one
-</code></pre>
-<p>The store HTTP API end points return information about the blob stored in JSON format. When a blob
-is stored for the first time, a <code>newlyCreated</code> field contains information about the
-new blob:</p>
-<pre><code class="language-sh">$ curl -X PUT "$PUBLISHER/v1/blobs" -d "some other string"
-{
-  "newlyCreated": {
-    "blobObject": {
-      "id": "0xd765d11848cbac5b1f6eec2fbeb343d4558cbe8a484a00587f9ef5385d64d235",
-      "registeredEpoch": 0,
-      "blobId": "Cmh2LQEGJwBYfmIC8duzK8FUE2UipCCrshAYjiUheZM",
-      "size": 17,
-      "encodingType": "RedStuff",
-      "certifiedEpoch": 0,
-      "storage": {
-        "id": "0x28cc75b33e31b3e672646eacf1a7c7a2e5d638644651beddf7ed4c7e21e9cb8e",
-        "startEpoch": 0,
-        "endEpoch": 1,
-        "storageSize": 4747680
-      },
-      "deletable": false
-    },
-    "resourceOperation": {
-      "registerFromScratch": {
-        "encodedLength": 4747680,
-        "epochsAhead": 1
-      }
-    },
-    "cost": 231850
-  }
-}
-</code></pre>
-<p>The information returned is the content of the <a href="usage/../dev-guide/sui-struct.html">Sui blob object</a>.</p>
-<p>When the aggregator finds a certified blob with the same blob ID and a sufficient validity period,
-it returns a <code>alreadyCertified</code> JSON structure:</p>
-<pre><code class="language-sh">$ curl -X PUT "$PUBLISHER/v1/blobs" -d "some other string"
-{
-  "alreadyCertified": {
-    "blobId": "Cmh2LQEGJwBYfmIC8duzK8FUE2UipCCrshAYjiUheZM",
-    "event": {
-      "txDigest": "CLE41JTPR2CgZRC1gyKK6P3xpQRHCetQMsmtEgqGjwst",
-      "eventSeq": "0"
-    },
-    "endEpoch": 1
-  }
-}
-</code></pre>
-<p>The field <code>event</code> returns the <a href="usage/../dev-guide/sui-struct.html">Sui event ID</a> that can be used to
-find the transaction that created the Sui Blob object on the Sui explorer or using a Sui SDK.</p>
-<h3 id="read"><a class="header" href="#read">Read</a></h3>
-<p>Blobs may be read from an aggregator or daemon using HTTP GET. For example, the following cURL
-command reads a blob and writes it to an output file:</p>
-<pre><code class="language-sh">curl "$AGGREGATOR/v1/blobs/&lt;some blob ID&gt;" -o &lt;some file name&gt;
-</code></pre>
-<p>Alternatively you may print the contents of a blob in the terminal with the cURL command:</p>
-<pre><code class="language-sh">curl "$AGGREGATOR/v1/blobs/&lt;some blob ID&gt;"
-</code></pre>
-<div id="admonition-content-sniffing" class="admonition admonish-tip" role="note" aria-labelledby="admonition-content-sniffing-title">
-<div class="admonition-title">
-<div id="admonition-content-sniffing-title">
-<p>Content sniffing</p>
-</div>
-<a class="admonition-anchor-link" href="usage/web-api.html#admonition-content-sniffing"></a>
-</div>
-<div>
-<p>Modern browsers will attempt to sniff the content type for such resources, and will generally do a
-good job of inferring content types for media. However, the aggregator on purpose prevents such
-sniffing from inferring dangerous executable types such as JavaScript or style sheet types.</p>
-</div>
-</div>
+<p>Most of these limit requests to 10 MiB by default. If you want to upload larger files, you need to
+<a href="usage/web-api.html#local-daemon">run your own publisher</a> or use the <a href="usage/./client-cli.html">CLI</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="software-development-kits-sdks-and-other-tools"><a class="header" href="#software-development-kits-sdks-and-other-tools">Software development kits (SDKs) and other tools</a></h1>
 <!-- TODO(WAL-710): link to ts-sdk for mainnet, and clarify Rust. -->
