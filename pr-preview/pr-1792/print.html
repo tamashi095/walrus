@@ -679,15 +679,16 @@ repository</a>.</p>
 a decentralized network of over 100 storage nodes. Epoch 1 begun on March 25, 2025. The
 network can now be used to
 <a href="blog/../usage/interacting.html">publish and retrieve blobs</a>,
-<a href="https://wal.app">upload and browse Walrus Sites</a>, as
+<a href="blog/../walrus-sites/tutorial-publish.html">upload and browse Walrus Sites</a>, as
 well as <a href="blog/">stake and unstake</a> to determine future committees using the live
 <a href="https://www.walrus.xyz/wal-token">Mainnet WAL token</a>.
-On Mainnet the Walrus security properties
-should hold. And Walrus is now ready to satisfy the needs of real applications.</p>
-<p>The Walrus protocol health is overseen by an
+On Mainnet, the Walrus security properties hold. And Walrus is now ready to satisfy
+the needs of real applications.</p>
+<p>Walrus is <a href="https://github.com/MystenLabs/walrus">open source</a>.
+The Walrus protocol health is overseen by an
 <a href="https://www.walrus.xyz/">independent foundation</a> that is now
 <a href="https://www.walrus.xyz/blog/walrus-foundation-fundraising">well resourced</a> to support future
-development and growth. Walrus is <a href="https://github.com/MystenLabs/walrus">open source</a>.
+development and growth.
 And, the community is collecting tools, resources and dapps for Walrus under
 <a href="https://github.com/MystenLabs/awesome-walrus">Awesome Walrus!</a></p>
 <p>This is a significant milestone a little over 12 months after an initial small team started
@@ -1310,13 +1311,13 @@ command.</p>
 <p>Storing one or multiple blobs on Walrus can be achieved through the following command:</p>
 <pre><code class="language-sh">walrus store &lt;FILES&gt; --epochs &lt;EPOCHS&gt;
 </code></pre>
-<p>A mandatory CLI argument must specific the end epoch for the blob.
+<p>A mandatory CLI argument must be set to specify the end epoch for the blob.
 The <code>--epochs &lt;EPOCHS&gt;</code> option indicates the number of epochs the blob should be
 stored for. There is an upper limit on the number of epochs a blob can be stored for, which is 53,
 corresponding to two years. In addition to a positive integer,
 you can also use <code>--epochs max</code> to store the blob for the maximum number of epochs.</p>
-<p>The end epoch for the stored blob can be provided through other. The
-<code>--earliest-expiry-time &lt;EARLIEST_EXPIRY_TIME&gt;</code> options takes a date in RFC3339 format
+<p>Moreover, the end epoch for the stored blob can be provided through other options. The
+<code>--earliest-expiry-time &lt;EARLIEST_EXPIRY_TIME&gt;</code> option takes a date in RFC3339 format
 (e.g., "2024-03-20T15:00:00Z") or a more relaxed format (e.g., "2024-03-20 15:00:00") and ensures
 the blob expires after that date if possible. Finally, the <code>--end-epoch &lt;END_EPOCH&gt;</code> option takes
 a specific end epoch for the blob.</p>
