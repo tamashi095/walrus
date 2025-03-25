@@ -22,13 +22,8 @@ use axum_extra::{
 use openapi::{AggregatorApiDoc, DaemonApiDoc, PublisherApiDoc};
 use prometheus::Registry;
 use reqwest::StatusCode;
-use routes::{
-    PublisherQuery,
-    BLOB_GET_ENDPOINT,
-    BLOB_OBJECT_GET_ENDPOINT,
-    BLOB_PUT_ENDPOINT,
-    STATUS_ENDPOINT,
-};
+pub use routes::PublisherQuery;
+use routes::{BLOB_GET_ENDPOINT, BLOB_OBJECT_GET_ENDPOINT, BLOB_PUT_ENDPOINT, STATUS_ENDPOINT};
 use sui_types::base_types::ObjectID;
 use tower::{
     buffer::BufferLayer,
@@ -39,26 +34,20 @@ use tower::{
 use tower_http::trace::TraceLayer;
 use utoipa::OpenApi;
 use utoipa_redoc::{Redoc, Servable};
-use walrus_core::{encoding::Primary, BlobId, EncodingType, EpochCount};
+use walrus_core::{encoding::Primary, BlobId, EncodingType, EpochCount, DEFAULT_ENCODING};
 use walrus_sui::{
     client::{BlobPersistence, PostStoreAction, ReadClient, SuiContractClient},
     types::move_structs::BlobWithAttribute,
 };
 
-use super::{
-    responses::BlobStoreResult,
-    utils::encoding_type_or_default_for_version,
-    Client,
-    ClientResult,
-    StoreWhen,
-};
+use super::{responses::BlobStoreResult, Client, ClientResult, StoreWhen};
 use crate::{
     client::{
         cli::{AggregatorArgs, PublisherArgs},
         config::AuthConfig,
         daemon::auth::verify_jwt_claim,
     },
-    common::telemetry::{metrics_middleware, register_http_metrics, HttpMetrics, MakeHttpSpan},
+    common::telemetry::{metrics_middleware, HttpServerMetrics, MakeHttpSpan},
 };
 
 pub mod auth;
@@ -119,10 +108,7 @@ impl WalrusWriteClient for Client<SuiContractClient> {
         persistence: BlobPersistence,
         post_store: PostStoreAction,
     ) -> ClientResult<BlobStoreResult> {
-        let encoding_type = encoding_type_or_default_for_version(
-            encoding_type,
-            self.sui_client().system_object_version().await?,
-        );
+        let encoding_type = encoding_type.unwrap_or(DEFAULT_ENCODING);
 
         let result = self
             .reserve_and_store_blobs_retry_committees(
@@ -155,7 +141,7 @@ impl WalrusWriteClient for Client<SuiContractClient> {
 pub struct ClientDaemon<T> {
     client: Arc<T>,
     network_address: SocketAddr,
-    metrics: HttpMetrics,
+    metrics: HttpServerMetrics,
     router: Router<Arc<T>>,
     allowed_headers: Arc<HashSet<String>>,
 }
@@ -181,7 +167,7 @@ impl<T: WalrusReadClient + Send + Sync + 'static> ClientDaemon<T> {
         ClientDaemon {
             client: Arc::new(client),
             network_address,
-            metrics: register_http_metrics(registry),
+            metrics: HttpServerMetrics::new(registry),
             router: Router::new()
                 .merge(Redoc::with_url(routes::API_DOCS, A::openapi()))
                 .route(STATUS_ENDPOINT, get(routes::status)),
@@ -335,15 +321,14 @@ pub(crate) async fn auth_layer(
     // Note: Try to get a body hint to reject a oversize payload as fast as possible.
     // It is fine to use this imprecise hint, because we will check again the size when storing to
     // Walrus.
-    let body_size_hint = request.body().size_hint().upper().unwrap_or(0);
-    tracing::debug!(%body_size_hint, query = ?query.0, "authenticating a request to store a blob");
+    tracing::debug!(query = ?query.0, "authenticating a request to store a blob");
 
     if let Err(resp) = verify_jwt_claim(
         query,
         bearer_header,
         &auth_config,
         token_cache.as_ref(),
-        body_size_hint,
+        request.body().size_hint(),
     )
     .await
     {

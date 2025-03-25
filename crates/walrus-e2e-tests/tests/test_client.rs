@@ -27,14 +27,12 @@ use walrus_core::{
     merkle::Node,
     messages::BlobPersistenceType,
     metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
-    test_utils::random_encoding_type,
     BlobId,
     EncodingType,
     EpochCount,
     ShardIndex,
     SliverPairIndex,
     DEFAULT_ENCODING,
-    SUPPORTED_ENCODING_TYPES,
 };
 use walrus_proc_macros::walrus_simtest;
 use walrus_sdk::api::BlobStatus;
@@ -100,10 +98,8 @@ async fn test_store_and_read_blob_without_failures(blob_size: usize) {
 
 /// Basic read and write test for the client.
 ///
-/// It generates random blobs and stores them using different encoding types.
+/// It generates random blobs and stores them.
 /// It then reads the blobs back and verifies that the data is correct.
-///
-/// The test uses a random number of encoding types for each blob.
 pub async fn basic_store_and_read<F>(
     client: &WithTempDir<Client<SuiContractClient>>,
     num_blobs: usize,
@@ -116,50 +112,42 @@ where
     // Generate random blobs.
     let blob_data = walrus_test_utils::random_data_list(data_length, num_blobs);
     let mut path_to_data: HashMap<PathBuf, Vec<u8>> = HashMap::new();
-    let mut blobs_by_encoding: HashMap<EncodingType, Vec<(PathBuf, Vec<u8>)>> = HashMap::new();
+    let mut blobs_with_paths: Vec<(PathBuf, Vec<u8>)> = vec![];
     let mut path_to_blob_id: HashMap<PathBuf, BlobId> = HashMap::new();
 
-    // For each blob, create multiple encodings and paths.
+    // Create paths for each blob.
     for (i, data) in blob_data.iter().enumerate() {
-        for encoding in SUPPORTED_ENCODING_TYPES {
-            let path = PathBuf::from(format!("blob_{}_{}", i, encoding));
-            path_to_data.insert(path.clone(), data.to_vec());
-            blobs_by_encoding
-                .entry(*encoding)
-                .or_default()
-                .push((path, data.to_vec()));
-        }
+        let path = PathBuf::from(format!("blob_{}", i));
+        path_to_data.insert(path.clone(), data.to_vec());
+        blobs_with_paths.push((path, data.to_vec()));
     }
 
-    // Store blobs grouped by encoding type.
-    for (encoding_type, blobs_with_paths) in blobs_by_encoding {
-        let store_result = client
-            .as_ref()
-            .reserve_and_store_blobs_retry_committees_with_path(
-                &blobs_with_paths,
-                encoding_type,
-                1,
-                StoreWhen::Always,
-                BlobPersistence::Permanent,
-                PostStoreAction::Keep,
-            )
-            .await?;
+    let store_result = client
+        .as_ref()
+        .reserve_and_store_blobs_retry_committees_with_path(
+            &blobs_with_paths,
+            DEFAULT_ENCODING,
+            1,
+            StoreWhen::Always,
+            BlobPersistence::Permanent,
+            PostStoreAction::Keep,
+        )
+        .await?;
 
-        for result in store_result {
-            match result.blob_store_result {
-                BlobStoreResult::NewlyCreated { blob_object, .. } => {
-                    assert_eq!(
-                        blob_object.encoding_type, encoding_type,
-                        "Stored blob has incorrect encoding type"
-                    );
-                    path_to_blob_id.insert(result.path, blob_object.blob_id);
-                }
-                _ => panic!(
-                    "Expected NewlyCreated result, got: {:?}",
-                    result.blob_store_result
-                ),
-            };
-        }
+    for result in store_result {
+        match result.blob_store_result {
+            BlobStoreResult::NewlyCreated { blob_object, .. } => {
+                assert_eq!(
+                    blob_object.encoding_type, DEFAULT_ENCODING,
+                    "Stored blob has incorrect encoding type"
+                );
+                path_to_blob_id.insert(result.path, blob_object.blob_id);
+            }
+            _ => panic!(
+                "Expected NewlyCreated result, got: {:?}",
+                result.blob_store_result
+            ),
+        };
     }
 
     // Call the pre-read hook before reading data.
@@ -295,7 +283,7 @@ async fn test_inconsistency(failed_nodes: &[usize]) -> TestResult {
     let (pairs, metadata) = client
         .as_ref()
         .encoding_config()
-        .get_for_type(random_encoding_type())
+        .get_for_type(DEFAULT_ENCODING)
         .encode_with_metadata(&blob)?;
     let mut metadata = metadata.metadata().to_owned();
     let mut i = 0;
@@ -424,7 +412,7 @@ async fn test_store_with_existing_blob_resource(
 
     let blob_data = walrus_test_utils::random_data_list(31415, 4);
     let blobs: Vec<&[u8]> = blob_data.iter().map(AsRef::as_ref).collect();
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
     let metatdatum = blobs
         .iter()
         .map(|blob| {
@@ -573,7 +561,7 @@ async fn test_store_with_existing_blobs() -> TestResult {
 
     // Initial setup, with blobs in different states, the names indicate the later outcome
     // of a following store operation.
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
     let reuse_blob = register_blob(&client, blobs[0], encoding_type, 40).await?;
     let certify_and_extend_blob = register_blob(&client, blobs[1], encoding_type, 10).await?;
     let already_certified_blob = store_blob(&client, blobs[2], encoding_type, 50).await?;
@@ -690,11 +678,10 @@ async fn test_store_with_existing_storage_resource(
 
     let blob_data = walrus_test_utils::random_data_list(31415, 4);
     let blobs: Vec<&[u8]> = blob_data.iter().map(AsRef::as_ref).collect();
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
     let pairs_and_metadata = client
         .as_ref()
-        .encode_blobs_to_pairs_and_metadata(&blobs, encoding_type)
-        .await?;
+        .encode_blobs_to_pairs_and_metadata(&blobs, encoding_type)?;
     let encoded_sizes = pairs_and_metadata
         .iter()
         .map(|(_, metadata)| metadata.metadata().encoded_size().unwrap())
@@ -757,7 +744,7 @@ async fn test_delete_blob(blobs_to_create: u32) -> TestResult {
     let blobs = vec![blob.as_slice()];
     // Store the blob multiple times, using separate end times to obtain multiple blob objects
     // with the same blob ID.
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
     for idx in 1..blobs_to_create + 1 {
         client
             .as_ref()
@@ -806,8 +793,6 @@ async fn test_delete_blob(blobs_to_create: u32) -> TestResult {
         .await?;
     assert_eq!(blobs.len(), 1);
 
-    // TODO(mlegner): Check correct handling on nodes.
-
     Ok(())
 }
 
@@ -823,7 +808,7 @@ async fn test_storage_nodes_delete_data_for_deleted_blobs() -> TestResult {
     let results = client
         .reserve_and_store_blobs(
             &blobs,
-            random_encoding_type(),
+            DEFAULT_ENCODING,
             1,
             StoreWhen::Always,
             BlobPersistence::Deletable,
@@ -883,7 +868,7 @@ async fn test_blocklist() -> TestResult {
     let store_results = client
         .reserve_and_store_blobs(
             &[&blob],
-            random_encoding_type(),
+            DEFAULT_ENCODING,
             1,
             StoreWhen::Always,
             BlobPersistence::Deletable,
@@ -961,7 +946,7 @@ async fn test_blob_operations_with_subsidies() -> TestResult {
     let store_result = client
         .reserve_and_store_blobs(
             &blobs,
-            random_encoding_type(),
+            DEFAULT_ENCODING,
             1,
             StoreWhen::Always,
             BlobPersistence::Permanent,
@@ -1020,7 +1005,7 @@ async fn test_multiple_stores_same_blob() -> TestResult {
     let client = client.as_ref();
     let blob = walrus_test_utils::random_data(314);
     let blobs = vec![blob.as_slice()];
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
 
     // NOTE: not in a param_test, because we want to test these store operations in sequence.
     // If the last `bool` parameter is `true`, the store operation should return a
@@ -1132,6 +1117,7 @@ async fn test_repeated_shard_move() -> TestResult {
         walrus_cluster.nodes[0]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         0
     );
@@ -1139,6 +1125,7 @@ async fn test_repeated_shard_move() -> TestResult {
         walrus_cluster.nodes[1]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         2
     );
@@ -1157,11 +1144,19 @@ async fn test_repeated_shard_move() -> TestResult {
 
     walrus_cluster.wait_for_nodes_to_reach_epoch(7).await;
     assert_eq!(
-        walrus_cluster.nodes[0].storage_node.existing_shards().len(),
+        walrus_cluster.nodes[0]
+            .storage_node()
+            .existing_shards()
+            .await
+            .len(),
         2
     );
     assert_eq!(
-        walrus_cluster.nodes[1].storage_node.existing_shards().len(),
+        walrus_cluster.nodes[1]
+            .storage_node()
+            .existing_shards()
+            .await
+            .len(),
         0
     );
 
@@ -1184,7 +1179,7 @@ async fn test_burn_blobs() -> TestResult {
             .as_ref()
             .reserve_and_store_blobs(
                 &[blob.as_slice()],
-                random_encoding_type(),
+                DEFAULT_ENCODING,
                 1,
                 StoreWhen::Always,
                 BlobPersistence::Permanent,
@@ -1234,7 +1229,7 @@ async fn test_extend_owned_blobs() -> TestResult {
 
     let current_epoch = client.as_ref().sui_client().current_epoch().await?;
     let blob = walrus_test_utils::random_data(314);
-    let encoding_type = random_encoding_type();
+    let encoding_type = DEFAULT_ENCODING;
     let result = client
         .as_ref()
         .reserve_and_store_blobs(
@@ -1309,7 +1304,7 @@ async fn test_share_blobs() -> TestResult {
         .as_ref()
         .reserve_and_store_blobs(
             &[blob.as_slice()],
-            random_encoding_type(),
+            DEFAULT_ENCODING,
             1,
             StoreWhen::Always,
             BlobPersistence::Permanent,
@@ -1380,7 +1375,7 @@ async_param_test! {
         keep: (PostStoreAction::Keep, 4, 0),
         transfer: (
             PostStoreAction::TransferTo(
-                SuiAddress::from_bytes(TARGET_ADDRESS).expect("valid address")
+                SuiAddress::from_bytes(TARGET_ADDRESS).expect("valid address"),
             ),
             0,
             4
@@ -1404,7 +1399,7 @@ async fn test_post_store_action(
         .as_ref()
         .reserve_and_store_blobs_retry_committees(
             &blobs,
-            random_encoding_type(),
+            DEFAULT_ENCODING,
             1,
             StoreWhen::Always,
             BlobPersistence::Permanent,
@@ -1703,7 +1698,7 @@ impl<'a> BlobAttributeTestContext<'a> {
                 .as_mut()
                 .reserve_and_store_blobs(
                     &blobs,
-                    random_encoding_type(),
+                    DEFAULT_ENCODING,
                     idx,
                     StoreWhen::Always,
                     BlobPersistence::Permanent,
@@ -1963,6 +1958,7 @@ async fn test_shard_move_out_and_back_in_immediately() -> TestResult {
         walrus_cluster.nodes[1]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         2
     );
@@ -1970,19 +1966,22 @@ async fn test_shard_move_out_and_back_in_immediately() -> TestResult {
         walrus_cluster.nodes[0]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         2
     );
     assert_unordered_eq!(
         walrus_cluster.nodes[1]
             .storage_node()
-            .existing_shards_live(),
+            .existing_shards_live()
+            .await,
         vec![]
     );
     assert_unordered_eq!(
         walrus_cluster.nodes[0]
             .storage_node()
-            .existing_shards_live(),
+            .existing_shards_live()
+            .await,
         vec![ShardIndex(0), ShardIndex(1)]
     );
 
@@ -1993,6 +1992,7 @@ async fn test_shard_move_out_and_back_in_immediately() -> TestResult {
         walrus_cluster.nodes[1]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         0
     );
@@ -2000,6 +2000,7 @@ async fn test_shard_move_out_and_back_in_immediately() -> TestResult {
         walrus_cluster.nodes[0]
             .storage_node()
             .existing_shards()
+            .await
             .len(),
         2
     );

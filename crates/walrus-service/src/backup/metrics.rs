@@ -1,11 +1,10 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use prometheus::{Gauge, GaugeVec, Histogram, IntCounter, IntCounterVec, Opts, Registry};
+use prometheus::{Gauge, GaugeVec, Histogram, IntCounter, IntCounterVec};
 
-use crate::common::telemetry;
-
-telemetry::define_metric_set! {
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
     /// Metrics exported by the backup fetcher node.
     pub(crate) struct BackupFetcherMetricSet {
         #[help = "The total count of blobs fetched from Walrus"]
@@ -51,7 +50,8 @@ fn buckets_for_blob_durations() -> Vec<f64> {
     prometheus::exponential_buckets(0.02, 2.7, 12).unwrap()
 }
 
-telemetry::define_metric_set! {
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
     /// Metrics exported by the backup orchestrator node.
     pub(crate) struct BackupOrchestratorMetricSet {
         #[help = "The count of all Sui stream events seen"]
@@ -67,10 +67,32 @@ telemetry::define_metric_set! {
         db_serializability_retries: IntCounterVec["context"],
     }
 }
-telemetry::define_metric_set! {
+
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
     /// Metrics exported by the backup orchestrator node.
     pub(crate) struct BackupDbMetricSet {
         #[help = "The states of the blobs in the db"]
         blob_states: GaugeVec["state"],
+        #[help = "The total amount of archived blob data"]
+        total_bytes_archived: Gauge[],
+    }
+}
+
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
+    /// Metrics exported by the backup orchestrator node.
+    pub(crate) struct BackupGarbageCollectorMetricSet {
+        #[help = "The count of blobs deleted from cloud storage"]
+        blobs_deleted: IntCounter[],
+
+        #[help = "The count of database reconnects"]
+        db_reconnects: IntCounter[],
+
+        #[help = "The number of retries due to serializability failures"]
+        db_serializability_retries: IntCounterVec["context"],
+
+        #[help = "Idle"]
+        idle_state: Gauge[],
     }
 }

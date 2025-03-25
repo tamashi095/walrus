@@ -1,11 +1,19 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+#[cfg(feature = "backoff")]
 pub mod backoff;
-pub mod checkpoint_downloader;
+
+#[cfg(feature = "config")]
 pub mod config;
+
+#[cfg(feature = "metrics")]
 pub mod metrics;
 
+#[cfg(feature = "http")]
+pub mod http;
+
+#[cfg(feature = "test-utils")]
 pub mod tests {
     use std::sync::OnceLock;
 

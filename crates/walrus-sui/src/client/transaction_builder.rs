@@ -251,26 +251,7 @@ impl WalrusPtbBuilder {
     }
 
     /// Adds a call to `reserve_space` to the `pt_builder` and returns the result [`Argument`].
-    pub async fn reserve_space(
-        &mut self,
-        encoded_size: u64,
-        epochs_ahead: EpochCount,
-    ) -> SuiClientResult<Argument> {
-        let subsidies_package_id = self.read_client.get_subsidies_package_id();
-        match subsidies_package_id {
-            Some(pkg_id) => {
-                self.reserve_space_with_subsidies(encoded_size, epochs_ahead, pkg_id)
-                    .await
-            }
-            None => {
-                self.reserve_space_without_subsidies(encoded_size, epochs_ahead)
-                    .await
-            }
-        }
-    }
-
-    /// Adds a call to `reserve_space` to the `pt_builder` and returns the result [`Argument`].
-    async fn reserve_space_without_subsidies(
+    pub async fn reserve_space_without_subsidies(
         &mut self,
         encoded_size: u64,
         epochs_ahead: EpochCount,
@@ -294,7 +275,7 @@ impl WalrusPtbBuilder {
     }
 
     /// Adds a call to `reserve_space` to the `pt_builder` and returns the result [`Argument`].
-    async fn reserve_space_with_subsidies(
+    pub async fn reserve_space_with_subsidies(
         &mut self,
         encoded_size: u64,
         epochs_ahead: EpochCount,
@@ -613,7 +594,7 @@ impl WalrusPtbBuilder {
     }
 
     /// Adds a call to extend an owned blob without subsidies.
-    async fn extend_blob_without_subsidies(
+    pub async fn extend_blob_without_subsidies(
         &mut self,
         blob_object: ArgumentOrOwnedObject,
         epochs_extended: EpochCount,
@@ -636,28 +617,8 @@ impl WalrusPtbBuilder {
         Ok(())
     }
 
-    /// Adds a call to extend an owned blob.
-    pub async fn extend_blob(
-        &mut self,
-        blob_object: ArgumentOrOwnedObject,
-        epochs_ahead: EpochCount,
-        encoded_size: u64,
-    ) -> SuiClientResult<()> {
-        let subsidies_package_id = self.read_client.get_subsidies_package_id();
-        match subsidies_package_id {
-            Some(pkg_id) => {
-                self.extend_blob_with_subsidies(blob_object, epochs_ahead, encoded_size, pkg_id)
-                    .await
-            }
-            None => {
-                self.extend_blob_without_subsidies(blob_object, epochs_ahead, encoded_size)
-                    .await
-            }
-        }
-    }
-
     /// Adds a call to extend an owned blob with subsidies.
-    async fn extend_blob_with_subsidies(
+    pub async fn extend_blob_with_subsidies(
         &mut self,
         blob_object: ArgumentOrOwnedObject,
         epochs_ahead: EpochCount,
@@ -1046,6 +1007,21 @@ impl WalrusPtbBuilder {
         Ok(())
     }
 
+    /// Sets the commission rate for the node.
+    pub async fn set_commission_rate(
+        &mut self,
+        storage_node_cap: &ArgumentOrOwnedObject,
+        rate: u16,
+    ) -> SuiClientResult<()> {
+        let args = vec![
+            self.staking_arg(Mutability::Mutable).await?,
+            self.argument_from_arg_or_obj(*storage_node_cap).await?,
+            self.pt_builder.pure(rate)?,
+        ];
+        self.walrus_move_call(contracts::staking::set_next_commission, args)?;
+        Ok(())
+    }
+
     /// Sets the governance authorized object for the pool.
     pub async fn set_governance_authorized(
         &mut self,
@@ -1125,6 +1101,11 @@ impl WalrusPtbBuilder {
 
         if let Some(metadata) = params.metadata {
             self.set_node_metadata(&storage_node_cap, &metadata).await?;
+        }
+
+        if let Some(commission_rate) = params.commission_rate {
+            self.set_commission_rate(&storage_node_cap, commission_rate)
+                .await?;
         }
 
         Ok(())

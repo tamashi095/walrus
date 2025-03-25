@@ -13,10 +13,10 @@ use walrus_core::{
     encoding::EncodingConfigTrait as _,
     merkle::Node,
     metadata::VerifiedBlobMetadataWithId,
-    test_utils::random_encoding_type,
     BlobId,
     EpochCount,
     SliverPairIndex,
+    DEFAULT_ENCODING,
 };
 use walrus_service::client::{
     metrics::ClientMetrics,
@@ -102,7 +102,7 @@ impl WriteClient {
             // TODO(giac): add also some deletable blobs in the mix (#800).
             .reserve_and_store_blobs_retry_committees(
                 &[blob],
-                random_encoding_type(),
+                DEFAULT_ENCODING,
                 epochs_to_store,
                 StoreWhen::AlwaysIgnoreResources,
                 BlobPersistence::Permanent,
@@ -144,7 +144,7 @@ impl WriteClient {
             .client
             .as_ref()
             .encoding_config()
-            .get_for_type(random_encoding_type())
+            .get_for_type(DEFAULT_ENCODING)
             .encode_with_metadata(blob)
             .map_err(ClientError::other)?;
 

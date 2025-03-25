@@ -3,13 +3,16 @@
 
 use std::{path::PathBuf, sync::Arc, time::Duration};
 
+use anyhow::{anyhow, Context, Result};
 use async_trait::async_trait;
+use sha2::{Digest, Sha256};
 use sui_types::base_types::ObjectID;
+use tokio::fs;
 use tracing;
 
 use super::{
     committee::CommitteeService,
-    config::StorageNodeConfig,
+    config::{StorageNodeConfig, TlsConfig},
     contract_service::SystemContractService,
     SyncNodeConfigError,
 };
@@ -45,7 +48,7 @@ impl ConfigLoader for StorageNodeConfigLoader {
 }
 
 /// Monitors and syncs node configuration with on-chain parameters.
-/// Syncs committee member information with on-chain committee information
+/// Syncs committee member information with on-chain committee information.
 pub struct ConfigSynchronizer {
     contract_service: Arc<dyn SystemContractService>,
     committee_service: Arc<dyn CommitteeService>,
@@ -75,23 +78,51 @@ impl ConfigSynchronizer {
     /// Runs the config synchronization loop
     /// Errors are ignored except for NodeNeedsReboot and RotationRequired
     pub async fn run(&self) -> Result<(), SyncNodeConfigError> {
+        // Initialize TLS certificate hash.
+        let mut cert_hash = None;
+        if let Some(config_loader) = &self.config_loader {
+            let config = config_loader.load_storage_node_config().await?;
+            cert_hash = self.load_tls_cert_hash(&config.tls).await?;
+        }
+
         loop {
             tokio::time::sleep(self.check_interval).await;
 
+            if let Err(error) = self.committee_service.sync_committee_members().await {
+                tracing::error!(%error, "failed to sync committee");
+            }
+
+            let Some(config_loader) = &self.config_loader else {
+                continue;
+            };
+
+            let config = config_loader.load_storage_node_config().await?;
+
             tracing::debug!("config_synchronizer: syncing node params");
-            if let Err(e) = self.sync_node_params().await {
+            if let Err(error) = self
+                .contract_service
+                .sync_node_params(&config, self.node_capability_object_id)
+                .await
+            {
                 if matches!(
-                    e,
+                    error,
                     SyncNodeConfigError::NodeNeedsReboot
                         | SyncNodeConfigError::ProtocolKeyPairRotationRequired
                 ) {
-                    tracing::warn!("going to reboot node due to {}", e);
-                    return Err(e);
+                    tracing::warn!(%error, "going to reboot node");
+                    return Err(error);
                 }
-                tracing::error!("failed to sync node params: {}", e);
+                tracing::error!(%error, "failed to sync node params");
             }
-            if let Err(e) = self.committee_service.sync_committee_members().await {
-                tracing::error!("failed to sync committee: {}", e);
+
+            let new_cert_hash = self.load_tls_cert_hash(&config.tls).await?;
+            if cert_hash != new_cert_hash {
+                tracing::info!(
+                    old_hash = ?cert_hash,
+                    new_hash = ?new_cert_hash,
+                    "TLS certificate has changed, node needs reboot"
+                );
+                return Err(SyncNodeConfigError::NodeNeedsReboot);
             }
         }
     }
@@ -104,9 +135,46 @@ impl ConfigSynchronizer {
                 .sync_node_params(&config, self.node_capability_object_id)
                 .await
         } else {
-            tracing::warn!("config loader is not set");
             Ok(())
         }
+    }
+
+    /// Loads and hashes the TLS certificate.
+    ///
+    /// Returns Ok(None) if TLS is disabled or certificate path is not configured.
+    /// Returns Ok(Some(hash)) if certificate is successfully loaded and hashed.
+    /// Returns Err for actual errors like file not found or relative paths.
+    async fn load_tls_cert_hash(&self, tls_config: &TlsConfig) -> anyhow::Result<Option<Vec<u8>>> {
+        // Skip if TLS is disabled or not configured.
+        if tls_config.disable_tls {
+            return Ok(None);
+        }
+
+        let Some(cert_path) = &tls_config.certificate_path else {
+            return Ok(None);
+        };
+
+        // Return error if the path is relative.
+        let cert_path = PathBuf::from(cert_path);
+        if cert_path.is_relative() {
+            return Err(anyhow!(
+                "TLS certificate path must be absolute, got relative path: {}",
+                cert_path.display()
+            ));
+        }
+
+        // Read the certificate file.
+        let cert_data = fs::read(&cert_path).await.context(format!(
+            "failed to read certificate file at {}",
+            cert_path.display()
+        ))?;
+
+        // Calculate hash.
+        let mut hasher = Sha256::new();
+        hasher.update(&cert_data);
+        let current_hash = hasher.finalize().to_vec();
+
+        Ok(Some(current_hash))
     }
 }
 
@@ -174,6 +242,7 @@ mod tests {
                 node_capacity: 251_000_000,
             },
             metadata: Default::default(),
+            commission_rate_data: Default::default(),
         };
 
         // Call generate_update_params() with the synced config.
@@ -211,6 +280,98 @@ mod tests {
         let mut file = std::fs::File::create(path)?;
         let network_key = NetworkKeyPair::generate();
         file.write_all(network_key.to_base64().as_bytes())?;
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn test_tls_cert_hash_detection() -> anyhow::Result<()> {
+        use std::{sync::Arc, time::Duration};
+
+        use crate::node::{
+            committee::MockCommitteeService,
+            contract_service::MockSystemContractService,
+        };
+
+        // Set up test environment with temporary directory and certificate.
+        let temp_dir = TempDir::new()?;
+        let cert_path = temp_dir.path().join("cert.pem");
+        let key_path = temp_dir.path().join("protocol_key.key");
+        let network_key_path = temp_dir.path().join("network_key.key");
+        let config_path = temp_dir.path().join("config.yaml");
+
+        // Create initial certificate with sample content.
+        let initial_cert_content = b"-----BEGIN CERTIFICATE-----\n\
+            MIIDazCCAlOgAwIBAgIUJlq+zz4hBJ3ovpEeGFPUc4UdTw8wDQYJKoZIhvcNAQEL\n\
+            -----END CERTIFICATE-----\n";
+        std::fs::write(&cert_path, initial_cert_content)?;
+
+        // Create key files for test configuration.
+        create_protocol_key_file(&key_path)?;
+        create_network_key_file(&network_key_path)?;
+
+        // Create storage node config with TLS enabled.
+        let config = StorageNodeConfig {
+            protocol_key_pair: PathOrInPlace::from_path(key_path),
+            next_protocol_key_pair: None,
+            name: "test-node".to_string(),
+            storage_path: temp_dir.path().to_path_buf(),
+            network_key_pair: PathOrInPlace::from_path(network_key_path),
+            public_host: "localhost".to_string(),
+            public_port: 9185,
+            tls: TlsConfig {
+                disable_tls: false,
+                certificate_path: Some(cert_path.clone()),
+            },
+            ..Default::default()
+        };
+
+        // Write config to file for testing.
+        let config_str = serde_yaml::to_string(&config)?;
+        std::fs::write(&config_path, config_str)?;
+
+        // Initialize ConfigSynchronizer with mock services.
+        let config_loader = Arc::new(StorageNodeConfigLoader::new(config_path.clone()));
+
+        let synchronizer = ConfigSynchronizer::new(
+            Arc::new(MockSystemContractService::new()),
+            Arc::new(MockCommitteeService::new()),
+            Duration::from_millis(100),
+            ObjectID::random(),
+            Some(config_loader.clone()),
+        );
+
+        // Get initial certificate hash.
+        let loaded_config = config_loader.load_storage_node_config().await?;
+        let cert_hash = synchronizer.load_tls_cert_hash(&loaded_config.tls).await?;
+        assert!(cert_hash.is_some(), "cert_hash should be initialized");
+        let original_hash = cert_hash.unwrap();
+
+        // Verify hash remains the same when certificate is unchanged.
+        let loaded_config = config_loader.load_storage_node_config().await?;
+        let result = synchronizer.load_tls_cert_hash(&loaded_config.tls).await?;
+        assert!(result.is_some(), "cert_hash should be updated");
+        assert_eq!(
+            result.unwrap(),
+            original_hash,
+            "cert_hash should not change on error"
+        );
+
+        // Modify the certificate file with different content.
+        let modified_cert_content = b"-----BEGIN CERTIFICATE-----\n\
+            DIFFERENTCERTIFICATECONTENTHERE1234567890ABCDEFGHIJKLMNOPQRSTUVWXYZ\n\
+            -----END CERTIFICATE-----\n";
+        std::fs::write(&cert_path, modified_cert_content)?;
+
+        // Verify hash is different after certificate change.
+        let loaded_config = config_loader.load_storage_node_config().await?;
+        let result = synchronizer.load_tls_cert_hash(&loaded_config.tls).await?;
+        assert!(result.is_some(), "cert_hash should be updated");
+        assert_ne!(
+            result.unwrap(),
+            original_hash,
+            "cert_hash should be updated"
+        );
+
         Ok(())
     }
 }

@@ -14,12 +14,13 @@ use std::{
     num::NonZeroU16,
     path::PathBuf,
     str::FromStr,
-    sync::{Arc, Mutex},
+    sync::Arc,
 };
 
+use anyhow::Context;
 use async_trait::async_trait;
 use chrono::Utc;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{future, stream::FuturesUnordered, StreamExt};
 use prometheus::Registry;
 use sui_macros::nondeterministic;
 use sui_types::base_types::ObjectID;
@@ -55,9 +56,9 @@ use walrus_sui::{
         FixedSystemParameters,
         SuiClientError,
     },
-    test_utils::{system_setup::SystemContext, TestClusterHandle},
+    test_utils::system_setup::SystemContext,
     types::{
-        move_structs::{EpochState, NodeMetadata, VotingParams},
+        move_structs::{EpochState, EventBlob, NodeMetadata, VotingParams},
         Committee,
         ContractEvent,
         NetworkAddress,
@@ -170,8 +171,8 @@ pub trait StorageNodeHandleTrait {
     /// Builds a new storage node handle, and starts the node.
     fn build_and_run(
         builder: StorageNodeHandleBuilder,
-        sui_cluster_handle: Option<Arc<TestClusterHandle>>,
         system_context: Option<SystemContext>,
+        sui_rpc_url: Option<String>,
         storage_dir: TempDir,
         start_node: bool,
         disable_event_blob_writer: bool,
@@ -250,8 +251,8 @@ impl StorageNodeHandleTrait for StorageNodeHandle {
 
     async fn build_and_run(
         builder: StorageNodeHandleBuilder,
-        _sui_cluster_handle: Option<Arc<TestClusterHandle>>,
         _system_context: Option<SystemContext>,
+        _sui_rpc_url: Option<String>,
         _storage_dir: TempDir,
         _start_node: bool,
         _disable_event_blob_writer: bool,
@@ -323,6 +324,8 @@ pub struct SimStorageNodeHandle {
     pub storage_node_capability: Option<StorageNodeCap>,
     /// The storage node config.
     pub storage_node_config: StorageNodeConfig,
+    /// A reference to the storage node config used by the storage node.
+    pub node_config_arc: Arc<RwLock<StorageNodeConfig>>,
 }
 
 #[cfg(msim)]
@@ -489,6 +492,7 @@ impl SimStorageNodeHandle {
                         .expect("temporary directory creation must succeed")
                         .path()
                         .to_path_buf()),
+                    rpc_fallback_config: None,
                 };
             let system_config = crate::node::events::event_processor::SystemConfig {
                 system_object_id: sui_config.contract_config.system_object,
@@ -579,8 +583,8 @@ impl StorageNodeHandleTrait for SimStorageNodeHandle {
 
     async fn build_and_run(
         builder: StorageNodeHandleBuilder,
-        sui_cluster_handle: Option<Arc<TestClusterHandle>>,
         system_context: Option<SystemContext>,
+        sui_rpc_url: Option<String>,
         storage_dir: TempDir,
         start_node: bool,
         disable_event_blob_writer: bool,
@@ -592,8 +596,8 @@ impl StorageNodeHandleTrait for SimStorageNodeHandle {
         let node_capability = builder.storage_node_capability.as_ref().cloned();
         builder
             .start_node(
-                sui_cluster_handle.expect("SUI cluster handle must be provided in simtest"),
                 system_context.expect("System context must be provided"),
+                sui_rpc_url,
                 storage_dir,
                 start_node,
                 disable_event_blob_writer,
@@ -800,13 +804,23 @@ impl StorageNodeHandleBuilder {
         let WithTempDir {
             inner: storage,
             temp_dir,
-        } = self
-            .storage
-            .unwrap_or_else(|| empty_storage_with_shards(&[]));
+        } = {
+            if let Some(storage) = self.storage {
+                storage
+            } else {
+                empty_storage_with_shards(&[]).await
+            }
+        };
 
-        let node_info = self
-            .test_config
-            .unwrap_or_else(|| StorageNodeTestConfig::new(storage.shards_present(), false));
+        let node_info = {
+            if let Some(test_config) = self.test_config {
+                test_config
+            } else {
+                let shards = storage.shards_present().await;
+                StorageNodeTestConfig::new(shards, false)
+            }
+        };
+
         // To be in the committee, the node must have at least one shard assigned to it.
         let is_in_committee = !node_info.shards.is_empty();
 
@@ -979,8 +993,8 @@ impl StorageNodeHandleBuilder {
     #[cfg(msim)]
     pub async fn start_node(
         self,
-        sui_cluster_handle: Arc<TestClusterHandle>,
         system_context: SystemContext,
+        sui_rpc_url: Option<String>,
         storage_dir: TempDir,
         start_node: bool,
         disable_event_blob_writer: bool,
@@ -1006,7 +1020,7 @@ impl StorageNodeHandleBuilder {
             use_legacy_event_provider: false,
             disable_event_blob_writer,
             sui: Some(SuiConfig {
-                rpc: sui_cluster_handle.cluster().rpc_url().to_string(),
+                rpc: sui_rpc_url.expect("SUI RPC URL must be provided in integration test"),
                 contract_config: ContractConfig::new(
                     system_context.system_object,
                     system_context.staking_object,
@@ -1017,6 +1031,7 @@ impl StorageNodeHandleBuilder {
                 event_polling_interval: config::defaults::polling_interval(),
                 backoff_config: ExponentialBackoffConfig::default(),
                 gas_budget: None,
+                rpc_fallback_config: None,
             }),
             config_synchronizer: ConfigSynchronizerConfig {
                 interval: Duration::from_secs(5),
@@ -1027,11 +1042,12 @@ impl StorageNodeHandleBuilder {
         };
 
         let cancel_token = CancellationToken::new();
+        let node_config_arc = Arc::new(RwLock::new(storage_node_config.clone()));
 
         let node_id = if start_node {
             Some(
                 SimStorageNodeHandle::spawn_node(
-                    Arc::new(RwLock::new(storage_node_config.clone())),
+                    node_config_arc.clone(),
                     num_checkpoints_per_blob,
                     cancel_token.clone(),
                 )
@@ -1062,6 +1078,7 @@ impl StorageNodeHandleBuilder {
             node_id,
             storage_node_capability: self.storage_node_capability,
             storage_node_config,
+            node_config_arc,
         })
     }
 }
@@ -1211,7 +1228,7 @@ fn create_previous_committee(committee: &Committee) -> Option<Committee> {
 /// Does not perform any network operations.
 #[derive(Debug, Clone)]
 pub struct StubLookupService {
-    committees: Arc<Mutex<ActiveCommittees>>,
+    committees: Arc<std::sync::Mutex<ActiveCommittees>>,
 }
 
 impl StubLookupService {
@@ -1223,7 +1240,9 @@ impl StubLookupService {
     pub fn new(committee: Committee) -> Self {
         let previous = create_previous_committee(&committee);
         Self {
-            committees: Arc::new(Mutex::new(ActiveCommittees::new(committee, previous))),
+            committees: Arc::new(std::sync::Mutex::new(ActiveCommittees::new(
+                committee, previous,
+            ))),
         }
     }
 
@@ -1240,7 +1259,7 @@ impl StubLookupService {
 #[derive(Debug, Clone)]
 pub struct StubLookupServiceHandle {
     /// The active committees.
-    pub committees: Arc<Mutex<ActiveCommittees>>,
+    pub committees: Arc<std::sync::Mutex<ActiveCommittees>>,
 }
 
 impl StubLookupServiceHandle {
@@ -1451,6 +1470,10 @@ impl SystemContractService for StubContractService {
     async fn get_system_object_version(&self) -> Result<u64, SuiClientError> {
         Ok(1)
     }
+
+    async fn last_certified_event_blob(&self) -> Result<Option<EventBlob>, SuiClientError> {
+        Ok(None)
+    }
 }
 
 /// Returns a socket address that is not currently in use on the system.
@@ -1602,7 +1625,7 @@ pub struct TestClusterBuilder {
     storage_node_configs: Vec<StorageNodeTestConfig>,
     shard_sync_config: Option<ShardSyncConfig>,
     system_context: Option<SystemContext>,
-    sui_cluster_handle: Option<Arc<TestClusterHandle>>,
+    sui_rpc_url: Option<String>,
     use_distinct_ip: bool,
     // INV: Reset if shard_assignment is changed.
     event_providers: Vec<Option<Box<dyn SystemEventProvider>>>,
@@ -1754,13 +1777,15 @@ impl TestClusterBuilder {
         self
     }
 
-    /// Sets the SUI cluster handle for the cluster.
-    pub fn with_sui_cluster_handle(mut self, sui_cluster_handle: Arc<TestClusterHandle>) -> Self {
-        self.sui_cluster_handle = Some(sui_cluster_handle);
+    /// Sets the SUI RPC URL for the cluster.
+    ///
+    /// This is required for the storage nodes to connect to the SUI network.
+    pub fn with_sui_rpc_url(mut self, sui_rpc_url: String) -> Self {
+        self.sui_rpc_url = Some(sui_rpc_url);
         self
     }
 
-    /// Sets the SUI cluster handle for the cluster.
+    /// Sets the number of checkpoints per event blob for the cluster.
     pub fn with_num_checkpoints_per_blob(mut self, num_checkpoints_per_blob: u32) -> Self {
         self.num_checkpoints_per_blob = Some(num_checkpoints_per_blob);
         self
@@ -1798,8 +1823,6 @@ impl TestClusterBuilder {
 
     /// Creates the configured `TestCluster`.
     pub async fn build<T: StorageNodeHandleTrait>(self) -> anyhow::Result<TestCluster<T>> {
-        let mut nodes = vec![];
-
         let committee_members: Vec<_> = self
             .storage_node_configs
             .iter()
@@ -1815,6 +1838,7 @@ impl TestClusterBuilder {
 
         // Create the stub lookup service and handles that may be used if none is provided.
         let mut lookup_service_and_handle = None;
+        let mut node_futures = vec![];
 
         for (
             idx,
@@ -1844,9 +1868,10 @@ impl TestClusterBuilder {
             .zip(self.disable_event_blob_writer.into_iter())
             .enumerate()
         {
+            let storage = empty_storage_with_shards(&config.shards).await;
             let local_identity = config.key_pair.public().clone();
             let builder = StorageNodeHandle::builder()
-                .with_storage(empty_storage_with_shards(&config.shards))
+                .with_storage(storage)
                 .with_test_config(config)
                 .with_rest_api_started(true)
                 .with_node_started(true)
@@ -1895,20 +1920,28 @@ impl TestClusterBuilder {
                 builder = builder.with_system_contract_service(service);
             }
 
-            nodes.push(
-                T::build_and_run(
-                    builder,
-                    self.sui_cluster_handle.clone(),
-                    self.system_context.clone(),
-                    nondeterministic!(
-                        tempfile::tempdir().expect("temporary directory creation must succeed")
-                    ),
-                    start_node_from_beginning,
-                    disable_event_blob_writer,
-                )
-                .await?,
-            );
+            // Build and run the storage nodes in parallel.
+            node_futures.push(T::build_and_run(
+                builder,
+                self.system_context.clone(),
+                self.sui_rpc_url.clone(),
+                nondeterministic!(
+                    tempfile::tempdir().expect("temporary directory creation must succeed")
+                ),
+                start_node_from_beginning,
+                disable_event_blob_writer,
+            ));
         }
+
+        // Returns error if any storage node fails to build and start.
+        let nodes = future::join_all(node_futures)
+            .await
+            .into_iter()
+            .enumerate()
+            .map(|(idx, result)| {
+                result.with_context(|| format!("Failed to start storage node {}", idx))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
 
         Ok(TestCluster {
             nodes,
@@ -2026,7 +2059,7 @@ impl Default for TestClusterBuilder {
                 .map(|shards| StorageNodeTestConfig::new(shards, false))
                 .collect(),
             system_context: None,
-            sui_cluster_handle: None,
+            sui_rpc_url: None,
             use_distinct_ip: false,
             num_checkpoints_per_blob: None,
             enable_node_config_synchronizer: false,
@@ -2116,6 +2149,10 @@ where
     async fn get_system_object_version(&self) -> Result<u64, SuiClientError> {
         self.as_ref().inner.get_system_object_version().await
     }
+
+    async fn last_certified_event_blob(&self) -> Result<Option<EventBlob>, SuiClientError> {
+        self.as_ref().inner.last_certified_event_blob().await
+    }
 }
 
 /// Returns a test-committee with members with the specified number of shards ehortach.
@@ -2159,7 +2196,7 @@ pub mod test_cluster {
     use std::sync::OnceLock;
 
     use futures::future;
-    use tokio::sync::Mutex;
+    use tokio::sync::Mutex as TokioMutex;
     use walrus_sui::{
         client::{SuiContractClient, SuiReadClient},
         test_utils::{
@@ -2193,7 +2230,7 @@ pub mod test_cluster {
     /// Performs the default setup for the test cluster using StorageNodeHandle as default storage
     /// node handle.
     pub async fn default_setup() -> anyhow::Result<(
-        Arc<TestClusterHandle>,
+        Arc<TokioMutex<TestClusterHandle>>,
         TestCluster,
         WithTempDir<client::Client<SuiContractClient>>,
     )> {
@@ -2203,7 +2240,7 @@ pub mod test_cluster {
     /// Performs the default setup for the test cluster using StorageNodeHandle as default storage
     /// node handle.
     pub async fn default_setup_with_subsidies() -> anyhow::Result<(
-        Arc<TestClusterHandle>,
+        Arc<TokioMutex<TestClusterHandle>>,
         TestCluster,
         WithTempDir<client::Client<SuiContractClient>>,
     )> {
@@ -2216,7 +2253,7 @@ pub mod test_cluster {
         epoch_duration: Duration,
         with_subsidies: bool,
     ) -> anyhow::Result<(
-        Arc<TestClusterHandle>,
+        Arc<TokioMutex<TestClusterHandle>>,
         TestCluster,
         WithTempDir<client::Client<SuiContractClient>>,
     )> {
@@ -2246,7 +2283,7 @@ pub mod test_cluster {
         communication_config: ClientCommunicationConfig,
         with_subsidies: bool,
     ) -> anyhow::Result<(
-        Arc<TestClusterHandle>,
+        Arc<TokioMutex<TestClusterHandle>>,
         TestCluster<T>,
         WithTempDir<client::Client<SuiContractClient>>,
     )> {
@@ -2275,7 +2312,7 @@ pub mod test_cluster {
         deploy_directory: Option<PathBuf>,
         delegate_governance_to_admin_wallet: bool,
     ) -> anyhow::Result<(
-        Arc<TestClusterHandle>,
+        Arc<TokioMutex<TestClusterHandle>>,
         TestCluster<T>,
         WithTempDir<client::Client<SuiContractClient>>,
         SystemContext,
@@ -2284,6 +2321,8 @@ pub mod test_cluster {
         let sui_cluster = test_utils::using_tokio::global_sui_test_cluster();
         #[cfg(msim)]
         let sui_cluster = test_utils::using_msim::global_sui_test_cluster().await;
+
+        let sui_rpc_url = sui_cluster.lock().await.cluster().rpc_url().to_string();
 
         // Get a wallet on the global sui test cluster
         let mut admin_wallet =
@@ -2318,7 +2357,8 @@ pub mod test_cluster {
             with_subsidies,
             deploy_directory,
         )
-        .await?;
+        .await
+        .context("failed to create and init system for test")?;
 
         let n_nodes = members.len();
         let mut contract_clients = Vec::with_capacity(n_nodes);
@@ -2429,7 +2469,7 @@ pub mod test_cluster {
             .into_iter()
             .zip(committee_services.iter())
             .map(|(client, committee_service)| {
-                SuiSystemContractService::new(client, committee_service.clone())
+                SuiSystemContractService::builder().build(client, committee_service.clone())
             });
 
         let cluster_builder = cluster_builder
@@ -2442,7 +2482,7 @@ pub mod test_cluster {
         } else {
             setup_checkpoint_based_event_processors(
                 &event_processor_config,
-                &sui_cluster.rpc_url(),
+                sui_rpc_url.as_str(),
                 sui_read_client.clone(),
                 cluster_builder,
                 system_ctx.system_object,
@@ -2459,7 +2499,7 @@ pub mod test_cluster {
 
         let cluster_builder = cluster_builder
             .with_system_context(system_ctx.clone())
-            .with_sui_cluster_handle(sui_cluster.clone())
+            .with_sui_rpc_url(sui_rpc_url)
             .with_storage_capabilities(storage_capabilities)
             .with_node_wallet_dirs(node_wallet_dirs)
             .with_start_node_from_beginning(
@@ -2514,6 +2554,7 @@ pub mod test_cluster {
                     .expect("temporary directory creation must succeed")
                     .path()
                     .to_path_buf()),
+                rpc_fallback_config: None,
             };
             let system_config = SystemConfig {
                 system_pkg_id: sui_read_client.get_system_package_id(),
@@ -2546,9 +2587,9 @@ pub mod test_cluster {
     }
 
     // Prevent tests running simultaneously to avoid interferences or race conditions.
-    fn global_test_lock() -> &'static Mutex<()> {
-        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-        LOCK.get_or_init(Mutex::default)
+    fn global_test_lock() -> &'static TokioMutex<()> {
+        static LOCK: OnceLock<TokioMutex<()>> = OnceLock::new();
+        LOCK.get_or_init(TokioMutex::default)
     }
 }
 
@@ -2592,6 +2633,9 @@ pub fn storage_node_config() -> WithTempDir<StorageNodeConfig> {
             metadata: Default::default(),
             config_synchronizer: Default::default(),
             storage_node_cap: None,
+            num_uncertified_blob_threshold: Some(3),
+            balance_check: Default::default(),
+            thread_pool: Default::default(),
         },
         temp_dir,
     }
@@ -2614,7 +2658,7 @@ async fn wait_for_event_processor_to_start(
 }
 
 /// Returns an empty storage, with the column families for the specified shards already created.
-pub fn empty_storage_with_shards(shards: &[ShardIndex]) -> WithTempDir<Storage> {
+pub async fn empty_storage_with_shards(shards: &[ShardIndex]) -> WithTempDir<Storage> {
     let temp_dir =
         nondeterministic!(tempfile::tempdir().expect("temporary directory creation must succeed"));
     let db_config = DatabaseConfig::default();
@@ -2623,6 +2667,7 @@ pub fn empty_storage_with_shards(shards: &[ShardIndex]) -> WithTempDir<Storage> 
 
     storage
         .create_storage_for_shards(shards)
+        .await
         .expect("should be able to create storage for shards");
 
     WithTempDir {

@@ -4,8 +4,6 @@
 [advisories]
 version = 2
 ignore = [
-  # `difference` is unmaintained.
-  "RUSTSEC-2020-0095",
   # We depend on `rsa` via `fastcrypto` but don't actually use it.
   "RUSTSEC-2023-0071",
   # `rust-yaml` is not maintained, but is a dependency in many of our packages.
@@ -16,7 +14,14 @@ ignore = [
   "RUSTSEC-2024-0384",
   # `derivative` is unmaintained.
   "RUSTSEC-2024-0388",
+  # `paste` is unmaintained.
+  "RUSTSEC-2024-0436",
+  # `backoff` is unmaintained.
+  "RUSTSEC-2025-0012",
+  # Crash due to uncontrolled recursion in `protobuf` crate.
+  "RUSTSEC-2024-0437",
 ]
+
 
 # This section is considered when running `cargo deny check licenses`
 # More documentation for the licenses section can be found here:
@@ -34,7 +39,6 @@ allow = [
   "BSL-1.0", # allowed by sui
   "CC0-1.0",
   "ISC",
-  "LicenseRef-ring",
   "MIT",
   "MPL-2.0",
   "Unicode-3.0",
@@ -46,12 +50,6 @@ allow = [
 # canonical license text of a valid SPDX license file.
 # [possible values: any between 0.0 and 1.0].
 confidence-threshold = 0.8
-
-
-[[licenses.clarify]]
-name = "ring"
-expression = "LicenseRef-ring"
-license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [licenses.private]
 # If true, ignores workspace crates that aren't published, or are only
@@ -67,7 +65,10 @@ ignore = true
 # Lint level for when multiple versions of the same crate are detected
 multiple-versions = "deny"
 skip = [
+  { name = "aws-smithy-http" }, # AWS crates are not fully in sync.
+  { name = "funty", version = "1.1.0" }, # Sui depends on both 1.1.0 and 2.0.0.
   { name = "itertools", version = "<=12.1" },
+  { name = "radium", version = "0.6.2" }, # Sui depends on both 0.6.2 and 0.7.0.
   { name = "synstructure", version = "0.12.6" },
 ]
 skip-tree = [
@@ -100,9 +101,7 @@ allow-git = [
   "https://github.com/asonnino/prometheus-parser",
   "https://github.com/bmwill/axum-server",
   "https://github.com/mystenmark/async-task",
-  "https://github.com/mystenmark/tokio-madsim-fork",
   "https://github.com/zhiburt/tabled",
-  "https://www.github.com/MystenLabs/mysten-sim.git",
 ]
 
 [sources.allow-org]

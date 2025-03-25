@@ -19,9 +19,9 @@ use futures::{stream::FuturesUnordered, StreamExt};
 use regex::Regex;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-use sui_macros::fail_point_if;
 #[cfg(msim)]
 use sui_macros::{fail_point, fail_point_arg};
+use sui_macros::{fail_point_if, nondeterministic};
 use typed_store::{
     rocks::{
         be_fix_int_ser as to_rocks_db_key,
@@ -46,6 +46,13 @@ use walrus_core::{
 
 use super::{
     blob_info::{BlobInfo, BlobInfoIterator},
+    constants::{
+        pending_recover_slivers_column_family_name,
+        primary_slivers_column_family_name,
+        secondary_slivers_column_family_name,
+        shard_status_column_family_name,
+        shard_sync_progress_column_family_name,
+    },
     DatabaseConfig,
 };
 use crate::node::{
@@ -211,17 +218,26 @@ impl ShardStorage {
         let rw_options = ReadWriteOptions::default();
 
         let shard_status = reopen_cf!(
-            Self::shard_status_column_family_options(id, db_config),
+            (
+                shard_status_column_family_name(id),
+                shard_status_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
         let shard_sync_progress = reopen_cf!(
-            Self::shard_sync_progress_column_family_options(id, db_config),
+            (
+                shard_sync_progress_column_family_name(id),
+                shard_sync_progress_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
         let pending_recover_slivers = reopen_cf!(
-            Self::pending_recover_slivers_column_family_options(id, db_config),
+            (
+                pending_recover_slivers_column_family_name(id),
+                pending_recover_slivers_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
@@ -229,12 +245,18 @@ impl ShardStorage {
         // Make sure that sliver column families are created last. They are used to identify
         // whether the shard storage is initialized in `existing_cf_shards_ids`.
         let primary_slivers = reopen_cf!(
-            Self::primary_slivers_column_family_options(id, db_config),
+            (
+                primary_slivers_column_family_name(id),
+                primary_slivers_column_family_options(db_config)
+            ),
             database,
             rw_options
         );
         let secondary_slivers = reopen_cf!(
-            Self::secondary_slivers_column_family_options(id, db_config),
+            (
+                secondary_slivers_column_family_name(id),
+                secondary_slivers_column_family_options(db_config)
+            ),
             database,
             rw_options
         );
@@ -352,70 +374,12 @@ impl ShardStorage {
         }
     }
 
-    /// Returns the name and options for the column families for a shard's primary
-    /// sliver with the specified index.
-    pub(crate) fn primary_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            primary_slivers_column_family_name(id),
-            db_config.shard().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's secondary
-    /// sliver with the specified index.
-    pub(crate) fn secondary_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            secondary_slivers_column_family_name(id),
-            db_config.shard().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's operating status
-    /// with the specified index.
-    pub(crate) fn shard_status_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            shard_status_column_family_name(id),
-            db_config.shard_status().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's sync progress
-    /// with the specified index.
-    pub(crate) fn shard_sync_progress_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            shard_sync_progress_column_family_name(id),
-            db_config.shard_sync_progress().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's pending recover slivers
-    /// with the specified index.
-    pub(crate) fn pending_recover_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            pending_recover_slivers_column_family_name(id),
-            db_config.pending_recover_slivers().to_options(),
-        )
-    }
-
     /// Returns the ids of existing shards that are fully initialized in the database at the
     /// provided path.
     pub(crate) fn existing_cf_shards_ids(path: &Path, options: &Options) -> HashSet<ShardIndex> {
-        DB::list_cf(options, path)
+        // RocksDb internal uses real clock to start and initialize the database. Wrap this call
+        // in a nondeterministic block to make the test deterministic.
+        nondeterministic!(DB::list_cf(options, path)
             .unwrap_or_default()
             .into_iter()
             .filter_map(|cf_name| match id_from_column_family_name(&cf_name) {
@@ -424,7 +388,7 @@ impl ShardStorage {
                 Some((shard_index, SliverType::Secondary)) => Some(shard_index),
                 Some((_, SliverType::Primary)) | None => None,
             })
-            .collect()
+            .collect())
     }
 
     pub(crate) fn status(&self) -> Result<ShardStatus, TypedStoreError> {
@@ -888,7 +852,7 @@ impl ShardStorage {
 
         // Update the metric for the total number of blobs pending recovery, so that we know how
         // many blobs are pending recovery.
-        let mut total_blobs_pending_recovery = self.pending_recover_slivers.keys().count();
+        let mut total_blobs_pending_recovery = self.pending_recover_slivers.safe_iter().count();
         self.record_pending_recovery_metrics(&node, total_blobs_pending_recovery);
 
         for recover_blob in self.pending_recover_slivers.safe_iter() {
@@ -1130,10 +1094,16 @@ impl ShardStorage {
     }
 
     #[cfg(test)]
-    pub(crate) fn sliver_count(&self, sliver_type: SliverType) -> usize {
+    pub(crate) fn sliver_count(&self, sliver_type: SliverType) -> Result<usize, TypedStoreError> {
         match sliver_type {
-            SliverType::Primary => self.primary_slivers.keys().count(),
-            SliverType::Secondary => self.secondary_slivers.keys().count(),
+            SliverType::Primary => self
+                .primary_slivers
+                .safe_iter()
+                .try_fold(0, |count, e| e.map(|_| count + 1)),
+            SliverType::Secondary => self
+                .secondary_slivers
+                .safe_iter()
+                .try_fold(0, |count, e| e.map(|_| count + 1)),
         }
     }
 
@@ -1166,7 +1136,10 @@ impl ShardStorage {
     pub(crate) fn all_pending_recover_slivers(
         &self,
     ) -> Result<Vec<(SliverType, BlobId)>, TypedStoreError> {
-        self.pending_recover_slivers.keys().collect()
+        self.pending_recover_slivers
+            .safe_iter()
+            .map(|r| r.map(|(k, _)| k))
+            .collect()
     }
 }
 
@@ -1190,34 +1163,34 @@ fn id_from_column_family_name(name: &str) -> Option<(ShardIndex, SliverType)> {
     })
 }
 
-#[inline]
-fn base_column_family_name(id: ShardIndex) -> String {
-    format!("shard-{}", id.0)
+/// Returns the name and options for the column families for a shard's primary
+/// sliver with the specified index.
+pub fn primary_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard().to_options()
 }
 
-#[inline]
-pub fn primary_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/primary-slivers"
+/// Returns the name and options for the column families for a shard's secondary
+/// sliver with the specified index.
+pub fn secondary_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard().to_options()
 }
 
-#[inline]
-pub fn secondary_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/secondary-slivers"
+/// Returns the name and options for the column families for a shard's operating status
+/// with the specified index.
+pub fn shard_status_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard_status().to_options()
 }
 
-#[inline]
-pub fn shard_status_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/status"
+/// Returns the name and options for the column families for a shard's sync progress
+/// with the specified index.
+pub fn shard_sync_progress_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard_sync_progress().to_options()
 }
 
-#[inline]
-pub fn shard_sync_progress_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/sync-progress"
-}
-
-#[inline]
-pub fn pending_recover_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/pending-recover-slivers"
+/// Returns the name and options for the column families for a shard's pending recover slivers
+/// with the specified index.
+pub fn pending_recover_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.pending_recover_slivers().to_options()
 }
 
 #[cfg(msim)]
@@ -1270,8 +1243,12 @@ mod tests {
         ]
     }
     async fn can_store_and_retrieve_sliver(sliver_type: SliverType) -> TestResult {
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
         let sliver = get_sliver(sliver_type, 1);
 
         shard.put_sliver(&BLOB_ID, &sliver)?;
@@ -1284,8 +1261,12 @@ mod tests {
 
     #[tokio::test]
     async fn stores_separate_primary_and_secondary_sliver() -> TestResult {
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         let primary = get_sliver(SliverType::Primary, 1);
         let secondary = get_sliver(SliverType::Secondary, 2);
@@ -1308,8 +1289,12 @@ mod tests {
 
     #[tokio::test]
     async fn stores_and_deletes_slivers() -> TestResult {
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         let primary = get_sliver(SliverType::Primary, 1);
         let secondary = get_sliver(SliverType::Secondary, 2);
@@ -1331,8 +1316,12 @@ mod tests {
 
     #[tokio::test]
     async fn delete_on_empty_slivers_does_not_error() -> TestResult {
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         assert!(!shard.is_sliver_stored::<Primary>(&BLOB_ID)?);
         assert!(!shard.is_sliver_stored::<Secondary>(&BLOB_ID)?);
@@ -1356,12 +1345,20 @@ mod tests {
         type_first: SliverType,
         type_second: SliverType,
     ) -> TestResult {
-        let storage = empty_storage_with_shards(&[SHARD_INDEX, OTHER_SHARD_INDEX]);
+        let storage = empty_storage_with_shards(&[SHARD_INDEX, OTHER_SHARD_INDEX]).await;
 
-        let first_shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let first_shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
         let first_sliver = get_sliver(type_first, 1);
 
-        let second_shard = storage.as_ref().shard_storage(OTHER_SHARD_INDEX).unwrap();
+        let second_shard = storage
+            .as_ref()
+            .shard_storage(OTHER_SHARD_INDEX)
+            .await
+            .expect("shard should exist");
         let second_sliver = get_sliver(type_second, 2);
 
         first_shard.put_sliver(&BLOB_ID, &first_sliver)?;
@@ -1398,8 +1395,12 @@ mod tests {
     ) -> TestResult {
         let is_pair_stored: bool = store_primary & store_secondary;
 
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         if store_primary {
             shard.put_sliver(&BLOB_ID, &get_sliver(SliverType::Primary, 3))?;
@@ -1438,9 +1439,13 @@ mod tests {
         data: HashMap<BlobId, HashMap<SliverType, Sliver>>,
     }
 
-    fn setup_storage() -> Result<ShardStorageFetchSliversSetup, TypedStoreError> {
-        let storage = empty_storage();
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+    async fn setup_storage() -> Result<ShardStorageFetchSliversSetup, TypedStoreError> {
+        let storage = empty_storage().await;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         let blob_ids = [
             BlobId([0; 32]),
@@ -1501,8 +1506,12 @@ mod tests {
             storage,
             blob_ids,
             data,
-        } = setup_storage()?;
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        } = setup_storage().await?;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
         assert_eq!(
             shard.fetch_slivers(sliver_type, &[blob_ids[0]])?,
             vec![(blob_ids[0], data[&blob_ids[0]][&sliver_type].clone())]
@@ -1527,8 +1536,12 @@ mod tests {
             storage,
             blob_ids,
             data,
-        } = setup_storage()?;
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        } = setup_storage().await?;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         assert_eq!(
             shard.fetch_slivers(sliver_type, &[blob_ids[0], blob_ids[2]])?,
@@ -1550,8 +1563,12 @@ mod tests {
     async fn test_shard_storage_fetch_non_existing_slivers(sliver_type: SliverType) -> TestResult {
         let ShardStorageFetchSliversSetup {
             storage, blob_ids, ..
-        } = setup_storage()?;
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        } = setup_storage().await?;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         assert!(shard.fetch_slivers(sliver_type, &[blob_ids[1]])?.is_empty());
 
@@ -1571,8 +1588,12 @@ mod tests {
             storage,
             blob_ids,
             data,
-        } = setup_storage()?;
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        } = setup_storage().await?;
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
 
         assert_eq!(
             shard.fetch_slivers(sliver_type, &blob_ids)?,
@@ -1603,7 +1624,7 @@ mod tests {
         fetched_blob_id_index: usize,
         expected_next_blob_info_index: Option<usize>,
     ) -> TestResult {
-        let storage = empty_storage();
+        let storage = empty_storage().await;
         let blob_info = storage.inner.blob_info.clone();
         let new_epoch = 3;
 
@@ -1622,11 +1643,16 @@ mod tests {
             )?;
         }
 
-        let sorted_blob_ids = blob_info.keys()?;
+        let mut sorted_blob_ids = blob_info.keys()?;
+        sorted_blob_ids.sort();
         blob_info.remove(&sorted_blob_ids[4])?;
         blob_info.remove(&sorted_blob_ids[7])?;
 
-        let shard = storage.as_ref().shard_storage(SHARD_INDEX).unwrap();
+        let shard = storage
+            .as_ref()
+            .shard_storage(SHARD_INDEX)
+            .await
+            .expect("shard should exist");
         let mut blob_info_iter = storage
             .inner
             .blob_info

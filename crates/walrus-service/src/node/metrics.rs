@@ -9,8 +9,6 @@ use prometheus::{
     IntCounterVec,
     IntGauge,
     IntGaugeVec,
-    Opts,
-    Registry,
 };
 use walrus_sui::types::{
     BlobCertified,
@@ -23,7 +21,7 @@ use walrus_sui::types::{
 
 use crate::{
     client::ClientErrorKind,
-    common::telemetry::{self, CurrentEpochMetric, CurrentEpochStateMetric},
+    common::telemetry::{CurrentEpochMetric, CurrentEpochStateMetric},
     node::events::EventStreamElement,
 };
 
@@ -42,7 +40,8 @@ pub(crate) const STATUS_HIGHEST_FINISHED: &str = "highest_finished";
 type U64GaugeVec = GenericGaugeVec<AtomicU64>;
 type U64Gauge = GenericGauge<AtomicU64>;
 
-telemetry::define_metric_set! {
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
     /// Metrics exported by the storage node.
     pub(crate) struct NodeMetricSet {
         #[help = "The total number of metadata stored"]
@@ -127,6 +126,11 @@ telemetry::define_metric_set! {
         #[help = "The progress of the blob metadata sync. It is represented by the first two bytes \
         of the blob ID since the sync job is sequential over blob IDs."]
         sync_blob_metadata_progress: IntGauge[],
+
+        #[help = "For checking consistency of processed events. Each bucket maps to a recent \
+        recording of event source. The event source is the combination of checkpoint sequence \
+        number and counter."]
+        periodic_event_source_for_deterministic_events: IntGaugeVec["bucket"],
     }
 }
 
@@ -139,7 +143,8 @@ fn default_buckets_for_slow_operations() -> Vec<f64> {
     prometheus::exponential_buckets(0.03125, 2.0, 14).expect("count, start, and factor are valid")
 }
 
-telemetry::define_metric_set! {
+walrus_utils::metrics::define_metric_set! {
+    #[namespace = "walrus"]
     /// Metrics exported by the default committee service.
     pub(crate) struct CommitteeServiceMetricSet {
         current_epoch: CurrentEpochMetric,
@@ -242,6 +247,7 @@ impl TelemetryLabel for ClientErrorKind {
             ClientErrorKind::UnsupportedEncodingType(_) => "unsupported-encoding-type",
             ClientErrorKind::CommitteeChangeNotified => "committee-change-notified",
             ClientErrorKind::StakeBelowThreshold(_) => "stake-below-threshold",
+            ClientErrorKind::FailedToLoadCerts(_) => "failed-to-load-certs",
             ClientErrorKind::Other(_) => "unknown",
         }
     }

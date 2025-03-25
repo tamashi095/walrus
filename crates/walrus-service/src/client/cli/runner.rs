@@ -8,6 +8,7 @@ use std::{
     iter,
     num::NonZeroU16,
     path::{Path, PathBuf},
+    sync::Arc,
     time::Duration,
 };
 
@@ -32,6 +33,7 @@ use walrus_core::{
     BlobId,
     EncodingType,
     EpochCount,
+    DEFAULT_ENCODING,
     SUPPORTED_ENCODING_TYPES,
 };
 use walrus_sdk::api::BlobStatus;
@@ -82,6 +84,7 @@ use crate::{
             HumanReadableFrost,
             HumanReadableMist,
         },
+        communication::NodeCommunicationFactory,
         error::ClientErrorKind,
         multiplexer::ClientMultiplexer,
         responses::{
@@ -108,7 +111,6 @@ use crate::{
             WalletOutput,
         },
         styled_spinner,
-        utils::encoding_type_or_default_for_version,
         Client,
         ClientDaemon,
         Config,
@@ -120,8 +122,6 @@ use crate::{
 /// A helper struct to run commands for the Walrus client.
 #[allow(missing_debug_implementations)]
 pub struct ClientCommandRunner {
-    /// The wallet path.
-    wallet_path: Option<PathBuf>,
     /// The Sui wallet for the client.
     wallet: Result<WalletContext>,
     /// The config for the client.
@@ -130,6 +130,8 @@ pub struct ClientCommandRunner {
     json: bool,
     /// The gas budget for the client commands.
     gas_budget: Option<u64>,
+    /// Whether the wallet was set explicitly as a CLI argument or in the config.
+    wallet_set_explicitly: bool,
 }
 
 impl ClientCommandRunner {
@@ -142,21 +144,21 @@ impl ClientCommandRunner {
         json: bool,
     ) -> Self {
         let config = load_configuration(config.as_ref(), context);
-        let wallet_config: Option<WalletConfig> = config
+        let wallet_config = wallet_override
             .as_ref()
-            .ok()
-            .and_then(|config: &Config| config.wallet_config.clone());
-        let wallet_path: Option<PathBuf> = wallet_override
-            .clone()
-            .or_else(|| wallet_config.as_ref().map(|wc| wc.path().to_path_buf()));
+            .map(WalletConfig::from_path)
+            .or(config
+                .as_ref()
+                .ok()
+                .and_then(|config: &Config| config.wallet_config.clone()));
         let wallet = WalletConfig::load_wallet_context(wallet_config.as_ref());
 
         Self {
-            wallet_path,
             wallet,
             config,
             gas_budget,
             json,
+            wallet_set_explicitly: wallet_config.is_some(),
         }
     }
 
@@ -352,7 +354,7 @@ impl ClientCommandRunner {
                     &self.config?,
                     None,
                     self.wallet,
-                    self.wallet_path.is_none(),
+                    !self.wallet_set_explicitly,
                 )
                 .await?;
                 let attribute = sui_read_client.get_blob_attribute(&blob_obj_id).await?;
@@ -492,7 +494,7 @@ impl ClientCommandRunner {
             self.config?,
             rpc_url,
             self.wallet,
-            self.wallet_path.is_none(),
+            !self.wallet_set_explicitly,
             &None,
         )
         .await?;
@@ -543,8 +545,7 @@ impl ClientCommandRunner {
             anyhow::bail!("deletable blobs cannot be shared");
         }
 
-        let encoding_type =
-            encoding_type_or_default_for_version(encoding_type, system_object.version);
+        let encoding_type = encoding_type.unwrap_or(DEFAULT_ENCODING);
 
         if dry_run {
             return Self::store_dry_run(client, files, encoding_type, epochs_ahead, self.json)
@@ -602,9 +603,8 @@ impl ClientCommandRunner {
 
         for file in files {
             let blob = read_blob_from_file(&file)?;
-            let (_, metadata) = client
-                .encode_pairs_and_metadata(&blob, encoding_type, &MultiProgress::new())
-                .await?;
+            let (_, metadata) =
+                client.encode_pairs_and_metadata(&blob, encoding_type, &MultiProgress::new())?;
             let unencoded_size = metadata.metadata().unencoded_length();
             let encoded_size = encoded_blob_length_for_n_shards(
                 encoding_config.n_shards(),
@@ -644,14 +644,11 @@ impl ClientCommandRunner {
             &config,
             rpc_url,
             self.wallet,
-            self.wallet_path.is_none(),
+            !self.wallet_set_explicitly,
         )
         .await?;
 
-        let encoding_type = encoding_type_or_default_for_version(
-            encoding_type,
-            sui_read_client.system_object_version().await?,
-        );
+        let encoding_type = encoding_type.unwrap_or(DEFAULT_ENCODING);
 
         let refresher_handle = config
             .refresh_config
@@ -706,7 +703,7 @@ impl ClientCommandRunner {
             &config,
             rpc_url,
             self.wallet,
-            self.wallet_path.is_none(),
+            !self.wallet_set_explicitly,
         )
         .await?;
 
@@ -762,12 +759,19 @@ impl ClientCommandRunner {
             &config,
             rpc_url,
             self.wallet,
-            self.wallet_path.is_none(),
+            !self.wallet_set_explicitly,
         )
         .await?;
+        let communication_factory = NodeCommunicationFactory::new(
+            config.communication_config.clone(),
+            Arc::new(EncodingConfig::new(
+                sui_read_client.current_committee().await?.n_shards(),
+            )),
+        )?;
 
         ServiceHealthInfoOutput::new_for_nodes(
             node_selection.get_nodes(&sui_read_client).await?,
+            &communication_factory,
             detail,
             sort,
         )
@@ -791,7 +795,7 @@ impl ClientCommandRunner {
                     &config,
                     rpc_url,
                     self.wallet,
-                    self.wallet_path.is_none(),
+                    !self.wallet_set_explicitly,
                 )
                 .await?;
                 let n_shards = if let Some(n_shards) = n_shards {
@@ -800,10 +804,7 @@ impl ClientCommandRunner {
                     tracing::debug!("reading `n_shards` from chain");
                     sui_read_client.current_committee().await?.n_shards()
                 };
-                let encoding_type = encoding_type_or_default_for_version(
-                    encoding_type,
-                    sui_read_client.system_object_version().await?,
-                );
+                let encoding_type = encoding_type.unwrap_or(DEFAULT_ENCODING);
                 (n_shards, encoding_type)
             };
 
@@ -870,7 +871,7 @@ impl ClientCommandRunner {
             self.config?,
             rpc_url,
             self.wallet,
-            self.wallet_path.is_none(),
+            !self.wallet_set_explicitly,
             &daemon_args.blocklist,
         )
         .await?;
@@ -932,8 +933,7 @@ impl ClientCommandRunner {
 
         let mut delete_outputs = Vec::new();
 
-        let system_version = client.sui_client().system_object_version().await?;
-        let encoding_type = encoding_type_or_default_for_version(encoding_type, system_version);
+        let encoding_type = encoding_type.unwrap_or(DEFAULT_ENCODING);
         let blobs = target.get_blob_identities(client.encoding_config(), encoding_type)?;
 
         // Process each target

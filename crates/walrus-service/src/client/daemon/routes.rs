@@ -342,17 +342,22 @@ fn check_blob_size(
     let default_key = DecodingKey::from_secret(&[]);
 
     match Claim::from_token(bearer_header.token().trim(), &default_key, &validation) {
-        Ok(claim) if claim.max_size.is_some() => {
-            if blob_size as u64 > claim.max_size.expect("just checked") {
-                Err(PublisherAuthError::MaxSizeExceeded)
-            } else {
-                Ok(())
+        Ok(claim) => {
+            if let Some(max_size) = claim.max_size {
+                if blob_size as u64 > max_size {
+                    return Err(PublisherAuthError::InvalidSize);
+                }
             }
+            if let Some(size) = claim.size {
+                if blob_size as u64 != size {
+                    return Err(PublisherAuthError::InvalidSize);
+                }
+            }
+            Ok(())
         }
         // We return an internal error here, because the claim should have been checked by a
         // previous middleware, and therefore we should be able to decode it.
         Err(error) => Err(PublisherAuthError::Internal(error.into())),
-        Ok(_) => Ok(()), // No need to check the size.
     }
 }
 
@@ -409,8 +414,9 @@ pub(super) async fn status() -> Response {
     "OK".into_response()
 }
 
+/// The query parameters for a publisher.
 #[derive(Debug, Deserialize, IntoParams)]
-pub(crate) struct PublisherQuery {
+pub struct PublisherQuery {
     /// The encoding type to use for the blob.
     #[serde(default)]
     pub encoding_type: Option<EncodingType>,

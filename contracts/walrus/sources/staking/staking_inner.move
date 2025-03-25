@@ -34,7 +34,7 @@ use walrus::{
 const MIN_STAKE: u64 = 0;
 
 /// Temporary upper limit for the number of storage nodes.
-/// TODO: Remove once solutions are in place to prevent hitting move execution limits (#935).
+// TODO: Remove once solutions are in place to prevent hitting move execution limits (#935).
 const TEMP_ACTIVE_SET_SIZE_LIMIT: u16 = 111;
 
 /// The number of nodes from which a flat shards limit is applied.
@@ -781,6 +781,12 @@ public(package) fun calculate_rewards(
 ): u64 {
     assert!(self.pools.contains(node_id), EPoolNotFound);
     self.pools[node_id].calculate_rewards(staked_principal, activation_epoch, withdraw_epoch)
+}
+
+/// Check whether StakedWal can be withdrawn directly.
+public(package) fun can_withdraw_staked_wal_early(self: &StakingInnerV1, sw: &StakedWal): bool {
+    let is_in_next_committee = self.next_committee.is_some_and!(|cmt| cmt.contains(&sw.node_id()));
+    sw.can_withdraw_early(is_in_next_committee, &self.new_walrus_context())
 }
 
 // === Internal ===

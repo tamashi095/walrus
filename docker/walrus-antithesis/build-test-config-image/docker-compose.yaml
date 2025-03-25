@@ -6,7 +6,7 @@
 # - A Walrus deployment service
 # - A setup completion service
 # - 4 Walrus nodes for testing
-
+# - 1 stress client for testing
 services:
   # Runs a local Sui network with a single validator
   sui-localnet:
@@ -14,10 +14,11 @@ services:
       testbed-network:
         ipv4_address: 10.0.0.20
     hostname: sui-node
-    image: mysten/sui-tools:mainnet-v1.40.3
+    image: ${SUI_IMAGE_NAME}
     platform: ${SUI_PLATFORM:-linux/amd64}
     environment:
       - NO_COLOR=1
+      - SUI_PROTOCOL_CONFIG_CHAIN_OVERRIDE=mainnet # Always use sui mainnet protocol config.
     command: >
       /bin/sh -c "cp /usr/local/bin/sui /root/sui_bin/ && \
       sui start --with-faucet --force-regenesis --committee-size 1 --epoch-duration-ms 86400000"
@@ -30,7 +31,8 @@ services:
     volumes:
       - sui-bin:/root/sui_bin
 
-  # Deploys the Walrus contracts and initializes the system
+  # Deploys the Walrus contracts and initializes the system.
+  # Note that we need to sleep 30s to make sure that the Sui localnet is ready.
   walrus-deploy:
     restart: no
     depends_on:
@@ -38,32 +40,35 @@ services:
         condition: service_healthy
     networks:
       testbed-network:
-    image: walrus-service:walrus-service-zhe
+    image: ${WALRUS_IMAGE_NAME}
     platform: ${WALRUS_PLATFORM:-linux/amd64}
     hostname: walrus-deploy
     container_name: walrus-deploy
     environment:
-      - EPOCH_DURATION=1m
+      - EPOCH_DURATION=2m
       - NO_COLOR=1
     volumes:
       - ./files/deploy-walrus.sh:/root/deploy-walrus.sh
       - walrus-deploy-outputs:/opt/walrus/outputs
     command: >
-      /bin/bash -c "sleep 60 && /root/deploy-walrus.sh"
+      /bin/bash -c "sleep 30 && /root/deploy-walrus.sh"
 
   # Performs final setup steps after deployment
+  # This is to signal antithesis that the setup is complete, and failure injection can start.
   complete-setup:
     depends_on:
       sui-localnet:
         condition: service_healthy
       walrus-deploy:
         condition: service_completed_successfully
-    image: walrus-service:walrus-service-zhe
+    image: ${WALRUS_IMAGE_NAME}
     platform: ${WALRUS_PLATFORM:-linux/amd64}
     volumes:
       - ./files/complete-setup.sh:/root/complete-setup.sh
+    # Sleep 60s because Antithesis starts injecting faults after the completion event is fired,
+    # but Walrus node starts cannot tolerate disconnection to fullnode, so we need to add a delay
     command: >
-      /bin/bash -c "/root/complete-setup.sh"
+      /bin/bash -c "sleep 30 && /root/complete-setup.sh"
 
   # Template for Walrus nodes
   walrus-node-0: &walrus-node
@@ -75,7 +80,7 @@ services:
     networks:
       testbed-network:
         ipv4_address: 10.0.0.10
-    image: walrus-service:walrus-service-zhe
+    image: ${WALRUS_IMAGE_NAME}
     platform: ${WALRUS_PLATFORM:-linux/amd64}
     hostname: dryrun-node-0
     container_name: dryrun-node-0
@@ -88,11 +93,6 @@ services:
       - ./files/run-walrus.sh:/root/run-walrus.sh
     command: >
       /bin/bash -c "/root/run-walrus.sh"
-    logging:
-      driver: "json-file"
-      options:
-        max-file: "10"
-        max-size: "1g"
 
   # Additional Walrus nodes using the template
   walrus-node-1:
@@ -127,6 +127,28 @@ services:
     environment:
       - NODE_NAME=dryrun-node-3
       - NO_COLOR=1
+
+  # Stress client for testing
+  walrus-stress-0:
+    depends_on:
+      walrus-deploy:
+        condition: service_completed_successfully
+    networks:
+      testbed-network:
+        ipv4_address: 10.0.0.30
+    image: ${WALRUS_IMAGE_NAME}
+    platform: ${WALRUS_PLATFORM:-linux/amd64}
+    hostname: walrus-stress-0
+    container_name: walrus-stress-0
+    environment:
+      - NODE_NAME=walrus-stress-0
+      - NO_COLOR=1
+    volumes:
+      - sui-bin:/root/sui_bin
+      - walrus-deploy-outputs:/opt/walrus/outputs
+      - ./files/run-stress.sh:/root/run-stress.sh
+    command: >
+      /bin/bash -c "sleep 15 && /root/run-stress.sh"
 
 # Persistent volumes for sharing data between containers
 volumes:

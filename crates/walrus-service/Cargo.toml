@@ -32,6 +32,7 @@ backup = [
   "dep:diesel",
   "dep:diesel-async",
   "dep:diesel_migrations",
+  "dep:md5",
   "dep:object_store",
   "dep:scoped-futures",
 ]
@@ -44,6 +45,7 @@ deploy = ["client", "node", "walrus-sui/test-utils"]
 node = [
   "dep:async-trait",
   "dep:bincode",
+  "dep:checkpoint-downloader",
   "dep:enum_dispatch",
   "dep:mime",
   "dep:mysten-metrics",
@@ -80,6 +82,7 @@ bcs.workspace = true
 bincode = { workspace = true, optional = true }
 byteorder.workspace = true
 bytes = { workspace = true, optional = true }
+checkpoint-downloader = { workspace = true, optional = true }
 chrono.workspace = true
 clap.workspace = true
 colored = { workspace = true, optional = true }
@@ -93,13 +96,16 @@ futures-util.workspace = true
 git-version.workspace = true
 home.workspace = true
 hostname.workspace = true
+http-body = "1.0.1"
 humantime.workspace = true
 indicatif.workspace = true
 indoc.workspace = true
 integer-encoding.workspace = true
 itertools.workspace = true
 jsonwebtoken = "9.3.1"
+md5 = { workspace = true, optional = true }
 mime = { workspace = true, optional = true }
+moka = { version = "0.12.10", features = ["future"] }
 move-core-types.workspace = true
 mysten-metrics = { workspace = true, optional = true }
 num-bigint.workspace = true
@@ -116,11 +122,13 @@ regex.workspace = true
 reqwest.workspace = true
 rocksdb = { workspace = true, optional = true }
 rustls.workspace = true
+rustls-native-certs.workspace = true
 scoped-futures = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true
 serde_with.workspace = true
 serde_yaml.workspace = true
+sha2.workspace = true
 snap.workspace = true
 sui-config.workspace = true
 sui-macros.workspace = true
@@ -150,17 +158,18 @@ walrus-proc-macros = { workspace = true, features = ["derive-api-errors"] }
 walrus-sdk.workspace = true
 walrus-sui = { workspace = true, features = ["utoipa"] }
 walrus-test-utils = { workspace = true, optional = true }
-walrus-utils.workspace = true
+walrus-utils = { workspace = true, features = ["backoff", "config", "http", "metrics"] }
 
 [dev-dependencies]
 hex = "0.4.3"
-http-body-util = "0.1.1"
+http-body-util.workspace = true
 mockall.workspace = true
-ring = "0.17.11"
+ring = "0.17.14"
 tempfile.workspace = true
 walrus-core = { workspace = true, features = ["test-utils"] }
 walrus-proc-macros = { workspace = true, features = ["walrus-simtest"] }
 walrus-test-utils.workspace = true
+walrus-utils = { workspace = true, features = ["test-utils"] }
 
 [lints]
 workspace = true

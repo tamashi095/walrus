@@ -414,6 +414,14 @@ impl ClientBuilder {
         self
     }
 
+    /// Add a custom DER-encoded root certificate.
+    ///
+    /// It is the responsibility of the caller to check the certificate for validity.
+    pub fn add_root_certificates(mut self, certificates: &[CertificateDer<'static>]) -> Self {
+        self.roots.extend(certificates.iter().cloned());
+        self
+    }
+
     /// Controls the use of built-in/preloaded certificates during certificate validation.
     ///
     /// Defaults to true – built-in system certs will be used.
@@ -581,7 +589,6 @@ impl Client {
     }
 
     /// Requests a storage confirmation from the node for the Blob specified by the given ID
-    // TODO: This function is only used internally and in test functions in walrus-service. (#498)
     #[tracing::instrument(skip_all, fields(walrus.blob_id = %blob_id), err(level = Level::DEBUG))]
     pub async fn get_confirmation(
         &self,
@@ -623,7 +630,6 @@ impl Client {
     }
 
     /// Gets a primary or secondary sliver for the identified sliver pair.
-    // TODO: This function is only used internally and in test functions in walrus-service. (#498)
     #[tracing::instrument(
         skip_all,
         fields(
@@ -665,7 +671,6 @@ impl Client {
     }
 
     /// Gets a primary or secondary sliver for the identified sliver pair.
-    // TODO: This function is only used internally and in test functions in walrus-service. (#498)
     #[tracing::instrument(skip_all, err(level = Level::DEBUG))]
     pub async fn get_sliver_by_type(
         &self,
@@ -930,7 +935,6 @@ impl Client {
     }
 
     /// Stores a sliver on a node.
-    // TODO: This function is only used internally and in test functions in walrus-service. (#498)
     #[tracing::instrument(skip_all, err(level = Level::DEBUG))]
     pub async fn store_sliver_by_type(
         &self,

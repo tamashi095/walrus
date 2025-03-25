@@ -10,6 +10,7 @@ use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
     sync::Arc,
+    time::Duration,
 };
 
 use anyhow::{bail, Context};
@@ -17,7 +18,6 @@ use clap::{Parser, Subcommand, ValueEnum as _};
 use commands::generate_or_convert_key;
 use config::PathOrInPlace;
 use fs::File;
-use humantime::Duration;
 use sui_types::base_types::{ObjectID, SuiAddress};
 use tokio::{
     runtime::{self, Runtime},
@@ -54,7 +54,11 @@ use walrus_service::{
     },
     SyncNodeConfigError,
 };
-use walrus_sui::{client::SuiContractClient, types::move_structs::VotingParams, utils::SuiNetwork};
+use walrus_sui::{
+    client::{rpc_config::RpcFallbackConfigArgs, SuiContractClient},
+    types::move_structs::VotingParams,
+    utils::SuiNetwork,
+};
 
 const VERSION: &str = version!();
 
@@ -95,6 +99,7 @@ enum Commands {
         #[clap(long, action, default_value_t = false)]
         cleanup_storage: bool,
         /// Whether to ignore the failures from node parameter synchronization with on-chain values.
+        #[deprecated(note = "This flag is being removed and will have no effect")]
         #[clap(long, action, default_value_t = false)]
         ignore_sync_failures: bool,
     },
@@ -146,23 +151,7 @@ enum Commands {
     /// Catchup events using event blobs.
     /// Hidden command for emergency use only.
     #[clap(hide = true)]
-    Catchup {
-        #[clap(long)]
-        /// Path to the RocksDB database directory.
-        db_path: PathBuf,
-
-        #[clap(long)]
-        /// Object ID of the Walrus system object
-        system_object_id: ObjectID,
-
-        #[clap(long)]
-        /// Object ID of the Walrus staking object
-        staking_object_id: ObjectID,
-
-        #[clap(long, default_value = "http://localhost:9000")]
-        /// The Sui RPC URL to use for catchup
-        sui_rpc_url: String,
-    },
+    Catchup(CatchupArgs),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
@@ -219,18 +208,28 @@ struct SetupArgs {
     storage_path: PathBuf,
     /// Sui network for which the config is generated.
     ///
-    /// Available options are `devnet`, `testnet`, and `localnet`.
+    /// Available options are `devnet`, `testnet`, `mainnet`, and `localnet`, or a custom Sui
+    /// network. To specify a custom Sui network, pass a string of the format
+    /// `<RPC_URL>(;<FAUCET_URL>)?`.
     #[clap(long, default_value = "testnet")]
     sui_network: SuiNetwork,
     /// Whether to attempt to get SUI tokens from the faucet.
     #[clap(long, action)]
     use_faucet: bool,
     /// Timeout for the faucet call.
-    #[clap(long, default_value = "1min", requires = "use_faucet")]
+    #[clap(
+        long,
+        value_parser = humantime::parse_duration,
+        default_value = "1min",
+        requires = "use_faucet",
+    )]
     faucet_timeout: Duration,
     /// Additional arguments for the generated configuration.
     #[clap(flatten)]
     config_args: ConfigArgs,
+    /// Path to an existing network key. If not specified, a new key will be generated.
+    #[clap(long)]
+    network_key_path: Option<PathBuf>,
     /// Overwrite existing files.
     #[clap(long)]
     force: bool,
@@ -278,12 +277,6 @@ struct ConfigArgs {
     /// If not provided, the RPC node from the wallet's active environment will be used.
     #[clap(long)]
     sui_rpc: Option<String>,
-    /// Use the legacy event provider instead of the standard checkpoint-based event processor.
-    #[clap(long, action)]
-    use_legacy_event_provider: bool,
-    /// Disable event blob writer
-    #[clap(long, action)]
-    disable_event_blob_writer: bool,
     /// The port on which the storage node will serve requests.
     #[clap(long, default_value_t = REST_API_PORT)]
     public_port: u16,
@@ -296,6 +289,10 @@ struct ConfigArgs {
     /// URL of the Walrus proxy to push metrics to.
     #[clap(long)]
     metrics_push_url: Option<String>,
+    /// Path to an existing TLS certificate. If not specified, the node will automatically generate
+    /// self-signed certificates.
+    #[clap(long)]
+    certificate_path: Option<PathBuf>,
     /// Gas budget for transactions.
     ///
     /// If not specified, the gas budget is estimated automatically.
@@ -307,8 +304,8 @@ struct ConfigArgs {
     /// Initial vote for the write price in FROST per MiB.
     #[clap(long, default_value_t = config::defaults::write_price())]
     write_price: u64,
-    /// The commission rate of the storage node, in basis points.
-    #[clap(long, default_value_t = 0)]
+    /// The commission rate of the storage node, in basis points (1% = 100 basis points).
+    #[clap(long, default_value_t = config::defaults::commission_rate())]
     commission_rate: u16,
     /// The image URL of the storage node.
     #[clap(long, default_value = "")]
@@ -319,6 +316,9 @@ struct ConfigArgs {
     /// The description of the storage node.
     #[clap(long, default_value = "")]
     description: String,
+    /// The config for rpc fallback.
+    #[clap(flatten)]
+    rpc_fallback_config_args: Option<RpcFallbackConfigArgs>,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -341,6 +341,34 @@ struct PathArgs {
     wallet_config: PathBuf,
 }
 
+#[derive(Debug, Clone, clap::Args)]
+struct CatchupArgs {
+    #[clap(long)]
+    /// Path to the RocksDB database directory.
+    db_path: PathBuf,
+    #[clap(long)]
+    /// Object ID of the Walrus system object.
+    system_object_id: ObjectID,
+    #[clap(long)]
+    /// Object ID of the Walrus staking object.
+    staking_object_id: ObjectID,
+    #[clap(long, default_value = "http://localhost:9000")]
+    /// The Sui RPC URL to use for catchup.
+    sui_rpc_url: String,
+    #[clap(long, value_parser = humantime::parse_duration, default_value = "10s")]
+    /// The timeout for each request to the Sui RPC node.
+    checkpoint_request_timeout: Duration,
+    #[clap(long, value_parser = humantime::parse_duration, default_value = "1min")]
+    /// The duration to run the event processor for.
+    runtime_duration: Duration,
+    #[clap(long)]
+    /// The minimum checkpoint lag to use for event stream catchup.
+    event_stream_catchup_min_checkpoint_lag: u64,
+    #[clap(flatten)]
+    /// The config for RPC fallback.
+    rpc_fallback_config_args: Option<RpcFallbackConfigArgs>,
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -353,16 +381,16 @@ fn main() -> anyhow::Result<()> {
 
         Commands::Register { config_path, force } => commands::register_node(config_path, force)?,
 
+        #[allow(deprecated)]
         Commands::Run {
             config_path,
             cleanup_storage,
-            ignore_sync_failures,
+            ignore_sync_failures: _,
         } => loop {
             let result = commands::run(
                 load_from_yaml(&config_path)?,
                 cleanup_storage,
                 Arc::new(StorageNodeConfigLoader::new(config_path.clone())),
-                ignore_sync_failures,
             );
 
             match result {
@@ -415,44 +443,41 @@ fn main() -> anyhow::Result<()> {
 
         Commands::DbTool { command } => command.execute()?,
 
-        Commands::Catchup {
-            db_path,
-            system_object_id,
-            staking_object_id,
-            sui_rpc_url,
-        } => commands::catchup(db_path, system_object_id, staking_object_id, sui_rpc_url)?,
+        Commands::Catchup(catchup_args) => commands::catchup(catchup_args)?,
     }
     Ok(())
 }
 
 mod commands {
-    use anyhow::anyhow;
+    use checkpoint_downloader::AdaptiveDownloaderConfig;
     use config::{
         LoadsFromPath,
         MetricsPushConfig,
         NodeRegistrationParamsForThirdPartyRegistration,
+        ServiceRole,
     };
+    use prometheus::Registry;
     use sui_sdk::SuiClientBuilder;
     #[cfg(not(msim))]
     use tokio::task::JoinSet;
-    use typed_store::Map;
     use walrus_core::{
         ensure,
         keys::{SupportedKeyPair, TaggedKeyPair},
     };
     use walrus_service::{
-        node::events::event_processor::{
-            EventProcessor,
-            EventProcessorRuntimeConfig,
-            SuiClientSet,
-            SystemConfig,
+        node::{
+            config::TlsConfig,
+            events::{
+                event_processor::{EventProcessor, EventProcessorRuntimeConfig, SystemConfig},
+                EventProcessorConfig,
+            },
         },
         utils,
     };
     use walrus_sui::{
         client::{
             contract_config::ContractConfig,
-            retry_client::{RetriableRpcClient, RetriableSuiClient},
+            retry_client::RetriableSuiClient,
             ReadClient as _,
             SuiReadClient,
         },
@@ -467,7 +492,6 @@ mod commands {
         mut config: StorageNodeConfig,
         cleanup_storage: bool,
         config_loader: Arc<dyn ConfigLoader>,
-        ignore_sync_failures: bool,
     ) -> anyhow::Result<()> {
         if cleanup_storage {
             let storage_path = &config.storage_path;
@@ -533,6 +557,7 @@ mod commands {
         let metrics_push_runtime = match config.metrics_push.take() {
             Some(mut mc) => {
                 mc.set_name_and_host_label(&config.name);
+                mc.set_role_label(ServiceRole::StorageNode);
                 let network_key_pair = network_key_pair.0.clone();
                 let mp_config = EnableMetricsPush {
                     cancel: cancel_token.child_token(),
@@ -567,7 +592,6 @@ mod commands {
             event_manager,
             cancel_token.child_token(),
             Some(config_loader),
-            ignore_sync_failures,
         )?;
 
         monitor_runtimes(
@@ -790,12 +814,11 @@ mod commands {
             node_capacity,
             public_host,
             sui_rpc,
-            use_legacy_event_provider,
-            disable_event_blob_writer,
             public_port,
             rest_api_address,
             metrics_address,
             metrics_push_url,
+            certificate_path,
             gas_budget,
             storage_price,
             write_price,
@@ -804,6 +827,7 @@ mod commands {
             image_url,
             project_url,
             description,
+            rpc_fallback_config_args,
         }: ConfigArgs,
         force: bool,
     ) -> anyhow::Result<StorageNodeConfig> {
@@ -871,15 +895,20 @@ mod commands {
                 event_polling_interval: config::defaults::polling_interval(),
                 backoff_config: ExponentialBackoffConfig::default(),
                 gas_budget,
+                rpc_fallback_config: rpc_fallback_config_args
+                    .clone()
+                    .and_then(|args| args.to_config()),
             }),
+            tls: TlsConfig {
+                certificate_path,
+                ..Default::default()
+            },
             voting_params: VotingParams {
                 storage_price,
                 write_price,
                 node_capacity: node_capacity.as_u64(),
             },
             commission_rate,
-            use_legacy_event_provider,
-            disable_event_blob_writer,
             name,
             metadata,
             metrics_push,
@@ -893,24 +922,37 @@ mod commands {
 
     #[tokio::main]
     pub async fn catchup(
-        db_path: PathBuf,
-        system_object_id: ObjectID,
-        staking_object_id: ObjectID,
-        sui_rpc_url: String,
+        CatchupArgs {
+            db_path,
+            system_object_id,
+            staking_object_id,
+            sui_rpc_url,
+            checkpoint_request_timeout,
+            runtime_duration,
+            event_stream_catchup_min_checkpoint_lag,
+            rpc_fallback_config_args,
+        }: CatchupArgs,
     ) -> anyhow::Result<()> {
-        // Wipe db path if it exists
-        if db_path.exists() {
-            fs::remove_dir_all(&db_path).context(format!(
-                "Failed to remove directory '{}'",
-                db_path.display()
-            ))?;
-        }
+        let event_processor_config = EventProcessorConfig {
+            pruning_interval: Duration::from_secs(3600),
+            checkpoint_request_timeout,
+            adaptive_downloader_config: AdaptiveDownloaderConfig::default(),
+            event_stream_catchup_min_checkpoint_lag,
+        };
+
+        let runtime_config = EventProcessorRuntimeConfig {
+            rpc_address: sui_rpc_url.clone(),
+            event_polling_interval: Duration::from_secs(1),
+            db_path: db_path.clone(),
+            rpc_fallback_config: rpc_fallback_config_args.and_then(|args| args.to_config()),
+        };
 
         // Create SuiClientSet
         let sui_client = SuiClientBuilder::default()
             .build(&sui_rpc_url)
             .await
             .context("Failed to create Sui client")?;
+
         let retriable_sui_client =
             RetriableSuiClient::new(sui_client.clone(), ExponentialBackoffConfig::default());
 
@@ -919,55 +961,24 @@ mod commands {
             SuiReadClient::new(retriable_sui_client.clone(), &contract_config).await?;
         let system_pkg_id = sui_read_client.get_system_package_id();
 
-        let rest_client = sui_rpc_api::Client::new(&sui_rpc_url)?;
-        let rest_client = RetriableRpcClient::new(rest_client, ExponentialBackoffConfig::default());
-        let clients = SuiClientSet::new(retriable_sui_client, rest_client);
-
         let system_config = SystemConfig::new(system_pkg_id, system_object_id, staking_object_id);
-        let database = EventProcessor::initialize_database(&EventProcessorRuntimeConfig {
-            rpc_address: sui_rpc_url,
-            event_polling_interval: std::time::Duration::from_secs(1),
-            db_path: db_path.clone(),
-        })?;
-
-        let stores = EventProcessor::open_stores(&database)?;
-
-        // Create recovery path
-        let recovery_path = db_path.join("recovery");
-
-        // Call catchup_using_event_blobs
-        match EventProcessor::catchup_using_event_blobs(
-            clients,
+        let event_processor = EventProcessor::new(
+            &event_processor_config,
+            runtime_config,
             system_config,
-            stores.clone(),
-            &recovery_path,
-            None,
+            &Registry::default(),
         )
-        .await
-        {
-            Ok(()) => {
-                tracing::info!("Successfully caught up using event blobs");
-            }
-            Err(e) => {
-                tracing::error!("Failed to catch up using event blobs: {}", e);
-                return Err(e);
-            }
-        }
+        .await?;
+        let cancel_token = CancellationToken::new();
+        let cancel_token_clone = cancel_token.clone();
+        tokio::spawn(async move {
+            event_processor.start(cancel_token_clone).await.unwrap();
+        });
 
-        // Check event db is not empty and count total events
-        let event_iter = stores.event_store.unbounded_iter();
-        let total_events = event_iter.count();
+        tokio::time::sleep(runtime_duration).await;
 
-        if total_events == 0 {
-            tracing::error!("Event store is empty after catchup");
-            Err(anyhow!("Event store is empty after catchup"))
-        } else {
-            tracing::info!(
-                total_events = total_events,
-                "Event store successfully populated"
-            );
-            Ok(())
-        }
+        cancel_token.cancel();
+        Ok(())
     }
 
     #[tokio::main]
@@ -980,6 +991,7 @@ mod commands {
             faucet_timeout,
             config_args,
             force,
+            network_key_path,
             registering_third_party,
             registration_epoch,
         }: SetupArgs,
@@ -997,7 +1009,6 @@ mod commands {
         }
         let config_path = config_directory.join("walrus-node.yaml");
         let protocol_key_path = config_directory.join("protocol.key");
-        let network_key_path = config_directory.join("network.key");
         let wallet_config = config_directory.join("sui_config.yaml");
         ensure!(
             config_directory.is_dir(),
@@ -1011,15 +1022,17 @@ mod commands {
             true,
             KeyFormat::Tagged,
         )?;
-        keygen(&network_key_path, KeyType::Network, true, KeyFormat::Pkcs8)?;
+        let network_key_path = if let Some(network_key_path) = network_key_path {
+            network_key_path
+        } else {
+            let network_key_path = config_directory.join("network.key");
+            keygen(&network_key_path, KeyType::Network, true, KeyFormat::Pkcs8)?;
+            network_key_path
+        };
 
-        let wallet_address = utils::generate_sui_wallet(
-            sui_network,
-            &wallet_config,
-            use_faucet,
-            faucet_timeout.into(),
-        )
-        .await?;
+        let wallet_address =
+            utils::generate_sui_wallet(sui_network, &wallet_config, use_faucet, faucet_timeout)
+                .await?;
         println!(
             "Successfully generated a new Sui wallet with address {}",
             wallet_address
@@ -1126,7 +1139,6 @@ impl StorageNodeRuntime {
         event_manager: Box<dyn EventManager>,
         cancel_token: CancellationToken,
         config_loader: Option<Arc<dyn ConfigLoader>>,
-        ignore_sync_failures: bool,
     ) -> anyhow::Result<Self> {
         let runtime = runtime::Builder::new_multi_thread()
             .thread_name("walrus-node-runtime")
@@ -1139,7 +1151,6 @@ impl StorageNodeRuntime {
             runtime.block_on(
                 StorageNode::builder()
                     .with_system_event_manager(event_manager)
-                    .with_ignore_sync_failures(ignore_sync_failures)
                     .with_config_loader(config_loader)
                     .build(node_config, metrics_runtime.registry.clone()),
             )?,

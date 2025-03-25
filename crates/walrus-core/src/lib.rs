@@ -26,9 +26,11 @@ use encoding::{
     EncodingAxis,
     EncodingConfig,
     EncodingConfigEnum,
+    Primary,
     PrimaryRecoverySymbol,
     PrimarySliver,
     RecoverySymbolError,
+    Secondary,
     SecondaryRecoverySymbol,
     SecondarySliver,
     SliverVerificationError,
@@ -45,7 +47,7 @@ use inconsistency::{
     SecondaryInconsistencyProof,
 };
 use merkle::{MerkleAuth, MerkleProof, Node};
-use metadata::BlobMetadata;
+pub use metadata::BlobMetadata;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeAs, DisplayFromStr, SerializeAs};
 #[cfg(feature = "sui-types")]
@@ -827,6 +829,24 @@ macro_rules! ensure {
             return Err(anyhow::anyhow!($fmt, $($arg)*).into());
         }
     };
+}
+
+/// Either a primary or secondary [`SliverIndex`].
+pub type SliverId = ByAxis<SliverIndex, SliverIndex>;
+
+impl SliverId {
+    /// Returns the [`SliverIndex`] of the identified sliver.
+    pub fn index(&self) -> SliverIndex {
+        self.into_inner()
+    }
+
+    /// Returns the [`SliverPairIndex`] of the identified sliver.
+    pub fn pair_index(&self, n_shards: NonZeroU16) -> SliverPairIndex {
+        match self {
+            ByAxis::Primary(value) => value.to_pair_index::<Primary>(n_shards),
+            ByAxis::Secondary(value) => value.to_pair_index::<Secondary>(n_shards),
+        }
+    }
 }
 
 #[cfg(test)]

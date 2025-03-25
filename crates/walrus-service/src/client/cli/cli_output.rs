@@ -34,6 +34,7 @@ use crate::client::{
         DeleteOutput,
         DryRunOutput,
         EncodingDependentPriceInfo,
+        EpochTimeOrMessage,
         ExampleBlobInfo,
         ExchangeOutput,
         ExtendBlobOutput,
@@ -74,10 +75,14 @@ pub trait CliOutput: Serialize {
 }
 impl CliOutput for Vec<BlobStoreResultWithPath> {
     fn print_cli_output(&self) {
+        for result in self {
+            result.print_cli_output();
+        }
+
         let mut total_encoded_size = 0;
         let mut total_cost = 0;
         let mut reuse_and_extend_count = 0;
-        let total_count = self.len();
+        let mut newly_certified = 0;
 
         for res in self.iter() {
             if let BlobStoreResult::NewlyCreated {
@@ -88,18 +93,23 @@ impl CliOutput for Vec<BlobStoreResultWithPath> {
             {
                 total_encoded_size += resource_operation.encoded_length();
                 total_cost += cost;
-                if let RegisterBlobOp::ReuseAndExtend { .. } = resource_operation {
-                    reuse_and_extend_count += 1;
+                match resource_operation {
+                    RegisterBlobOp::ReuseAndExtend { .. } => {
+                        reuse_and_extend_count += 1;
+                    }
+                    RegisterBlobOp::RegisterFromScratch { .. }
+                    | RegisterBlobOp::ReuseAndExtendNonCertified { .. }
+                    | RegisterBlobOp::ReuseStorage { .. }
+                    | RegisterBlobOp::ReuseRegistration { .. } => {
+                        newly_certified += 1;
+                    }
                 }
             }
         }
 
         let mut parts = Vec::new();
-        if total_count - reuse_and_extend_count > 0 {
-            parts.push(format!(
-                "{} newly certified",
-                total_count - reuse_and_extend_count
-            ));
+        if newly_certified > 0 {
+            parts.push(format!("{} newly certified", newly_certified));
         }
         if reuse_and_extend_count > 0 {
             parts.push(format!("{} extended", reuse_and_extend_count));
@@ -388,15 +398,25 @@ impl CliOutput for InfoEpochOutput {
     fn print_cli_output(&self) {
         let Self {
             current_epoch,
+            start_of_current_epoch,
             epoch_duration,
             max_epochs_ahead,
         } = self;
+
+        let time_output = match start_of_current_epoch {
+            EpochTimeOrMessage::DateTime(start_time) => {
+                let end_time = *start_time + chrono::Duration::from_std(*epoch_duration).unwrap();
+                format!("Start time: {}\nEnd time: {}", start_time, end_time)
+            }
+            EpochTimeOrMessage::Message(msg) => msg.clone(),
+        };
 
         printdoc!(
             "
 
             {heading}
             Current epoch: {current_epoch}
+            {time_output}
             Epoch duration: {hr_epoch_duration}
             Blobs can be stored for at most {max_epochs_ahead} epochs in the future.
             ",
@@ -821,14 +841,15 @@ impl CliOutput for NodeHealthOutput {
     fn print_cli_output(&self) {
         printdoc! {"
 
-            {heading}: {node_name}
+            {heading}
             Node ID: {node_id}
             Node URL: {node_url}
+            Network public key: {network_public_key}
             ",
-            heading = "Node Information".bold().walrus_purple(),
-            node_name = self.node_name,
+            heading = self.node_name.bold().walrus_purple(),
             node_id = self.node_id,
-            node_url = self.node_url
+            node_url = self.node_url,
+            network_public_key = self.network_public_key,
         };
         match &self.health_info {
             Err(error) => {
@@ -1006,7 +1027,7 @@ fn create_node_health_table() -> Table {
         b->"Name",
         b->"Node ID",
         b->"Address",
-        b->"# Owned Shards",
+        bc->"# Shards\n(Ready / Owned)",
         b->"Status",
     ]);
     table
@@ -1015,12 +1036,16 @@ fn create_node_health_table() -> Table {
 fn add_node_health_to_table(table: &mut Table, node: &NodeHealthOutput, node_idx: usize) {
     match &node.health_info {
         Ok(health_info) => {
+            let shards_str = format!(
+                "{} / {}",
+                health_info.shard_summary.owned_shard_status.ready, health_info.shard_summary.owned
+            );
             table.add_row(row![
-                node_idx,
+                r->node_idx,
                 node.node_name,
                 node.node_id,
                 node.node_url,
-                r->health_info.shard_summary.owned,
+                c->shards_str,
                 health_info.node_status,
             ]);
         }
@@ -1034,11 +1059,11 @@ fn add_node_health_to_table(table: &mut Table, node: &NodeHealthOutput, node_idx
             };
 
             table.add_row(row![
-                node_idx,
+                r->node_idx,
                 node.node_name,
                 node.node_id,
                 node.node_url,
-                r->"N/A",
+                c->"N/A",
                 Fr->truncated_error,
             ]);
         }

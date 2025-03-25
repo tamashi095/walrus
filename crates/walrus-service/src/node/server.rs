@@ -28,9 +28,10 @@ use utoipa::OpenApi as _;
 use utoipa_redoc::{Redoc, Servable as _};
 use walrus_core::{encoding, keys::NetworkKeyPair};
 
+use self::telemetry::HttpServerMetrics;
 use super::config::{defaults, Http2Config, PathOrInPlace, StorageNodeConfig, TlsConfig};
 use crate::{
-    common::telemetry::{self, HttpMetrics, MakeHttpSpan},
+    common::telemetry::{self, MakeHttpSpan},
     node::ServiceState,
 };
 
@@ -145,7 +146,7 @@ pub enum TlsCertificateSource {
 pub struct RestApiServer<S> {
     state: Arc<S>,
     config: RestApiConfig,
-    metrics: HttpMetrics,
+    metrics: HttpServerMetrics,
     cancel_token: CancellationToken,
     handle: Mutex<Option<Handle>>,
 }
@@ -163,7 +164,7 @@ where
     ) -> Self {
         Self {
             state,
-            metrics: telemetry::register_http_metrics(registry),
+            metrics: HttpServerMetrics::new(registry),
             cancel_token,
             handle: Default::default(),
             config,
@@ -185,6 +186,10 @@ where
             .layer(
                 TraceLayer::new_for_http()
                     .make_span_with(MakeHttpSpan::new())
+                    // TODO(jsmith): This silences logs being emitted by TraceLayer.
+                    // Until we've resolved too may 503's or customized this further to not log
+                    // specifically this error, we disable it.
+                    .on_failure(())
                     .on_response(MakeHttpSpan::new()),
             );
 
@@ -523,7 +528,7 @@ mod tests {
             }
         }
 
-        fn retrieve_sliver(
+        async fn retrieve_sliver(
             &self,
             _blob_id: &BlobId,
             _sliver_pair_index: SliverPairIndex,
@@ -534,7 +539,7 @@ mod tests {
 
         /// Returns a valid response only for the pair index 0, otherwise, returns
         /// an internal error.
-        fn retrieve_recovery_symbol(
+        async fn retrieve_recovery_symbol(
             &self,
             _blob_id: &BlobId,
             symbol_id: SymbolId,
@@ -567,19 +572,20 @@ mod tests {
             }
         }
 
-        fn retrieve_multiple_recovery_symbols(
+        async fn retrieve_multiple_recovery_symbols(
             &self,
             blob_id: &BlobId,
             _filter: RecoverySymbolsFilter,
         ) -> Result<Vec<GeneralRecoverySymbol>, ListSymbolsError> {
             let symbol = self
                 .retrieve_recovery_symbol(blob_id, SymbolId::new(0.into(), 0.into()), None)
+                .await
                 .unwrap();
             Ok(vec![symbol.clone(), symbol])
         }
 
         /// Successful only for the pair index 0, otherwise, returns an internal error.
-        fn store_sliver(
+        async fn store_sliver(
             &self,
             _blob_id: &BlobId,
             sliver_pair_index: SliverPairIndex,
@@ -630,7 +636,7 @@ mod tests {
             }
         }
 
-        fn sliver_status<A: EncodingAxis>(
+        async fn sliver_status<A: EncodingAxis>(
             &self,
             _blob_id: &BlobId,
             SliverPairIndex(sliver_pair_index): SliverPairIndex,
@@ -676,7 +682,7 @@ mod tests {
             }
         }
 
-        fn sync_shard(
+        async fn sync_shard(
             &self,
             _public_key: PublicKey,
             _signed_request: SignedMessage<SyncShardMsg>,

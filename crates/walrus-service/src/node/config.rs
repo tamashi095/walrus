@@ -5,6 +5,7 @@
 
 use std::{
     collections::HashMap,
+    fmt::Display,
     net::{IpAddr, SocketAddr},
     num::NonZeroUsize,
     path::{Path, PathBuf},
@@ -28,6 +29,7 @@ use sui_types::base_types::{ObjectID, SuiAddress};
 use walrus_core::{
     keys::{KeyPairParseError, NetworkKeyPair, ProtocolKeyPair},
     messages::ProofOfPossession,
+    Epoch,
     NetworkPublicKey,
     PublicKey,
 };
@@ -143,7 +145,7 @@ pub struct StorageNodeConfig {
     #[serde(default, skip_serializing_if = "defaults::is_default")]
     pub disable_event_blob_writer: bool,
     /// The commission rate of the storage node, in basis points.
-    #[serde(default)]
+    #[serde(default = "defaults::commission_rate")]
     pub commission_rate: u16,
     /// The parameters for the staking pool.
     pub voting_params: VotingParams,
@@ -159,6 +161,16 @@ pub struct StorageNodeConfig {
     /// The capability object ID of the storage node.
     #[serde(default, skip_serializing_if = "defaults::is_none")]
     pub storage_node_cap: Option<ObjectID>,
+    /// The number of uncertified blobs before the node will reset the local
+    /// state in event blob writer.
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
+    pub num_uncertified_blob_threshold: Option<u32>,
+    /// Configuration for background SUI balance checks and alerting.
+    #[serde(default, skip_serializing_if = "defaults::is_default")]
+    pub balance_check: BalanceCheckConfig,
+    /// Configuration for the blocking thread pool.
+    #[serde(default, skip_serializing_if = "defaults::is_default")]
+    pub thread_pool: ThreadPoolConfig,
 }
 
 impl Default for StorageNodeConfig {
@@ -183,7 +195,7 @@ impl Default for StorageNodeConfig {
             event_processor_config: Default::default(),
             use_legacy_event_provider: false,
             disable_event_blob_writer: Default::default(),
-            commission_rate: 0,
+            commission_rate: defaults::commission_rate(),
             voting_params: VotingParams {
                 storage_price: defaults::storage_price(),
                 write_price: defaults::write_price(),
@@ -194,6 +206,9 @@ impl Default for StorageNodeConfig {
             metadata: Default::default(),
             config_synchronizer: Default::default(),
             storage_node_cap: None,
+            num_uncertified_blob_threshold: None,
+            balance_check: Default::default(),
+            thread_pool: Default::default(),
         }
     }
 }
@@ -327,6 +342,25 @@ impl StorageNodeConfig {
         }
     }
 
+    /// Calculates the next commission rate for the storage node.
+    ///
+    /// This function compares the local commission rate with the on-chain projected commission
+    /// rate one epoch in the future and returns the local commission rate if it is different.
+    fn calculate_next_commission_rate(
+        &self,
+        commission_rate_data: &CommissionRateData,
+        local_commission_rate: u16,
+    ) -> Option<u16> {
+        let projected_commission_rate = commission_rate_data
+            .pending_commission_rate
+            .last()
+            .map_or(commission_rate_data.commission_rate as u64, |&(_, rate)| {
+                rate
+            });
+        assert!(projected_commission_rate < u16::MAX as u64);
+        (projected_commission_rate != local_commission_rate as u64).then_some(local_commission_rate)
+    }
+
     /// Compares the current node parameters with the passed-in parameters and generates the
     /// update params if there are any changes, so that the source of the passed-in parameters
     /// can be updated to the node parameters.
@@ -352,8 +386,21 @@ impl StorageNodeConfig {
                 != self.voting_params.node_capacity)
                 .then_some(self.voting_params.node_capacity),
             metadata: (synced_config.metadata != self.metadata).then_some(self.metadata.clone()),
+            commission_rate: self.calculate_next_commission_rate(
+                &synced_config.commission_rate_data,
+                self.commission_rate,
+            ),
         }
     }
+}
+
+/// The commission rate data for the storage node.
+#[derive(Debug, Clone, Default, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CommissionRateData {
+    /// Pending commission rate changes indexed by epoch.
+    pub pending_commission_rate: Vec<(Epoch, u64)>,
+    /// The current commission rate for the storage node.
+    pub commission_rate: u16,
 }
 
 /// A set of node config parameters that are monitored by the config synchronizer.
@@ -381,6 +428,8 @@ pub struct SyncedNodeConfigSet {
     pub voting_params: VotingParams,
     /// The metadata of the storage node, it corresponds to `[StorageNodeConfig::metadata]`.
     pub metadata: NodeMetadata,
+    /// The commission rate data for the storage node.
+    pub commission_rate_data: CommissionRateData,
 }
 
 /// Configuration for metric push.
@@ -402,6 +451,21 @@ pub struct MetricsPushConfig {
     pub labels: Option<HashMap<String, String>>,
 }
 
+/// Identifies a role to attach to metrics.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ServiceRole {
+    /// The storage node service.
+    StorageNode,
+}
+
+impl Display for ServiceRole {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ServiceRole::StorageNode => f.write_str("walrus-node"),
+        }
+    }
+}
+
 impl MetricsPushConfig {
     /// Creates a new `MetricsPushConfig` with the provided URL and otherwise default values.
     pub fn new_for_url(url: String) -> Self {
@@ -415,22 +479,32 @@ impl MetricsPushConfig {
     /// Sets the 'name' label to `name` and the 'host' label to the machine's hostname; if the
     /// hostname cannot be determined, `name` is used as a fallback.
     pub fn set_name_and_host_label(&mut self, name: &str) {
-        self.labels
-            .get_or_insert_with(HashMap::new)
+        self.labels_mut()
             .entry("name".into())
-            .or_insert_with(|| name.into());
+            .or_insert_with(|| name.to_owned());
 
         let host =
             hostname::get().map_or_else(|_| name.into(), |v| v.to_string_lossy().to_string());
         self.set_host(host);
     }
 
+    /// Sets the role associated with the service, overwrites any previously set value.
+    pub fn set_role_label(&mut self, role: ServiceRole) {
+        if let Some(prior) = self
+            .labels_mut()
+            .insert("role".to_owned(), role.to_string())
+        {
+            tracing::warn!(%prior, %role, "overwrote a prior role value");
+        }
+    }
+
     /// Sets the 'host' label to `host`.
     fn set_host(&mut self, host: String) {
-        self.labels
-            .get_or_insert_with(HashMap::new)
-            .entry("host".into())
-            .or_insert_with(|| host);
+        self.labels_mut().entry("host".to_owned()).or_insert(host);
+    }
+
+    fn labels_mut(&mut self) -> &mut HashMap<String, String> {
+        self.labels.get_or_insert_default()
     }
 }
 
@@ -456,6 +530,9 @@ pub struct BlobRecoveryConfig {
     pub max_concurrent_blob_syncs: usize,
     /// The number of in-parallel slivers synchronized
     pub max_concurrent_sliver_syncs: usize,
+    /// The maximum number of elements stored in the proof cache for serving remote recovery
+    /// requests.
+    pub max_proof_cache_elements: u64,
     /// Configuration of the committee service timeouts and retries
     #[serde(flatten)]
     pub committee_service_config: CommitteeServiceConfig,
@@ -466,6 +543,7 @@ impl Default for BlobRecoveryConfig {
         Self {
             max_concurrent_blob_syncs: 100,
             max_concurrent_sliver_syncs: 2_000,
+            max_proof_cache_elements: 7_500,
             committee_service_config: CommitteeServiceConfig::default(),
         }
     }
@@ -575,7 +653,7 @@ pub mod defaults {
     use walrus_sui::utils::SuiNetwork;
 
     use super::*;
-    pub use crate::common::config::defaults::{is_default, polling_interval};
+    pub use crate::common::config::defaults::{is_default, is_none, polling_interval};
 
     /// Default metrics port.
     pub const METRICS_PORT: u16 = 9184;
@@ -585,6 +663,10 @@ pub mod defaults {
     pub const REST_GRACEFUL_SHUTDOWN_PERIOD_SECS: u64 = 60;
     /// Default interval between config monitoring checks in seconds.
     pub const CONFIG_SYNCHRONIZER_INTERVAL_SECS: u64 = 900;
+    /// Default frequency with which balance checks are performed.
+    pub const BALANCE_CHECK_FREQUENCY: Duration = Duration::from_secs(60 * 60);
+    /// SUI MIST threshold under which balance checks log a warning.
+    pub const BALANCE_CHECK_WARNING_THRESHOLD_MIST: u64 = 5_000_000_000;
 
     /// Returns the default metrics port.
     pub fn metrics_port() -> u16 {
@@ -617,12 +699,17 @@ pub mod defaults {
 
     /// The default vote for the storage price.
     pub fn storage_price() -> u64 {
-        100
+        100_000
     }
 
     /// The default vote for the write price.
     pub fn write_price() -> u64 {
-        2000
+        20_000
+    }
+
+    /// The default commission rate in basis points.
+    pub fn commission_rate() -> u16 {
+        6000
     }
 
     /// Configure the default push interval for metrics.
@@ -633,13 +720,6 @@ pub mod defaults {
     /// Returns true if the `duration` is equal to the default push interval for metrics.
     pub fn is_push_interval_default(duration: &Duration) -> bool {
         duration == &push_interval()
-    }
-
-    /// Returns true iff the value is `None` and we don't run in test mode.
-    pub fn is_none<T>(t: &Option<T>) -> bool {
-        // The `cfg!(test)` check is there to allow serializing the full configuration, specifically
-        // to generate the example configuration files.
-        !cfg!(test) && t.is_none()
     }
 
     /// The default interval between config monitoring checks
@@ -749,7 +829,7 @@ impl LoadsFromPath for NetworkKeyPair {
             .context(format!("unable to read key from '{}'", path.display()))?;
 
         NetworkKeyPair::from_pkcs8_pem(&file_contents)
-            .inspect(|_| tracing::info!("loaded network private key in PKCS#8 format"))
+            .inspect(|_| tracing::debug!("loaded network private key in PKCS#8 format"))
             .or_else(|error| {
                 tracing::debug!(
                     ?error,
@@ -758,7 +838,7 @@ impl LoadsFromPath for NetworkKeyPair {
 
                 NetworkKeyPair::from_str(&file_contents)
                     .inspect(|_| {
-                        tracing::info!("loaded network private key in tagged format");
+                        tracing::debug!("loaded network private key in tagged format");
                     })
                     .map_err(|error2| {
                         anyhow!(
@@ -897,6 +977,38 @@ impl Default for Http2Config {
     }
 }
 
+/// Configuration for balance checks.
+#[serde_as]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BalanceCheckConfig {
+    /// The interval at which to query the balance.
+    #[serde_as(as = "DurationSeconds<u64>")]
+    #[serde(rename = "interval_secs")]
+    pub interval: Duration,
+    /// The amount of MIST for which a lower balance triggers a warning.
+    pub warning_threshold_mist: u64,
+}
+
+impl Default for BalanceCheckConfig {
+    fn default() -> Self {
+        Self {
+            interval: defaults::BALANCE_CHECK_FREQUENCY,
+            warning_threshold_mist: defaults::BALANCE_CHECK_WARNING_THRESHOLD_MIST,
+        }
+    }
+}
+
+/// Configuration for the blocking thread pool.
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ThreadPoolConfig {
+    /// Specify the maximum number of concurrent tasks that will be pending on the thread pool.
+    ///
+    /// Defaults to an amount calculated from the number of cores.
+    #[serde(skip_serializing_if = "defaults::is_none")]
+    pub max_concurrent_tasks: Option<usize>,
+}
+
 #[cfg(test)]
 mod tests {
     use std::{io::Write as _, str::FromStr};
@@ -936,6 +1048,7 @@ mod tests {
                 )),
                 backoff_config: Default::default(),
                 gas_budget: None,
+                rpc_fallback_config: None,
             }),
             config_synchronizer: ConfigSynchronizerConfig {
                 interval: Duration::from_secs(defaults::CONFIG_SYNCHRONIZER_INTERVAL_SECS),
@@ -1169,6 +1282,7 @@ mod tests {
             network_key_pair: PathOrInPlace::InPlace(test_utils::network_key_pair()),
             voting_params: new_voting_params,
             metadata: new_metadata,
+            commission_rate: 1000,
             ..Default::default()
         }
     }
@@ -1190,8 +1304,12 @@ mod tests {
                 next_public_key: None,
                 voting_params: config.voting_params.clone(),
                 metadata: config.metadata.clone(),
+                commission_rate_data: Default::default(),
             },
-            expected_params: NodeUpdateParams::default(),
+            expected_params: NodeUpdateParams {
+                commission_rate: Some(config.commission_rate),
+                ..Default::default()
+            },
         });
 
         // Test 2: All fields need updating
@@ -1217,6 +1335,10 @@ mod tests {
                 next_public_key: None,
                 voting_params: old_voting_params.clone(),
                 metadata: old_metadata.clone(),
+                commission_rate_data: CommissionRateData {
+                    pending_commission_rate: vec![],
+                    commission_rate: config.commission_rate,
+                },
             },
             expected_params: NodeUpdateParams {
                 name: Some(config.name.clone()),
@@ -1230,6 +1352,7 @@ mod tests {
                 write_price: Some(config.voting_params.write_price),
                 node_capacity: Some(config.voting_params.node_capacity),
                 metadata: Some(config.metadata.clone()),
+                commission_rate: None,
             },
         });
 
@@ -1247,6 +1370,10 @@ mod tests {
                 next_public_key: None,
                 voting_params: old_voting_params.clone(),
                 metadata: old_metadata.clone(),
+                commission_rate_data: CommissionRateData {
+                    pending_commission_rate: vec![(32, config.commission_rate as u64)],
+                    commission_rate: 20,
+                },
             },
             expected_params: NodeUpdateParams {
                 name: None,
@@ -1257,6 +1384,64 @@ mod tests {
                 write_price: Some(config.voting_params.write_price),
                 node_capacity: Some(config.voting_params.node_capacity),
                 metadata: Some(config.metadata.clone()),
+                commission_rate: None,
+            },
+        });
+
+        // Test 4: Commission rate needs updating
+        test_cases.push(TestCase {
+            description: "Commission rate needs updating".to_string(),
+            synced_config: SyncedNodeConfigSet {
+                name: config.name.clone(),
+                network_address: NetworkAddress(format!(
+                    "{}:{}",
+                    config.public_host, config.public_port
+                )),
+                network_public_key: config.network_key_pair().public().clone(),
+                public_key: config.protocol_key_pair().public().clone(),
+                next_public_key: None,
+                voting_params: config.voting_params.clone(),
+                metadata: config.metadata.clone(),
+                commission_rate_data: CommissionRateData {
+                    pending_commission_rate: vec![],
+                    commission_rate: 500, // Different from config's commission_rate
+                },
+            },
+            expected_params: NodeUpdateParams {
+                name: None,
+                network_address: None,
+                network_public_key: None,
+                update_public_key: None,
+                storage_price: None,
+                write_price: None,
+                node_capacity: None,
+                metadata: None,
+                commission_rate: Some(config.commission_rate),
+            },
+        });
+
+        // Test 5: Commission rate with pending changes
+        test_cases.push(TestCase {
+            description: "Commission rate with pending changes".to_string(),
+            synced_config: SyncedNodeConfigSet {
+                name: config.name.clone(),
+                network_address: NetworkAddress(format!(
+                    "{}:{}",
+                    config.public_host, config.public_port
+                )),
+                network_public_key: config.network_key_pair().public().clone(),
+                public_key: config.protocol_key_pair().public().clone(),
+                next_public_key: None,
+                voting_params: config.voting_params.clone(),
+                metadata: config.metadata.clone(),
+                commission_rate_data: CommissionRateData {
+                    pending_commission_rate: vec![(32, config.commission_rate as u64), (33, 110)],
+                    commission_rate: config.commission_rate,
+                },
+            },
+            expected_params: NodeUpdateParams {
+                commission_rate: Some(config.commission_rate),
+                ..Default::default()
             },
         });
 

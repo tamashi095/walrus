@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 //! Contains dedicated Walrus simulation tests.
+#![recursion_limit = "256"]
+
 #[cfg(msim)]
 mod tests {
     use std::{
@@ -20,22 +22,30 @@ mod tests {
     };
     use sui_protocol_config::ProtocolConfig;
     use sui_simulator::configs::{env_config, uniform_latency_ms};
+    use sui_types::base_types::ObjectID;
     use tokio::{sync::RwLock, task::JoinHandle, time::Instant};
     use walrus_core::{
         encoding::{Primary, Secondary},
+        keys::{NetworkKeyPair, ProtocolKeyPair},
+        test_utils::random_blob_id,
         DEFAULT_ENCODING,
     };
     use walrus_proc_macros::walrus_simtest;
     use walrus_sdk::api::{ServiceHealthInfo, ShardStatus};
     use walrus_service::{
         client::{responses::BlobStoreResult, Client, ClientCommunicationConfig, StoreWhen},
-        test_utils::{test_cluster, SimStorageNodeHandle, TestNodesConfig},
+        node::config::{CommissionRateData, PathOrInPlace, StorageNodeConfig, SyncedNodeConfigSet},
+        test_utils::{test_cluster, SimStorageNodeHandle, TestCluster, TestNodesConfig},
     };
     use walrus_sui::{
         client::{BlobPersistence, PostStoreAction, ReadClient, SuiContractClient},
-        types::{move_structs::VotingParams, NetworkAddress, NodeMetadata},
+        types::{
+            move_structs::{EventBlob, VotingParams},
+            NetworkAddress,
+            NodeMetadata,
+        },
     };
-    use walrus_test_utils::WithTempDir;
+    use walrus_test_utils::{async_param_test, WithTempDir};
 
     const FAILURE_TRIGGER_PROBABILITY: f64 = 0.01;
     const DB_FAIL_POINTS: &[&str] = &[
@@ -64,6 +74,37 @@ mod tests {
         env_config(uniform_latency_ms(5..15), [])
     }
 
+    /// Fetches the synced node config set from the contract.
+    async fn test_get_synced_node_config_set(
+        contract_client: &SuiContractClient,
+        node_id: ObjectID,
+    ) -> anyhow::Result<SyncedNodeConfigSet> {
+        let pool = contract_client
+            .read_client
+            .get_staking_pool(node_id)
+            .await?;
+
+        let node_info = pool.node_info.clone();
+        let metadata = contract_client
+            .read_client
+            .get_node_metadata(node_info.metadata)
+            .await?;
+
+        Ok(SyncedNodeConfigSet {
+            name: node_info.name,
+            network_address: node_info.network_address,
+            network_public_key: node_info.network_public_key,
+            public_key: node_info.public_key,
+            next_public_key: node_info.next_epoch_public_key,
+            voting_params: pool.voting_params,
+            metadata,
+            commission_rate_data: CommissionRateData {
+                pending_commission_rate: pool.pending_commission_rate,
+                commission_rate: pool.commission_rate,
+            },
+        })
+    }
+
     // Helper function to write a random blob, read it back and check that it is the same.
     // If `write_only` is true, only write the blob and do not read it back.
     async fn write_read_and_check_random_blob(
@@ -71,7 +112,13 @@ mod tests {
         data_length: usize,
         write_only: bool,
     ) -> anyhow::Result<()> {
-        tracing::info!("generating random blob of length {data_length}");
+        // Get a random epoch length for the blob to be stored.
+        let epoch_ahead = rand::thread_rng().gen_range(1..=5);
+
+        tracing::info!(
+            "generating random blobs of length {data_length} and store them for {epoch_ahead} \
+            epochs"
+        );
         let blob = walrus_test_utils::random_data(data_length);
 
         let store_results = client
@@ -79,7 +126,7 @@ mod tests {
             .reserve_and_store_blobs_retry_committees(
                 &[blob.as_slice()],
                 DEFAULT_ENCODING,
-                5,
+                epoch_ahead,
                 StoreWhen::Always,
                 BlobPersistence::Permanent,
                 PostStoreAction::Keep,
@@ -195,10 +242,165 @@ mod tests {
         })
     }
 
+    /// StorageNodeConfig update parameters for testing.
+    #[derive(Debug, Clone, Default)]
+    struct TestUpdateParams {
+        pub name: Option<String>,
+        pub public_host: Option<String>,
+        pub public_port: Option<u16>,
+        pub network_key_pair: Option<PathOrInPlace<NetworkKeyPair>>,
+        pub next_protocol_key_pair: Option<PathOrInPlace<ProtocolKeyPair>>,
+        pub voting_params: Option<VotingParams>,
+        pub metadata: Option<NodeMetadata>,
+        pub commission_rate: Option<u16>,
+    }
+
+    /// Update StorageNodeConfig based on TestUpdateParams where all fields are Options
+    async fn update_config_from_test_params(
+        client: &SuiContractClient,
+        node_id: ObjectID,
+        config: &Arc<RwLock<StorageNodeConfig>>,
+        params: &TestUpdateParams,
+    ) -> Result<(), anyhow::Error> {
+        let remote_config = test_get_synced_node_config_set(client, node_id).await?;
+        let mut config_write = config.write().await;
+
+        // Update all optional fields
+        if let Some(name) = &params.name {
+            assert_ne!(&remote_config.name, name);
+            config_write.name = name.clone();
+        }
+
+        if let Some(public_host) = &params.public_host {
+            assert_ne!(&remote_config.network_address.get_host(), &public_host);
+            config_write.public_host = public_host.clone();
+        }
+
+        if let Some(public_port) = params.public_port {
+            assert_ne!(
+                &remote_config
+                    .network_address
+                    .try_get_port()
+                    .expect("should get port"),
+                &Some(public_port)
+            );
+            config_write.public_port = public_port;
+        }
+
+        if let Some(network_key_pair) = &params.network_key_pair {
+            assert_ne!(
+                &remote_config.network_public_key,
+                network_key_pair
+                    .get()
+                    .expect("should get network key pair")
+                    .public()
+            );
+            config_write.network_key_pair = network_key_pair.clone();
+        }
+
+        if let Some(next_protocol_key_pair) = &params.next_protocol_key_pair {
+            assert_ne!(
+                remote_config.next_public_key.as_ref(),
+                next_protocol_key_pair.get().map(|kp| kp.public())
+            );
+            config_write.next_protocol_key_pair = Some(next_protocol_key_pair.clone());
+        }
+
+        if let Some(voting_params) = &params.voting_params {
+            assert_ne!(&remote_config.voting_params, voting_params);
+            config_write.voting_params = voting_params.clone();
+        }
+
+        if let Some(metadata) = &params.metadata {
+            assert_ne!(&remote_config.metadata, metadata);
+            config_write.metadata = metadata.clone();
+        }
+
+        if let Some(commission_rate) = params.commission_rate {
+            config_write.commission_rate = commission_rate;
+        }
+
+        Ok(())
+    }
+
+    /// Wait until the node's configuration is synced with the on-chain state.
+    async fn wait_till_node_config_synced(
+        client: &SuiContractClient,
+        node_id: ObjectID,
+        config: &Arc<RwLock<StorageNodeConfig>>,
+        timeout: Duration,
+    ) -> Result<(), anyhow::Error> {
+        let start_time = std::time::Instant::now();
+
+        loop {
+            if start_time.elapsed() > timeout {
+                return Err(anyhow::anyhow!("Timed out waiting for node config to sync"));
+            }
+
+            // Fetch the remote config.
+            let remote_config = test_get_synced_node_config_set(client, node_id).await?;
+
+            let local_config = config.read().await;
+
+            tracing::info!(
+                "Comparing local and remote configs:\n\
+                local.name: {:?}, remote.name: {:?}\n\
+                local.network_address: {:?}, remote.network_address: {:?}\n\
+                local.voting_params: {:?}, remote.voting_params: {:?}\n\
+                local.metadata: {:?}, remote.metadata: {:?}\n\
+                local.commission_rate: {:?}, remote.commission_rate: {:?}\n\
+                local.network_public_key: {:?}, remote.network_public_key: {:?}\n\
+                local.next_protocol_public_key: {:?}\n\
+                local.public_key: {:?}, remote.public_key: {:?}",
+                local_config.name,
+                remote_config.name,
+                NetworkAddress(format!(
+                    "{}:{}",
+                    local_config.public_host, local_config.public_port
+                )),
+                remote_config.network_address,
+                local_config.voting_params,
+                remote_config.voting_params,
+                local_config.metadata,
+                remote_config.metadata,
+                local_config.commission_rate,
+                remote_config.commission_rate_data.commission_rate,
+                local_config.network_key_pair().public(),
+                remote_config.network_public_key,
+                local_config.next_protocol_key_pair().map(|kp| kp.public()),
+                local_config.protocol_key_pair().public(),
+                remote_config.public_key,
+            );
+
+            let configs_match = remote_config.name == local_config.name
+                && remote_config.network_address
+                    == NetworkAddress(format!(
+                        "{}:{}",
+                        local_config.public_host, local_config.public_port
+                    ))
+                && remote_config.voting_params == local_config.voting_params
+                && remote_config.metadata == local_config.metadata
+                && remote_config.commission_rate_data.commission_rate
+                    == local_config.commission_rate
+                && &remote_config.network_public_key == local_config.network_key_pair().public()
+                && (local_config.next_protocol_key_pair.is_none()
+                    && &remote_config.public_key == local_config.protocol_key_pair().public());
+
+            if configs_match {
+                tracing::info!("Node config is now in sync with on-chain state\n");
+                return Ok(());
+            }
+            // Release the read lock explicitly before sleeping.
+            drop(local_config);
+
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    }
+
     // Tests that we can create a Walrus cluster with a Sui cluster and run basic
     // operations deterministically.
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest(check_determinism)]
-    #[ignore = "ignore simtests by default"]
     async fn walrus_basic_determinism() {
         let _guard = ProtocolConfig::apply_overrides_for_testing(|_, mut config| {
             // TODO: remove once Sui simtest can work with these features.
@@ -241,8 +443,8 @@ mod tests {
     }
 
     // Tests the scenario where a single node crashes and restarts.
-    #[walrus_simtest]
     #[ignore = "ignore integration simtests by default"]
+    #[walrus_simtest]
     async fn walrus_with_single_node_crash_and_restart() {
         let _guard = ProtocolConfig::apply_overrides_for_testing(|_, mut config| {
             // TODO: remove once Sui simtest can work with these features.
@@ -270,12 +472,14 @@ mod tests {
 
         // Do not fail any nodes in the sui cluster.
         let mut do_not_fail_nodes = sui_cluster
+            .lock()
+            .await
             .cluster()
             .all_node_handles()
             .iter()
             .map(|n| n.with(|n| n.get_sim_node_id()))
             .collect::<HashSet<_>>();
-        do_not_fail_nodes.insert(sui_cluster.sim_node_handle().id());
+        do_not_fail_nodes.insert(sui_cluster.lock().await.sim_node_handle().id());
 
         let fail_triggered_clone = fail_triggered.clone();
         register_fail_points(DB_FAIL_POINTS, move || {
@@ -447,7 +651,7 @@ mod tests {
     }
 
     // This integration test simulates a scenario where a node is lagging behind and recovers.
-    #[ignore = "ignore E2E tests by default"]
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
     async fn test_lagging_node_recovery() {
         let (_sui_cluster, walrus_cluster, client) =
@@ -597,7 +801,7 @@ mod tests {
 
     // This integration test simulates a scenario where a node is repeatedly crashing and
     // recovering.
-    #[ignore = "ignore E2E tests by default"]
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
     async fn test_repeated_node_crash() {
         // We use a very short epoch duration of 10 seconds so that we can exercise more epoch
@@ -723,7 +927,7 @@ mod tests {
 
     // This test simulates a scenario where a node is repeatedly moving shards among storage nodes,
     // and a workload is running concurrently.
-    #[ignore = "ignore E2E tests by default"]
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest(config = "latency_config()")]
     async fn test_repeated_shard_move_with_workload() {
         const MAX_NODE_WEIGHT: u16 = 6;
@@ -815,7 +1019,7 @@ mod tests {
         }
     }
 
-    #[ignore = "ignore E2E tests by default"]
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
     async fn test_new_node_joining_cluster() {
         register_fail_point("fail_point_direct_shard_sync_recovery", move || {
@@ -977,8 +1181,8 @@ mod tests {
         clear_fail_point("fail_point_direct_shard_sync_recovery");
     }
 
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
-    #[ignore = "ignore simtests by default"]
     async fn test_sync_node_config_params_basic() {
         let (_sui_cluster, mut walrus_cluster, client) =
             test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
@@ -997,7 +1201,7 @@ mod tests {
                 false,
             )
             .await
-            .unwrap();
+            .expect("Failed to setup test cluster");
 
         assert!(walrus_cluster.nodes[5].node_id.is_none());
         let client_arc = Arc::new(client);
@@ -1161,14 +1365,14 @@ mod tests {
         );
     }
 
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
-    #[ignore = "ignore simtests by default"]
     async fn test_registered_node_update_protocol_key() {
-        let (_sui_cluster, mut walrus_cluster, client) =
+        let (_sui_cluster, walrus_cluster, client) =
             test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
-                Duration::from_secs(30),
+                Duration::from_secs(10),
                 TestNodesConfig {
-                    node_weights: vec![1, 2, 3, 3, 4, 0],
+                    node_weights: vec![1, 2, 3, 3, 4, 2],
                     use_legacy_event_processor: false,
                     disable_event_blob_writer: false,
                     blocklist_dir: None,
@@ -1183,91 +1387,32 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(walrus_cluster.nodes[5].node_id.is_none());
+        assert!(walrus_cluster.nodes[5].node_id.is_some());
         let client_arc = Arc::new(client);
-
-        // Get current committee and verify node[5] is in it
-        let committees = client_arc
-            .inner
-            .get_latest_committees_in_test()
-            .await
-            .expect("Should get committees");
-
-        assert!(committees
-            .current_committee()
-            .find_by_public_key(&walrus_cluster.nodes[5].public_key)
-            .is_none());
-
-        // Check the current protocol key in the staking pool
-        let pool = client_arc
-            .as_ref()
-            .as_ref()
-            .sui_client()
-            .read_client
-            .get_staking_pool(
-                walrus_cluster.nodes[5]
-                    .storage_node_capability
-                    .as_ref()
-                    .unwrap()
-                    .node_id,
-            )
-            .await
-            .expect("Failed to get staking pool");
 
         // Generate new protocol key pair
         let new_protocol_key_pair = walrus_core::keys::ProtocolKeyPair::generate();
 
+        let config = walrus_cluster.nodes[5].node_config_arc.clone();
         // Make sure the new protocol key is different from the current one
-        assert_ne!(&pool.node_info.public_key, new_protocol_key_pair.public());
-
-        // Update the next protocol key pair in the node's config
-        walrus_cluster.nodes[5]
-            .storage_node_config
-            .next_protocol_key_pair = Some(new_protocol_key_pair.clone().into());
-        // Update the node's public key to match the new protocol key pair
-        walrus_cluster.nodes[5].public_key = new_protocol_key_pair.public().clone();
-
-        let config = Arc::new(RwLock::new(
-            walrus_cluster.nodes[5].storage_node_config.clone(),
-        ));
-        // Trace the protocol key and next protocol key before spawning the node
-        tracing::info!(
-            "current protocol key: {:?}, next protocol key: {:?}",
+        assert_ne!(
             config.read().await.protocol_key_pair().public(),
-            config
-                .read()
-                .await
-                .next_protocol_key_pair()
+            new_protocol_key_pair.public()
+        );
+        config.write().await.next_protocol_key_pair = Some(new_protocol_key_pair.clone().into());
+
+        wait_till_node_config_synced(
+            &client_arc.as_ref().as_ref().sui_client(),
+            walrus_cluster.nodes[5]
+                .storage_node_capability
                 .as_ref()
-                .map(|kp| kp.public())
-        );
-        walrus_cluster.nodes[5].node_id = Some(
-            SimStorageNodeHandle::spawn_node(
-                config.clone(),
-                None,
-                walrus_cluster.nodes[5].cancel_token.clone(),
-            )
-            .await
-            .id(),
-        );
-
-        // Adding stake to the new node so that it can be in Active state.
-        client_arc
-            .as_ref()
-            .as_ref()
-            .stake_with_node_pool(
-                walrus_cluster.nodes[5]
-                    .storage_node_capability
-                    .as_ref()
-                    .unwrap()
-                    .node_id,
-                test_cluster::FROST_PER_NODE_WEIGHT * 3,
-            )
-            .await
-            .expect("stake with node pool should not fail");
-
-        // Wait for a bit to let the node start up
-        tokio::time::sleep(Duration::from_secs(100)).await;
+                .unwrap()
+                .node_id,
+            &walrus_cluster.nodes[5].node_config_arc,
+            Duration::from_secs(100),
+        )
+        .await
+        .expect("Node config should be synced");
 
         // Check that the protocol key in StakePool is updated to the new one
         let pool = client_arc
@@ -1294,8 +1439,8 @@ mod tests {
             .expect("Node should be active");
     }
 
+    #[ignore = "ignore integration simtests by default"]
     #[walrus_simtest]
-    #[ignore = "ignore simtests by default"]
     async fn test_node_config_synchronizer() {
         let (_sui_cluster, mut walrus_cluster, client) =
             test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
@@ -1415,7 +1560,7 @@ mod tests {
     /// Waits until the node's protocol key pair in the config matches the target public key.
     /// Returns Ok(()) if the key matches within the timeout duration, or an error if it times out.
     async fn wait_for_public_key_change(
-        config: &Arc<RwLock<walrus_service::node::config::StorageNodeConfig>>,
+        config: &Arc<RwLock<StorageNodeConfig>>,
         target_public_key: &walrus_core::PublicKey,
         timeout: Duration,
     ) -> anyhow::Result<()> {
@@ -1436,5 +1581,365 @@ mod tests {
 
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+    }
+
+    // The node recovery process is artificially prolonged to be longer than 1 epoch.
+    // We should expect the recovering node should eventually become Active.
+    #[ignore = "ignore integration simtests by default"]
+    #[walrus_simtest]
+    async fn test_long_node_recovery() {
+        let (_sui_cluster, walrus_cluster, client) =
+            test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
+                Duration::from_secs(30),
+                TestNodesConfig {
+                    node_weights: vec![1, 2, 3, 3, 4],
+                    use_legacy_event_processor: true,
+                    disable_event_blob_writer: false,
+                    blocklist_dir: None,
+                    enable_node_config_synchronizer: false,
+                },
+                None,
+                ClientCommunicationConfig::default_for_test_with_reqwest_timeout(
+                    Duration::from_secs(2),
+                ),
+                false,
+            )
+            .await
+            .unwrap();
+
+        let client_arc = Arc::new(client);
+
+        // Starts a background workload that a client keeps writing and retrieving data.
+        // All requests should succeed even if a node crashes.
+        let workload_handle = start_background_workload(client_arc.clone(), false);
+
+        // Running the workload for 60 seconds to get some data in the system.
+        tokio::time::sleep(Duration::from_secs(60)).await;
+
+        // Register a fail point to have a temporary pause in the node recovery process that is
+        // longer than epoch length.
+        register_fail_point_async("start_node_recovery_entry", || async move {
+            tokio::time::sleep(Duration::from_secs(60)).await;
+        });
+
+        // Tracks if a crash has been triggered.
+        let fail_triggered = Arc::new(AtomicBool::new(false));
+        let target_fail_node_id = walrus_cluster.nodes[0]
+            .node_id
+            .expect("node id should be set");
+        let fail_triggered_clone = fail_triggered.clone();
+
+        // Trigger node crash during some DB access.
+        register_fail_points(DB_FAIL_POINTS, move || {
+            crash_target_node(
+                target_fail_node_id,
+                fail_triggered_clone.clone(),
+                Duration::from_secs(60),
+            );
+        });
+
+        tokio::time::sleep(Duration::from_secs(180)).await;
+
+        let node_refs: Vec<&SimStorageNodeHandle> = walrus_cluster.nodes.iter().collect();
+        let node_health_info = get_nodes_health_info(&node_refs).await;
+
+        assert!(node_health_info[0].shard_detail.is_some());
+        for shard in &node_health_info[0].shard_detail.as_ref().unwrap().owned {
+            // For all the shards that the crashed node owns, they should be in ready state.
+            assert_eq!(shard.status, ShardStatus::Ready);
+        }
+
+        assert_eq!(
+            get_nodes_health_info(&[&walrus_cluster.nodes[0]])
+                .await
+                .get(0)
+                .unwrap()
+                .node_status,
+            "Active"
+        );
+
+        workload_handle.abort();
+
+        clear_fail_point("start_node_recovery_entry");
+    }
+
+    async_param_test! {
+        #[ignore = "ignore E2E tests by default"]
+        #[walrus_simtest]
+        test_sync_node_params : [
+            commission_rate: (
+                &TestUpdateParams {
+                    commission_rate: Some(100),
+                    ..Default::default()
+                }
+            ),
+            voting_params: (
+                &TestUpdateParams {
+                    voting_params: Some(VotingParams {
+                        storage_price: 100,
+                        write_price: 100,
+                        node_capacity: 100,
+                    }),
+                    ..Default::default()
+                }
+            ),
+            metadata: (
+                &TestUpdateParams {
+                    metadata: Some(
+                        NodeMetadata::new(
+                            "https://walrus.io/images/walrus.jpg".to_string(),
+                            "https://walrus.io".to_string(),
+                            "Alias for walrus is sea elephant".to_string(),
+                        )
+                    ),
+                    ..Default::default()
+                }
+            ),
+            network_public_key: (
+                &TestUpdateParams {
+                    network_key_pair: Some(PathOrInPlace::InPlace(NetworkKeyPair::generate())),
+                    ..Default::default()
+                }
+            ),
+            next_protocol_key_pair: (
+                &TestUpdateParams {
+                    next_protocol_key_pair:
+                        Some(PathOrInPlace::InPlace(ProtocolKeyPair::generate())),
+                    ..Default::default()
+                }
+            ),
+            network_address: (
+                &TestUpdateParams {
+                    public_port: Some(8080),
+                    ..Default::default()
+                }
+            ),
+            random_combi: (
+                &{
+                    let mut rng = rand::thread_rng();
+                    let mut params = TestUpdateParams::default();
+
+                    // For each field, randomly decide whether to set it (50% chance)
+                    if rng.gen_bool(0.5) {
+                        params.commission_rate = Some(rng.gen_range(0..=100));
+                    }
+
+                    if rng.gen_bool(0.5) {
+                        params.voting_params = Some(VotingParams {
+                            storage_price: rng.gen_range(1..1000),
+                            write_price: rng.gen_range(1..100),
+                            node_capacity: rng.gen_range(1_000_000..1_000_000_000),
+                        });
+                    }
+
+                    if rng.gen_bool(0.5) {
+                        params.metadata = Some(NodeMetadata::new(
+                            "https://walrus.io/images/walrus.jpg".to_string(),
+                            "https://walrus.io".to_string(),
+                            "Random description".to_string(),
+                        ));
+                    }
+
+                    if rng.gen_bool(0.5) {
+                        params.network_key_pair =
+                            Some(PathOrInPlace::InPlace(NetworkKeyPair::generate()));
+                    }
+
+                    if rng.gen_bool(0.5) {
+                        params.next_protocol_key_pair =
+                            Some(PathOrInPlace::InPlace(ProtocolKeyPair::generate()));
+                    }
+
+                    if rng.gen_bool(0.5) {
+                        params.public_port = Some(rng.gen_range(8000..9000));
+                    }
+
+                    params
+                }
+            ),
+        ]
+    }
+    async fn test_sync_node_params(update_params: &TestUpdateParams) {
+        let (_sui_cluster, walrus_cluster, client) =
+            test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
+                Duration::from_secs(10),
+                TestNodesConfig {
+                    node_weights: vec![1, 2, 3, 3, 4, 2],
+                    use_legacy_event_processor: false,
+                    disable_event_blob_writer: false,
+                    blocklist_dir: None,
+                    enable_node_config_synchronizer: true,
+                },
+                Some(10),
+                ClientCommunicationConfig::default_for_test_with_reqwest_timeout(
+                    Duration::from_secs(2),
+                ),
+                false,
+            )
+            .await
+            .unwrap();
+
+        assert!(walrus_cluster.nodes[5].node_id.is_some());
+        let client_arc = Arc::new(client);
+
+        let config = walrus_cluster.nodes[5].node_config_arc.clone();
+
+        let node_id = walrus_cluster.nodes[5]
+            .storage_node_capability
+            .as_ref()
+            .unwrap()
+            .node_id;
+
+        // Update the node config with the new params.
+        update_config_from_test_params(
+            &client_arc.as_ref().as_ref().sui_client(),
+            node_id,
+            &config,
+            update_params,
+        )
+        .await
+        .expect("Failed to update node config");
+
+        // Wait for the node config to be synced again.
+        wait_till_node_config_synced(
+            &client_arc.as_ref().as_ref().sui_client(),
+            node_id,
+            &config,
+            Duration::from_secs(100),
+        )
+        .await
+        .expect("Node config should be synced");
+    }
+
+    /// Gets the last certified event blob from the client.
+    /// Returns the last certified event blob if it exists, otherwise panics.
+    async fn get_last_certified_event_blob_must_succeed(
+        client: &Arc<WithTempDir<Client<SuiContractClient>>>,
+    ) -> EventBlob {
+        const TIMEOUT: Duration = Duration::from_secs(10);
+        let start = Instant::now();
+
+        while start.elapsed() <= TIMEOUT {
+            if let Some(blob) = client
+                .inner
+                .sui_client()
+                .read_client
+                .last_certified_event_blob()
+                .await
+                .unwrap()
+            {
+                return blob;
+            }
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+        panic!("Timeout waiting for last certified event blob");
+    }
+
+    /// Kills all the storage nodes in the cluster.
+    async fn kill_all_storage_nodes(node_ids: &[sui_simulator::task::NodeId]) {
+        let handle = sui_simulator::runtime::Handle::current();
+        for &node_id in node_ids {
+            handle.delete_node(node_id);
+        }
+    }
+
+    async fn restart_nodes_with_checkpoints(
+        walrus_cluster: &mut TestCluster<SimStorageNodeHandle>,
+        checkpoint_fn: impl Fn(usize) -> u32,
+    ) {
+        let node_handles = walrus_cluster
+            .nodes
+            .iter()
+            .map(|n| n.node_id.expect("simtest must set node id"))
+            .collect::<Vec<_>>();
+
+        kill_all_storage_nodes(&node_handles).await;
+
+        for (i, node) in walrus_cluster.nodes.iter_mut().enumerate() {
+            node.node_id = Some(
+                SimStorageNodeHandle::spawn_node(
+                    Arc::new(RwLock::new(node.storage_node_config.clone())),
+                    Some(checkpoint_fn(i)),
+                    node.cancel_token.clone(),
+                )
+                .await
+                .id(),
+            );
+        }
+    }
+
+    async fn wait_for_certification_stuck(
+        client: &Arc<WithTempDir<Client<SuiContractClient>>>,
+    ) -> EventBlob {
+        let start = Instant::now();
+        let mut last_blob_time = Instant::now();
+        let mut last_blob = EventBlob {
+            blob_id: random_blob_id(),
+            ending_checkpoint_sequence_number: 0,
+        };
+
+        loop {
+            let current_blob = get_last_certified_event_blob_must_succeed(client).await;
+
+            if current_blob.blob_id != last_blob.blob_id {
+                tracing::info!("New event blob seen during fork wait: {:?}", current_blob);
+                last_blob = current_blob;
+                last_blob_time = Instant::now();
+            }
+
+            if last_blob_time.elapsed() > Duration::from_secs(20) {
+                tracing::info!("Event blob certification stuck for 20s");
+                break;
+            }
+
+            if start.elapsed() > Duration::from_secs(180) {
+                panic!("Timeout waiting for event blob to get stuck");
+            }
+
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+
+        last_blob
+    }
+
+    /// This test verifies that the node can correctly recover from a forked event blob.
+    #[walrus_simtest]
+    async fn test_event_blob_fork_recovery() {
+        let (_sui_cluster, mut walrus_cluster, client) =
+            test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
+                Duration::from_secs(15),
+                TestNodesConfig {
+                    node_weights: vec![2, 2, 3, 3, 3],
+                    ..Default::default()
+                },
+                Some(20),
+                ClientCommunicationConfig::default_for_test_with_reqwest_timeout(
+                    Duration::from_secs(2),
+                ),
+                false,
+            )
+            .await
+            .unwrap();
+
+        let client = Arc::new(client);
+
+        // Run workload to get some event blobs certified
+        tokio::time::sleep(Duration::from_secs(30)).await;
+
+        // Restart nodes with different checkpoint numbers to create fork
+        restart_nodes_with_checkpoints(&mut walrus_cluster, |i| 30 + i as u32).await;
+
+        // Wait for event blob certification to get stuck
+        let stuck_blob = wait_for_certification_stuck(&client).await;
+
+        // Restart nodes with same checkpoint number to recover
+        restart_nodes_with_checkpoints(&mut walrus_cluster, |_| 20).await;
+
+        // Verify recovery
+        tokio::time::sleep(Duration::from_secs(30)).await;
+        let recovered_blob = get_last_certified_event_blob_must_succeed(&client).await;
+
+        // Event blob should make progress again.
+        assert_ne!(stuck_blob.blob_id, recovered_blob.blob_id);
     }
 }

@@ -26,7 +26,7 @@ use walrus_core::{
     ShardIndex,
 };
 use walrus_sui::{
-    client::SuiContractClient,
+    client::{rpc_config::RpcFallbackConfig, SuiContractClient},
     config::{load_wallet_context_from_path, WalletConfig},
     system_setup::InitSystemParams,
     test_utils::system_setup::{
@@ -50,6 +50,7 @@ use crate::{
     common::config::SuiConfig,
     node::config::{
         defaults::{self, REST_API_PORT},
+        PathOrInPlace,
         StorageNodeConfig,
     },
 };
@@ -68,6 +69,8 @@ pub struct TestbedNodeConfig {
     /// The key of the node.
     #[serde_as(as = "Base64")]
     pub keypair: ProtocolKeyPair,
+    /// The path to the protocol key pair.
+    pub protocol_key_pair_path: Option<PathBuf>,
     /// The network key of the node.
     #[serde_as(as = "Base64")]
     pub network_keypair: NetworkKeyPair,
@@ -304,6 +307,7 @@ pub async fn deploy_walrus_contract(
     );
 
     let mut node_configs = Vec::new();
+    let mid = keypairs.len() / 2;
 
     for (i, ((keypair, network_keypair), host)) in
         keypairs.into_iter().zip(hosts.iter().cloned()).enumerate()
@@ -324,10 +328,18 @@ pub async fn deploy_walrus_contract(
             network_address
         );
 
+        // The first half of the nodes will have a protocol key pair path, the second half will not.
+        let protocol_key_pair_path = if i < mid {
+            Some(working_dir.join(format!("node-{}.key", node_index)))
+        } else {
+            None
+        };
+
         node_configs.push(TestbedNodeConfig {
             name,
             network_address: network_address.clone(),
             keypair,
+            protocol_key_pair_path,
             network_keypair,
             commission_rate: 0,
             storage_price,
@@ -498,6 +510,7 @@ pub async fn create_client_config(
     set_config_dir: Option<&Path>,
     admin_contract_client: &mut SuiContractClient,
     exchange_objects: Vec<ObjectID>,
+    sui_amount: u64,
 ) -> anyhow::Result<client::Config> {
     // Create the working directory if it does not exist
     fs::create_dir_all(working_dir).expect("Failed to create working directory");
@@ -517,6 +530,7 @@ pub async fn create_client_config(
         client_address,
         admin_contract_client.wallet_mut(),
         &sui_network,
+        sui_amount,
     )
     .await?;
     // Fund the client wallet with WAL.
@@ -559,6 +573,7 @@ pub async fn create_backup_config(
     working_dir: &Path,
     database_url: &str,
     rpc: String,
+    rpc_fallback_config: Option<RpcFallbackConfig>,
 ) -> anyhow::Result<BackupConfig> {
     Ok(BackupConfig::new_with_defaults(
         working_dir.join("backup"),
@@ -567,6 +582,7 @@ pub async fn create_backup_config(
             contract_config: system_ctx.contract_config(),
             backoff_config: ExponentialBackoffConfig::default(),
             event_polling_interval: defaults::polling_interval(),
+            rpc_fallback_config,
         },
         database_url.to_string(),
     ))
@@ -583,9 +599,11 @@ pub async fn create_storage_node_configs(
     set_config_dir: Option<&Path>,
     set_db_path: Option<&Path>,
     faucet_cooldown: Option<Duration>,
+    rpc_fallback_config: Option<RpcFallbackConfig>,
     admin_contract_client: &mut SuiContractClient,
     use_legacy_event_provider: bool,
     disable_event_blob_writer: bool,
+    sui_amount: u64,
 ) -> anyhow::Result<Vec<StorageNodeConfig>> {
     tracing::debug!(
         ?working_dir,
@@ -647,6 +665,7 @@ pub async fn create_storage_node_configs(
         testbed_config.sui_network,
         faucet_cooldown,
         admin_contract_client.wallet_mut(),
+        sui_amount,
     )
     .await?;
 
@@ -689,6 +708,7 @@ pub async fn create_storage_node_configs(
             wallet_config: WalletConfig::from_path(wallet_path),
             backoff_config: ExponentialBackoffConfig::default(),
             gas_budget: None,
+            rpc_fallback_config: rpc_fallback_config.clone(),
         });
 
         let storage_path = set_db_path
@@ -696,11 +716,18 @@ pub async fn create_storage_node_configs(
             .or(set_config_dir.map(|path| path.join(&name)))
             .unwrap_or_else(|| working_dir.join(&name));
 
+        let protocol_key_pair = if let Some(path) = &node.protocol_key_pair_path {
+            fs::write(path, node.keypair.to_base64().as_bytes())
+                .context("Failed to write protocol key pair")?;
+            PathOrInPlace::from_path(path)
+        } else {
+            node.keypair.into()
+        };
         storage_node_configs.push(StorageNodeConfig {
             name: node.name.clone(),
             storage_path,
             blocklist_path: None,
-            protocol_key_pair: node.keypair.into(),
+            protocol_key_pair,
             next_protocol_key_pair: None,
             network_key_pair: node.network_keypair.into(),
             public_host: node.network_address.get_host().to_owned(),
@@ -730,6 +757,9 @@ pub async fn create_storage_node_configs(
             metadata: Default::default(),
             config_synchronizer: Default::default(),
             storage_node_cap: None,
+            num_uncertified_blob_threshold: Some(10),
+            balance_check: Default::default(),
+            thread_pool: Default::default(),
         });
     }
 
@@ -804,6 +834,7 @@ async fn create_storage_node_wallets(
     sui_network: SuiNetwork,
     faucet_cooldown: Option<Duration>,
     admin_wallet: &mut WalletContext,
+    sui_amount: u64,
 ) -> anyhow::Result<Vec<WalletContext>> {
     // Create wallets for the storage nodes
     let mut storage_node_wallets = (0..n_nodes.get())
@@ -829,7 +860,13 @@ async fn create_storage_node_wallets(
             );
             tokio::time::sleep(cooldown).await;
         }
-        get_sui_from_wallet_or_faucet(wallet.active_address()?, admin_wallet, &sui_network).await?;
+        get_sui_from_wallet_or_faucet(
+            wallet.active_address()?,
+            admin_wallet,
+            &sui_network,
+            sui_amount,
+        )
+        .await?;
     }
     Ok(storage_node_wallets)
 }

@@ -235,7 +235,7 @@ pub enum CliCommands {
         #[serde(default)]
         share: bool,
         /// The encoding type to use for encoding the files.
-        #[clap(long)]
+        #[clap(long, hide = true)]
         #[serde(default)]
         encoding_type: Option<EncodingType>,
     },
@@ -279,7 +279,7 @@ pub enum CliCommands {
         #[serde(default = "default::status_timeout")]
         timeout: Duration,
         /// The encoding type to use for encoding the file.
-        #[clap(long)]
+        #[clap(long, hide = true)]
         #[serde(default)]
         encoding_type: Option<EncodingType>,
         /// The URL of the Sui RPC node to use.
@@ -344,7 +344,7 @@ pub enum CliCommands {
         #[serde(flatten)]
         rpc_arg: RpcArg,
         /// The encoding type to use for computing the blob ID.
-        #[clap(long)]
+        #[clap(long, hide = true)]
         #[serde(default)]
         encoding_type: Option<EncodingType>,
     },
@@ -382,7 +382,7 @@ pub enum CliCommands {
         /// The encoding type to use for computing the blob ID.
         ///
         /// This is only used when running the command with the `--file` target.
-        #[clap(long)]
+        #[clap(long, hide = true)]
         #[serde(default)]
         encoding_type: Option<EncodingType>,
     },
@@ -1259,8 +1259,8 @@ pub struct EpochArg {
     #[clap(long, value_parser = EpochCountOrMax::parse_epoch_count)]
     pub(crate) epochs: Option<EpochCountOrMax>,
 
-    /// The earliest time when the blob can expire, in RFC3339 format (e.g. "2024-03-20T15:00:00Z")
-    /// or a more relaxed format (e.g. "2024-03-20 15:00:00").
+    /// The earliest time when the blob can expire, in RFC3339 format (e.g., "2024-03-20T15:00:00Z")
+    /// or a more relaxed format (e.g., "2024-03-20 15:00:00").
     #[clap(long, value_parser = humantime::parse_rfc3339_weak)]
     pub(crate) earliest_expiry_time: Option<SystemTime>,
 
