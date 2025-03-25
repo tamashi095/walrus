@@ -53,6 +53,7 @@ pub(crate) struct WriteClient {
 
 impl WriteClient {
     /// Creates a new WriteClient with the given configuration
+    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(err, skip_all)]
     pub async fn new(
         config: &Config,

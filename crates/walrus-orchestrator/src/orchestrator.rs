@@ -459,7 +459,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
         }
 
         // Run all benchmarks.
-        display::header(format!("Starting benchmark"));
+        display::header("Starting benchmark");
         display::config("Benchmark Parameters", &parameters);
         display::newline();
 
