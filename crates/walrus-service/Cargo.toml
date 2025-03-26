@@ -150,6 +150,7 @@ tracing.workspace = true
 tracing-opentelemetry.workspace = true
 tracing-subscriber.workspace = true
 typed-store = { workspace = true, optional = true }
+urlencoding.workspace = true
 utoipa = { workspace = true, features = ["axum_extras", "macros", "yaml"] }
 utoipa-redoc.workspace = true
 uuid.workspace = true

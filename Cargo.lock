@@ -11963,6 +11963,7 @@ dependencies = [
  "tracing-opentelemetry",
  "tracing-subscriber",
  "typed-store",
+ "urlencoding",
  "utoipa",
  "utoipa-redoc",
  "uuid",
