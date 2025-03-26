@@ -242,7 +242,7 @@ while ensuring high availability and reliability even in the presence of Byzanti
 <a class="admonition-anchor-link" href="index.html#admonition-fun-fact"></a>
 </div>
 <div>
-<p>If you are viewing this site at <a href="https://docs.walrus.site">https://docs.walrus.site</a>, you are fetching this from
+<p>If you are viewing this site at <a href="https://docs.wal.app">https://docs.wal.app</a>, you are fetching this from
 Walrus behind the scenes. See the <a href="./walrus-sites/intro.html">Walrus Sites chapter</a> for further
 details on how this works.</p>
 </div>
@@ -680,8 +680,8 @@ repository</a>.</p>
 <p>You want to get a taste of Walrus? Here are some distributed applications (dapps) that
 you can use from your browser:</p>
 <ul>
-<li><a href="https://publish.walrus.site">Publish a blob and see it</a> on Walrus.</li>
-<li><a href="https://flatland.walrus.site">Mint a toy NFT</a> on the flatland application.</li>
+<li><a href="https://publish.wal.app">Publish a blob and see it</a> on Walrus.</li>
+<li><a href="https://flatland.wal.app">Mint a toy NFT</a> on the flatland application.</li>
 </ul>
 <p>The above dapps are on the Walrus <em>Testnet</em>, which provides a sandbox for experimentation, and
 uses tokens with no value. To use or develop against the Walrus Mainnet you will need to use real
@@ -810,7 +810,7 @@ Commands:
 </div>
 <div>
 <p>Our latest Walrus binaries are also available on Walrus itself, namely on
-<a href="https://bin.walrus.site">https://bin.walrus.site</a>, for example, <a href="https://bin.walrus.site/walrus-mainnet-latest-ubuntu-x86_64">https://bin.walrus.site/walrus-mainnet-latest-ubuntu-x86_64</a>.
+<a href="https://bin.wal.app">https://bin.wal.app</a>, for example, <a href="https://bin.wal.app/walrus-mainnet-latest-ubuntu-x86_64">https://bin.wal.app/walrus-mainnet-latest-ubuntu-x86_64</a>.
 Note that due to DoS protection, it may not be possible to download the binaries with <code>curl</code> or
 <code>wget</code>.</p>
 </div>
@@ -2098,7 +2098,7 @@ balance and rewards will be available to withdraw at the start of epoch <code>e 
 <h2 id="how-to-stake-with-the-walrus-staking-dapp"><a class="header" href="#how-to-stake-with-the-walrus-staking-dapp">How to stake with the Walrus Staking dApp</a></h2>
 <p>The Walrus Staking dApp allows users to stake (or unstake) to any of the storage nodes of the
 system.</p>
-<p>To use the dApp, visit <a href="https://stake.walrus.site">https://stake.walrus.site</a> and connect your wallet:</p>
+<p>To use the dApp, visit <a href="https://stake.wal.app">https://stake.wal.app</a> and connect your wallet:</p>
 <ul>
 <li>Click the <code>Connect Wallet</code> button at the top right corner.</li>
 <li>Select the wallet (if the wallet was connected before, this and the next step won't be required).</li>
@@ -2231,7 +2231,7 @@ Sui wallet.</p>
 <p><em>Walrus Sites</em> are "web"-sites that use Sui and Walrus as their underlying technology. They are a
 prime example of how Walrus can be used to build new and exciting decentralized applications. Anyone
 can build and deploy a Walrus Site and make it accessible to the world! Funnily, this documentation
-is itself available as a Walrus Site at <a href="https://docs.walrus.site/walrus-sites/intro.html">https://docs.walrus.site/walrus-sites/intro.html</a> (if you
+is itself available as a Walrus Site at <a href="https://docs.wal.app/walrus-sites/intro.html">https://docs.wal.app/walrus-sites/intro.html</a> (if you
 aren't there already).</p>
 <p>At a high level, here are some of the most exciting features:</p>
 <ul>
@@ -2254,8 +2254,8 @@ wallets and harness Sui's programmability to add backend functionality to Walrus
 <p>To give you a very high-level intuition of how Walrus Sites work, let's look at an example: A simple
 NFT collection on Sui that has a frontend dApp to mint the NFTs hosted on Walrus Sites, and in
 which <em>each NFT</em> has a <em>specific, personalized Walrus Site</em>.</p>
-<p>You can check out the mint page at <a href="https://flatland.walrus.site/">https://flatland.walrus.site/</a>. This site is served to your
-browser through the Walrus Site <em>portal</em> <a href="https://walrus.site">https://walrus.site</a>. While the portal's operation is
+<p>You can check out the mint page at <a href="https://flatland.wal.app/">https://flatland.wal.app/</a>. This site is served to your
+browser through the Walrus Site <em>portal</em> <a href="https://wal.app">https://wal.app</a>. While the portal's operation is
 explained in a <a href="walrus-sites/./portal.html">later section</a>, consider for now that there can be many portals (hosted
 by whoever wants to have their own, and even on <code>localhost</code>). Further, the only function of the
 portal is to retrieve the metadata (from Sui) and the resource files (from Walrus) that constitute
@@ -2266,19 +2266,19 @@ to the "Flatlander site". This latter site is a special Walrus Site that exists 
 and has special characteristics (the background color, the image, ...) that are based on the
 contents of the NFT.</p>
 <p>The URL to this per-NFT site looks something like this:
-<code>https://2hzpawjycxuiuh36047yocxapc69g8ercrypa7ccsk8ek4iqu6.walrus.site/</code>. You'll notice that the
-domain remains <code>walrus.site</code>, but the subdomain is a long and random-looking string. This string is
+<code>https://2hzpawjycxuiuh36047yocxapc69g8ercrypa7ccsk8ek4iqu6.wal.app/</code>. You'll notice that the
+domain remains <code>wal.app</code>, but the subdomain is a long and random-looking string. This string is
 actually the <a href="https://en.wikipedia.org/wiki/Base36">Base36</a> encoding of the object ID of the NFT,
 which is
 <a href="https://suiscan.xyz/testnet/object/0x644bc958052463785c026a13be051d579c8a4d2dc93b1874dce5839d4fb18c5e">0x644bc958...</a>.</p>
 <p>In summary:</p>
 <ul>
-<li>Walrus Sites are served through a portal; in this case, <code>https://walrus.site</code>. There can be many
+<li>Walrus Sites are served through a portal; in this case, <code>https://wal.app</code>. There can be many
 portals, and anyone can host one.</li>
 <li>The subdomain on the URL points to a specific object on Sui that allows the browser to fetch and
 render the site resources. This pointer can be
 <ul>
-<li>a SuiNS name, such as <code>flatland</code> in <code>https://flatland.walrus.site</code>, or</li>
+<li>a SuiNS name, such as <code>flatland</code> in <code>https://flatland.wal.app</code>, or</li>
 <li>the Base36 encoding of a the Sui object ID, such as <code>0x644bc958...</code> in the example above.</li>
 </ul>
 </li>
@@ -2370,7 +2370,7 @@ and looks like this:</p>
 </nav>
 <div class="mdbook-tab-content" data-tabname="Mainnet">
 <pre><code class="language-yaml"># module: site
-# portal: walrus.site
+# portal: wal.app
 package:
 # general:
 #   rpc_url:
@@ -2382,7 +2382,7 @@ package:
 </div>
 <div class="mdbook-tab-content hidden" data-tabname="Testnet">
 <pre><code class="language-yaml"># module: site
-# portal: walrus.site
+# portal: wal.app
 package: 0xdf9033cac39b7a9b9f76fb6896c9fc5283ba730d6976a2b1d85ad1e6036c3272
 # general:
 #   rpc_url: https://fullnode.testnet.sui.io:443
@@ -2465,10 +2465,10 @@ Created new site: test site
 New site object ID: 0xe674c144119a37a0ed9cef26a962c3fdfbdbfd86a3b3db562ee81d5542a4eccf
 To browse the site, you have the following options:
         1. Run a local portal, and browse the site through it: e.g. http://5qs1ypn4wn90d6mv7d7dkwvvl49hdrlpqulr11ngpykoifycwf.localhost:3000
-           (more info: https://docs.walrus.site/walrus-sites/portal.html#running-the-portal-locally)
-        2. Use a third-party portal (e.g. walrus.site), which will require a SuiNS name.
+           (more info: https://docs.wal.app/walrus-sites/portal.html#running-the-portal-locally)
+        2. Use a third-party portal (e.g. wal.app), which will require a SuiNS name.
            First, buy a SuiNS name at suins.io (e.g. example-domain), then point it to the site object ID.
-           Finally, browse it with: https://example-domain.walrus.site
+           Finally, browse it with: https://example-domain.wal.app
 </code></pre>
 <p>This output tells you that, for each file in the folder, a new Walrus blob was created, and the
 respective blob ID. Further, it prints the object ID of the Walrus Site object on Sui (so you can
@@ -2499,10 +2499,10 @@ The site routes were left unchanged
 Site object ID: 0xe674c144119a37a0ed9cef26a962c3fdfbdbfd86a3b3db562ee81d5542a4eccf
 To browse the site, you have the following options:
         1. Run a local portal, and browse the site through it: e.g. http://2ql9wtro4xf2x13pm9jjeyhhfj28okawz5hy453hkyfeholy6f.localhost:3000
-           (more info: https://docs.walrus.site/walrus-sites/portal.html#running-the-portal-locally)
-        2. Use a third-party portal (e.g. walrus.site), which will require a SuiNS name.
+           (more info: https://docs.wal.app/walrus-sites/portal.html#running-the-portal-locally)
+        2. Use a third-party portal (e.g. wal.app), which will require a SuiNS name.
            First, buy a SuiNS name at suins.io (e.g. example-domain), then point it to the site object ID.
-           Finally, browse it with: https://example-domain.walrus.site
+           Finally, browse it with: https://example-domain.wal.app
 </code></pre>
 <p>Compared to the <code>publish</code> action, we can see that now the only actions performed were to delete the
 old <code>index.html</code>, and update it with the newer one.</p>
@@ -2541,10 +2541,10 @@ old <code>index.html</code>, and update it with the newer one.</p>
 <a class="admonition-anchor-link" href="walrus-sites/tutorial-suins.html#admonition-note"></a>
 </div>
 <div>
-<p>Browsing sites with b36 subdomains (e.g. <code>https://1lupgq2auevjruy7hs9z7tskqwjp5cc8c5ebhci4v57qyl4piy.walrus.site</code>)
-is no longer possible using the <code>walrus.site</code> portal. B36 subdomains are still supported if you use
+<p>Browsing sites with b36 subdomains (e.g. <code>https://1lupgq2auevjruy7hs9z7tskqwjp5cc8c5ebhci4v57qyl4piy.wal.app</code>)
+is no longer possible using the <code>wal.app</code> portal. B36 subdomains are still supported if you use
 a local server, or an alternative portal.</p>
-<p>To browse walrus sites using the <code>walrus.site</code> portal, please
+<p>To browse walrus sites using the <code>wal.app</code> portal, please
 <a href="walrus-sites/./tutorial-suins.html#get-a-suins-name">use SuiNS names instead</a>.
 ``</p>
 <p>Walrus Sites require to use SuiNS names (this is like DNS for Sui) to assign a human-readable name
@@ -2571,7 +2571,7 @@ no special characters (e.g., `-`).
 <a href="https://testnet.suins.io/account/my-names">Testnet.SuiNS.io</a> for Testnet, click on the "three
 dots" menu icon above the name you want to map, and click "Link To Walrus Site". Paste in the bar
 the object ID of the Walrus Site, check that it is correct, and click "Apply".</p>
-<p>After approving the transaction, we can now browse <a href="https://walrusgame.walrus.site">https://walrusgame.walrus.site</a>!</p>
+<p>After approving the transaction, we can now browse <a href="https://walrusgame.wal.app">https://walrusgame.wal.app</a>!</p>
 <div id="admonition-backwards-compatibility" class="admonition admonish-warning" role="note" aria-labelledby="admonition-backwards-compatibility-title">
 <div class="admonition-title">
 <div id="admonition-backwards-compatibility-title">
@@ -2627,7 +2627,7 @@ duration is set to 183 epochs (corresponding to one year).</p>
 </div>
 <p>If you are just uploading raw files without an <code>index.html</code>, you may want to use the
 <code>--list-directory</code> flag, which will automatically create an index page to browse the files. See for
-example <a href="https://bin.walrus.site">https://bin.walrus.site</a>.</p>
+example <a href="https://bin.wal.app">https://bin.wal.app</a>.</p>
 <p>The <code>publish</code> command will also respect the instructions in the <code>ws-resources.json</code> configuration
 file. To know more, see the section on <a href="walrus-sites/./routing.html">specifying headers and routing</a>.</p>
 <h2 id="update"><a class="header" href="#update"><code>update</code></a></h2>
@@ -2678,7 +2678,7 @@ following variables in the config file:</p>
 <li><code>package</code>: the object ID of the Walrus Sites package on Sui. This must always be specified in the
 config, and is already appropriately configured in <code>./sites-config.yaml</code>.</li>
 <li><code>portal</code>: the name of the portal through which the site will be viewed; this only affects the
-output of the CLI, and nothing else (default: <code>walrus.site</code>). All Walrus Sites are accessible
+output of the CLI, and nothing else (default: <code>wal.app</code>). All Walrus Sites are accessible
 through any portal independent of this setting.</li>
 <li><code>general</code>: these are general options that can be configured both through the CLI and the config:
 <ul>
@@ -2743,7 +2743,7 @@ with the <code>--ws-resources</code> flag when running the <code>publish</code> 
     "/path/assets/*": "/assets/asset_router.html"
   },
   "metadata": {
-      "link": "https://subdomain.walrus.site",
+      "link": "https://subdomain.wal.app",
       "image_url": "https://www.walrus.xyz/walrus-site",
       "description": "This is a walrus site.",
       "project_url": "https://github.com/MystenLabs/walrus-sites/",
@@ -2856,7 +2856,7 @@ logo, etc.</p>
 suggested by the
 <a href="https://docs.sui.io/standards/display#display-properties">Sui Display object standard</a>.</p>
 <pre><code class="language-JSON">"metadata": {
-      "link": "https://subdomain.walrus.site",
+      "link": "https://subdomain.wal.app",
       "image_url": "https://www.walrus.xyz/walrus-site",
       "description": "This is a walrus site.",
       "project_url": "https://github.com/MystenLabs/walrus-sites/",
@@ -2885,7 +2885,7 @@ example you can place a link to your sites favicon.</li>
 </div>
 <div>
 <p>This feature is currently unavailable on server-side portals. So if you are browsing a Walrus Site
-on <a href="https://walrus.site">https://walrus.site</a>, you will not be able to use Walrus Sites links.</p>
+on <a href="https://wal.app">https://wal.app</a>, you will not be able to use Walrus Sites links.</p>
 <p>We are working on enabling this feature. Stay tuned!</p>
 </div>
 </div>
@@ -2898,8 +2898,8 @@ of the details.</p>
 as usual.</p>
 <h2 id="linking-to-resources-in-other-walrus-sites"><a class="header" href="#linking-to-resources-in-other-walrus-sites">Linking to resources in other Walrus Sites</a></h2>
 <p>Here is the part that is a bit different. Assume there is some image that you can browse at
-<code>https://gallery.walrus.site/walrus_arctic.webp</code>, and you want to link it from your own Walrus Site.</p>
-<p>Recall that, however, <code>https://walrus.site</code> is just one of the possibly many portals. I.e., the same
+<code>https://gallery.wal.app/walrus_arctic.webp</code>, and you want to link it from your own Walrus Site.</p>
+<p>Recall that, however, <code>https://wal.app</code> is just one of the possibly many portals. I.e., the same
 resource is browsable from a local portal (<code>http://gallery.localhost:8080/walrus_arctic.webp</code>).
 Therefore, how can you link the resource in a <em>portal-independent way</em>? This is important for
 interoperability, availability, and respecting the user's choice of portal.</p>
@@ -2933,7 +2933,7 @@ is using to fetch blobs.</p>
 discuss now how you can create ensure that a <em>set of arbitrary objects</em> can all be tied to a
 specific, and possibly unique, Walrus Site.</p>
 <h2 id="the-goal"><a class="header" href="#the-goal">The goal</a></h2>
-<p>Consider a collection of NFTs, such as the one published by <a href="https://flatland.walrus.site">https://flatland.walrus.site</a>. As we
+<p>Consider a collection of NFTs, such as the one published by <a href="https://flatland.wal.app">https://flatland.wal.app</a>. As we
 show there, each minted NFT has its own Walrus Site, which can be personalized based on the contents
 (e.g., the color) of the NFT itself. How can we achieve this?</p>
 <h2 id="redirect-links"><a class="header" href="#redirect-links">Redirect links</a></h2>
@@ -3018,14 +3018,14 @@ gateways, for example), and have trade-offs.</p>
 <p>Currently, we provide the server-side and the service-worker based approaches.</p>
 <h3 id="browsing-and-domain-isolation"><a class="header" href="#browsing-and-domain-isolation">Browsing and domain isolation</a></h3>
 <p>We must ensure that, when browsing multiple sites through a portal, for example the one hosted at
-<a href="https://walrus.site">https://walrus.site</a>, these sites are isolated. Isolation is necessary for security, and to ensure
+<a href="https://wal.app">https://wal.app</a>, these sites are isolated. Isolation is necessary for security, and to ensure
 that the wallet connection in the browser works as expected.</p>
 <p>To do so, we give each Walrus Site a specific <em>subdomain</em> of the portal's domain. For example, the
-Flatland mint dApp is hosted at <a href="https://flatland.walrus.site">https://flatland.walrus.site</a>, where the subdomain <code>flatland</code> is
+Flatland mint dApp is hosted at <a href="https://flatland.wal.app">https://flatland.wal.app</a>, where the subdomain <code>flatland</code> is
 uniquely associated to the object ID of the Walrus Site through SuiNS.</p>
 <p>Walrus Sites also work without SuiNS: a site can <em>always</em> be browsed by using as subdomain the
 Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this URL is:
-<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.walrus.site">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.walrus.site</a>.</p>
+<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app</a>.</p>
 <p>Base36 was chosen for two reasons, forced by the subdomain standards:</p>
 <ol>
 <li>A subdomain can have at most 63 characters, while a Hex-encoded Sui object ID requires 64.</li>
@@ -3036,7 +3036,7 @@ Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this UR
 <p>As mentioned before, we provide two types of portals to browse Walrus Sites:</p>
 <ul>
 <li>The server-side portal, which is a server that resolves a Walrus Site, returning it to the
-browser. The server-side portal is hosted at <a href="https://walrus.site">https://walrus.site</a>.</li>
+browser. The server-side portal is hosted at <a href="https://wal.app">https://wal.app</a>.</li>
 <li>The service-worker portal, which is a service worker that is installed in the browser and
 resolves a Walrus Site. The service-worker portal is no longer hosted at a specific domain, but
 the code is still maintained so that it can be used by anyone.</li>
@@ -3051,8 +3051,8 @@ remains unchanged.</p>
 <li><strong>Site publishing</strong> (step 0): The site developer publishes the Walrus Site using the
 <a href="walrus-sites/overview.html#the-site-builder"><code>site-builder</code></a>, or making use of a publisher. Assume the developer uses the
 SuiNS name <code>dapp.sui</code> to point to the object ID of the created Walrus Site.</li>
-<li><strong>Browsing starts</strong> (step 1): A client browses <code>dapp.walrus.site/index.html</code> in their browser.</li>
-<li><strong>Site resolution</strong> (steps 2-6): The portal interprets its <em>origin</em> <code>dapp.walrus.site</code>, and makes
+<li><strong>Browsing starts</strong> (step 1): A client browses <code>dapp.wal.app/index.html</code> in their browser.</li>
+<li><strong>Site resolution</strong> (steps 2-6): The portal interprets its <em>origin</em> <code>dapp.wal.app</code>, and makes
 a SuiNS resolution for <code>dapp.sui</code>, obtaining the related object ID. Using the object ID, it then
 fetches the dynamic fields of the object (also checking <a href="walrus-sites/./portal.html">redirects</a>). From the
 dynamic fields, it selects the one for <code>/index.html</code>, and extracts its Walrus blob ID and headers
@@ -3079,7 +3079,7 @@ portals:</p>
 <li>custom local apps; and</li>
 <li>service-worker based portals running in the browser.</li>
 </ol>
-<p>Currently, only a server-side portal is served at <a href="https://walrus.site">https://walrus.site</a>.</p>
+<p>Currently, only a server-side portal is served at <a href="https://wal.app">https://wal.app</a>.</p>
 <div id="admonition-warning" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-title">
 <div class="admonition-title">
 <div id="admonition-warning-title">
@@ -3089,7 +3089,7 @@ portals:</p>
 </div>
 <div>
 <p>We are sunsetting the testnet portal! From now on, you can only access the mainnet portal
-at <a href="https://walrus.site">https://walrus.site</a>.</p>
+at <a href="https://wal.app">https://wal.app</a>.</p>
 </div>
 </div>
 <div id="admonition-hosting-of-the-service-worker" class="admonition admonish-note" role="note" aria-labelledby="admonition-hosting-of-the-service-worker-title">
@@ -3315,7 +3315,7 @@ the <a href="walrus-sites/./bring-your-own-domain.html">next section</a>.</p>
 there might be cases where you want your Walrus Site under a specific domain, without following
 the default naming convention of <code>https://&lt;walrus-site-domain&gt;.&lt;portal-domain&gt;</code>.</p>
 <p>Fro example, you might want to use a domain like <code>https://example.com</code>, instead of
-<code>https://example.walrus.site</code>, where <code>example.com</code> is a classic DNS domain that you can purchase
+<code>https://example.wal.app</code>, where <code>example.com</code> is a classic DNS domain that you can purchase
 from any domain registrar. It will point to the IP and port of your portal.</p>
 <p>Finally, you will need to configure your portal so that it only accepts requests for your own site,
 and other subdomains (i.e. other Walrus Sites) will not be served.</p>
@@ -3383,7 +3383,7 @@ wallet.</p>
 portal (see <a href="walrus-sites/./portal.html">Portal configuration</a>). This measure ensures that loading a Walrus Site
 does not result in an infinite loading loop.</p>
 <p>Different portals can set this limit as they desire. The limit for the portal hosted at
-<a href="https://walrus.site">https://walrus.site</a> has a maximum redirect depth of 3.</p>
+<a href="https://wal.app">https://wal.app</a> has a maximum redirect depth of 3.</p>
 <h2 id="there-is-a-special-__wal__-path"><a class="header" href="#there-is-a-special-__wal__-path">There is a special <code>__wal__</code> path</a></h2>
 <p>Anything under the <code>/__wal__/*</code> path is reserved by the portal for health checks and other
 portal-specific operations. If you use this path inside your site, the resources served under that
@@ -3432,9 +3432,9 @@ be used on a service-worker portal on iOS. Note, however, that <em>browsing</em>
 possible on iOS through any browser.</p>
 <p>Given that you decided to use a service-worker portal as your main point of access to your sites,
 to provide a seamless experience for iOS users (and other users on browsers that do not support
-service workers), it is recommended to redirect to a server-side portal (<a href="https://walrus.site">https://walrus.site</a>).
+service workers), it is recommended to redirect to a server-side portal (<a href="https://wal.app">https://wal.app</a>).
 Whenever a user on an iOS wallet browses a Walrus Site, the redirect will automatically take them
-to the <code>&lt;site_name&gt;.walrus.site</code> server-side portal. This way, the user can still use the wallet.</p>
+to the <code>&lt;site_name&gt;.wal.app</code> server-side portal. This way, the user can still use the wallet.</p>
 <h3 id="service-worker-portals-do-not-support-progressive-web-apps-pwas"><a class="header" href="#service-worker-portals-do-not-support-progressive-web-apps-pwas">Service worker portals do not support progressive web apps (PWAs)</a></h3>
 <div id="admonition-warning-1" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-1-title">
 <div class="admonition-title">

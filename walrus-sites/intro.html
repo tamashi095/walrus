@@ -232,7 +232,7 @@
 <p><em>Walrus Sites</em> are "web"-sites that use Sui and Walrus as their underlying technology. They are a
 prime example of how Walrus can be used to build new and exciting decentralized applications. Anyone
 can build and deploy a Walrus Site and make it accessible to the world! Funnily, this documentation
-is itself available as a Walrus Site at <a href="https://docs.walrus.site/walrus-sites/intro.html">https://docs.walrus.site/walrus-sites/intro.html</a> (if you
+is itself available as a Walrus Site at <a href="https://docs.wal.app/walrus-sites/intro.html">https://docs.wal.app/walrus-sites/intro.html</a> (if you
 aren't there already).</p>
 <p>At a high level, here are some of the most exciting features:</p>
 <ul>
@@ -255,8 +255,8 @@ wallets and harness Sui's programmability to add backend functionality to Walrus
 <p>To give you a very high-level intuition of how Walrus Sites work, let's look at an example: A simple
 NFT collection on Sui that has a frontend dApp to mint the NFTs hosted on Walrus Sites, and in
 which <em>each NFT</em> has a <em>specific, personalized Walrus Site</em>.</p>
-<p>You can check out the mint page at <a href="https://flatland.walrus.site/">https://flatland.walrus.site/</a>. This site is served to your
-browser through the Walrus Site <em>portal</em> <a href="https://walrus.site">https://walrus.site</a>. While the portal's operation is
+<p>You can check out the mint page at <a href="https://flatland.wal.app/">https://flatland.wal.app/</a>. This site is served to your
+browser through the Walrus Site <em>portal</em> <a href="https://wal.app">https://wal.app</a>. While the portal's operation is
 explained in a <a href="./portal.html">later section</a>, consider for now that there can be many portals (hosted
 by whoever wants to have their own, and even on <code>localhost</code>). Further, the only function of the
 portal is to retrieve the metadata (from Sui) and the resource files (from Walrus) that constitute
@@ -267,19 +267,19 @@ to the "Flatlander site". This latter site is a special Walrus Site that exists 
 and has special characteristics (the background color, the image, ...) that are based on the
 contents of the NFT.</p>
 <p>The URL to this per-NFT site looks something like this:
-<code>https://2hzpawjycxuiuh36047yocxapc69g8ercrypa7ccsk8ek4iqu6.walrus.site/</code>. You'll notice that the
-domain remains <code>walrus.site</code>, but the subdomain is a long and random-looking string. This string is
+<code>https://2hzpawjycxuiuh36047yocxapc69g8ercrypa7ccsk8ek4iqu6.wal.app/</code>. You'll notice that the
+domain remains <code>wal.app</code>, but the subdomain is a long and random-looking string. This string is
 actually the <a href="https://en.wikipedia.org/wiki/Base36">Base36</a> encoding of the object ID of the NFT,
 which is
 <a href="https://suiscan.xyz/testnet/object/0x644bc958052463785c026a13be051d579c8a4d2dc93b1874dce5839d4fb18c5e">0x644bc958...</a>.</p>
 <p>In summary:</p>
 <ul>
-<li>Walrus Sites are served through a portal; in this case, <code>https://walrus.site</code>. There can be many
+<li>Walrus Sites are served through a portal; in this case, <code>https://wal.app</code>. There can be many
 portals, and anyone can host one.</li>
 <li>The subdomain on the URL points to a specific object on Sui that allows the browser to fetch and
 render the site resources. This pointer can be
 <ul>
-<li>a SuiNS name, such as <code>flatland</code> in <code>https://flatland.walrus.site</code>, or</li>
+<li>a SuiNS name, such as <code>flatland</code> in <code>https://flatland.wal.app</code>, or</li>
 <li>the Base36 encoding of a the Sui object ID, such as <code>0x644bc958...</code> in the example above.</li>
 </ul>
 </li>

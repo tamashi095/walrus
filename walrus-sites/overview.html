@@ -286,14 +286,14 @@ gateways, for example), and have trade-offs.</p>
 <p>Currently, we provide the server-side and the service-worker based approaches.</p>
 <h3 id="browsing-and-domain-isolation"><a class="header" href="#browsing-and-domain-isolation">Browsing and domain isolation</a></h3>
 <p>We must ensure that, when browsing multiple sites through a portal, for example the one hosted at
-<a href="https://walrus.site">https://walrus.site</a>, these sites are isolated. Isolation is necessary for security, and to ensure
+<a href="https://wal.app">https://wal.app</a>, these sites are isolated. Isolation is necessary for security, and to ensure
 that the wallet connection in the browser works as expected.</p>
 <p>To do so, we give each Walrus Site a specific <em>subdomain</em> of the portal's domain. For example, the
-Flatland mint dApp is hosted at <a href="https://flatland.walrus.site">https://flatland.walrus.site</a>, where the subdomain <code>flatland</code> is
+Flatland mint dApp is hosted at <a href="https://flatland.wal.app">https://flatland.wal.app</a>, where the subdomain <code>flatland</code> is
 uniquely associated to the object ID of the Walrus Site through SuiNS.</p>
 <p>Walrus Sites also work without SuiNS: a site can <em>always</em> be browsed by using as subdomain the
 Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this URL is:
-<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.walrus.site">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.walrus.site</a>.</p>
+<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app</a>.</p>
 <p>Base36 was chosen for two reasons, forced by the subdomain standards:</p>
 <ol>
 <li>A subdomain can have at most 63 characters, while a Hex-encoded Sui object ID requires 64.</li>
@@ -304,7 +304,7 @@ Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this UR
 <p>As mentioned before, we provide two types of portals to browse Walrus Sites:</p>
 <ul>
 <li>The server-side portal, which is a server that resolves a Walrus Site, returning it to the
-browser. The server-side portal is hosted at <a href="https://walrus.site">https://walrus.site</a>.</li>
+browser. The server-side portal is hosted at <a href="https://wal.app">https://wal.app</a>.</li>
 <li>The service-worker portal, which is a service worker that is installed in the browser and
 resolves a Walrus Site. The service-worker portal is no longer hosted at a specific domain, but
 the code is still maintained so that it can be used by anyone.</li>
@@ -319,8 +319,8 @@ remains unchanged.</p>
 <li><strong>Site publishing</strong> (step 0): The site developer publishes the Walrus Site using the
 <a href="#the-site-builder"><code>site-builder</code></a>, or making use of a publisher. Assume the developer uses the
 SuiNS name <code>dapp.sui</code> to point to the object ID of the created Walrus Site.</li>
-<li><strong>Browsing starts</strong> (step 1): A client browses <code>dapp.walrus.site/index.html</code> in their browser.</li>
-<li><strong>Site resolution</strong> (steps 2-6): The portal interprets its <em>origin</em> <code>dapp.walrus.site</code>, and makes
+<li><strong>Browsing starts</strong> (step 1): A client browses <code>dapp.wal.app/index.html</code> in their browser.</li>
+<li><strong>Site resolution</strong> (steps 2-6): The portal interprets its <em>origin</em> <code>dapp.wal.app</code>, and makes
 a SuiNS resolution for <code>dapp.sui</code>, obtaining the related object ID. Using the object ID, it then
 fetches the dynamic fields of the object (also checking <a href="./portal.html">redirects</a>). From the
 dynamic fields, it selects the one for <code>/index.html</code>, and extracts its Walrus blob ID and headers

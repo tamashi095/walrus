@@ -243,7 +243,7 @@ wallet.</p>
 portal (see <a href="./portal.html">Portal configuration</a>). This measure ensures that loading a Walrus Site
 does not result in an infinite loading loop.</p>
 <p>Different portals can set this limit as they desire. The limit for the portal hosted at
-<a href="https://walrus.site">https://walrus.site</a> has a maximum redirect depth of 3.</p>
+<a href="https://wal.app">https://wal.app</a> has a maximum redirect depth of 3.</p>
 <h2 id="there-is-a-special-__wal__-path"><a class="header" href="#there-is-a-special-__wal__-path">There is a special <code>__wal__</code> path</a></h2>
 <p>Anything under the <code>/__wal__/*</code> path is reserved by the portal for health checks and other
 portal-specific operations. If you use this path inside your site, the resources served under that
@@ -292,9 +292,9 @@ be used on a service-worker portal on iOS. Note, however, that <em>browsing</em>
 possible on iOS through any browser.</p>
 <p>Given that you decided to use a service-worker portal as your main point of access to your sites,
 to provide a seamless experience for iOS users (and other users on browsers that do not support
-service workers), it is recommended to redirect to a server-side portal (<a href="https://walrus.site">https://walrus.site</a>).
+service workers), it is recommended to redirect to a server-side portal (<a href="https://wal.app">https://wal.app</a>).
 Whenever a user on an iOS wallet browses a Walrus Site, the redirect will automatically take them
-to the <code>&lt;site_name&gt;.walrus.site</code> server-side portal. This way, the user can still use the wallet.</p>
+to the <code>&lt;site_name&gt;.wal.app</code> server-side portal. This way, the user can still use the wallet.</p>
 <h3 id="service-worker-portals-do-not-support-progressive-web-apps-pwas"><a class="header" href="#service-worker-portals-do-not-support-progressive-web-apps-pwas">Service worker portals do not support progressive web apps (PWAs)</a></h3>
 <div id="admonition-warning-1" class="admonition admonish-warning" role="note" aria-labelledby="admonition-warning-1-title">
 <div class="admonition-title">
