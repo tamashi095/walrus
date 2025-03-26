@@ -236,12 +236,14 @@ chapter</a> for prerequisites, installation, and configuration.</p>
 </code></pre>
 <p>Each sub-command of <code>walrus</code> can also be called with <code>--help</code> to print its specific arguments and
 their meaning.</p>
+<p>If you have multiple <em>contexts</em> in your configuration file (as in the default one included on the
+<a href="./setup.html#configuration">setup page</a>), you can specify the context for each command through the
+<code>--context</code> option.</p>
 <h2 id="walrus-system-information"><a class="header" href="#walrus-system-information">Walrus system information</a></h2>
 <p>Information about the Walrus system is available through the <code>walrus info</code> command. It provides an
 overview of current system parameters such as the current epoch, the number of storage nodes and
 shards in the system, the maximum blob size, and the current cost in WAL for storing
 blobs:</p>
-<!-- TODO(WAL-710): Update after epoch 1 -->
 <pre><code class="language-console">$ walrus info
 
 Walrus system information
