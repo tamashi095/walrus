@@ -2003,12 +2003,12 @@ they are not needed any more.</p>
 for the upload costs, corresponds to the <em>encoded size</em> of a
 blob. The encoded size of a blob is the size of the erasure coded blob, which is about 5x larger
 than the unencoded original blob size, and the size of some metadata that is independent of the
-size of the blob. Since the size of the fixed size metadata is quite large (about 64MB in the worse
+size of the blob. Since the fixed size per-blob metadata is quite large (about 64MB in the worse
 case), the cost of storing small blobs (&lt; 10MB) is dominated by this, and the size of storing
 larger blobs is dominated by their increasing size.</p>
 <p>The Walrus CLI uses some strategies to lower costs but is not guaranteed to be optimal for all
 use-cases. For high volume or other cost sensitive users there may be strategies that further
-lower costs.</p>
+lower costs, which we discuss below.</p>
 <h2 id="measuring-costs"><a class="header" href="#measuring-costs">Measuring costs</a></h2>
 <p>The most accurate way to measure the costs of a store for a certain size is to perform a store
 for a blob of the same size , and observe the costs in SUI and WAL in a Sui explorer (or directly
@@ -2024,7 +2024,8 @@ and <code>register_blob</code> and balance changes will include both SUI and WAL
 </li>
 </ul>
 <p>You can observe the storage rebate on an explorer by burning the resulting blob objects
-using the command <code>walrus burn-blobs --object-ids &lt;BLOB_OBJECT_ID&gt;</code>.</p>
+using the command <code>walrus burn-blobs --object-ids &lt;BLOB_OBJECT_ID&gt;</code>. As discussed below
+burning the object on Sui does not delete the blob on Walrus.</p>
 <p>As a rule of thumb the SUI costs of <code>register_blob</code> and <code>certify_blob</code> are independent of
 blob size or epoch lifetime. The WAL costs of <code>register_blob</code> are linear in the encoded size of
 the blob (both erasure coding and metadata). Calls to <code>reserve_space</code> have SUI costs that
@@ -2053,7 +2054,9 @@ costs.</p>
 <p>Furthermore, the CLI client by default will use any available storage resource of an
 appropriate length, in epochs and size in bytes, owned by the user address, before acquiring one.
 The current implementation of the CLI does not use a very sophisticated strategy to merge
-blobs to accommodate larger blobs, and therefore merging them might improve cost efficiency.</p>
+blobs to accommodate larger blobs, and therefore manually merging them might improve cost
+efficiency.</p>
+<!-- TODO(): Document a tool to help with split / merge of storage resources. -->
 <p>There are a few ways to minimize costs associated with the need for storage resources. First,
 acquiring resources from either the system or subsidy contract involves at least one Sui
 transaction interacting with a relatively complex shared object Sui smart contract. Therefore,
@@ -2061,23 +2064,24 @@ acquiring larger storage resources at once both in length and size minimizes the
 Storage resources can then be split and merged to store smaller blobs or blobs for shorter time
 periods. Packing multiple smart contract calls into a single PTB to manage storage resource
 acquisition, splitting and merging can also keep costs down.</p>
-<p>Storage resources can be reclaimed and reused for the remaining of their validity period, when
-deleting blobs that are deletable. Therefore, dapps that only need to store data for less time
+<p>Storage resources can be reclaimed and reused for the remaining of their validity period,
+by deleting non-expired blobs that are deletable.
+Therefore, dapps that only need to store data for less time
 than a multiple of full epochs (two weeks on Mainnet), can potentially reduce costs by actively
 deleting blobs, and re-using the storage for other blobs.</p>
 <p>Storage resources can be transferred and traded, and we foresee other markets and ways to
 acquire them to exist in the future.</p>
-<p>Registering blobs and certifying them costs some SUI to cover gas costs and some WAL to cover
+<p>Registering blobs and certifying them costs some SUI to cover gas, and some WAL to cover
 upload costs. Each blob needs to go through both of these and therefore not much may be done
 about these costs. However, multiple blobs may be registered or certified in a single Sui PTB
 both to reduce latency and possibly costs when storing multiple blobs. The CLI client uses this
 approach when uploading multiple blobs. Within the same PTB storage resource management actions
 can also be performed to acquire storage or split/merge storage resources to further reduce
 latency and costs.</p>
-<p>Each blob stored on Walrus also creates a Sui object representing the blob. These are not huge,
-containing just some metadata, but storage on Sui is relatively expensive, and the costs add up.
-Once the blob validity period expires the blob object has no use, and can be burned. This
-will reclaim most of the storage costs associated with storage on Sui.</p>
+<p>Each blob stored on Walrus also creates a Sui object representing the blob. While these objects are
+not large and only contains metadata, storage on Sui is comparatively expensive and object costs
+can add up. Once the blob validity period expires the blob object has no use and can be burned.
+This will reclaim most of the storage costs associated with storage on Sui.</p>
 <p>The blob objects are used to manage blob lifecycle, such as extending blob lifetimes, deleting
 them to reclaim storage resources, or adding attributes. In case none of these actions are needed
 any more the blob object may be burned through the CLI or a smart contract call, to save on Sui
@@ -2085,8 +2089,8 @@ storage costs. This does not delete the blob on Walrus. Depending on the relativ
 WAL it might be cheaper to burn long lived blob objects, then re-registering and re-certify them
 close to the end of their lifetime to extend it.</p>
 <h2 id="the-future"><a class="header" href="#the-future">The future</a></h2>
-<p>The Walrus teams are focused on both making storage of small blobs more efficient in terms of
-costs as well as the size of metadata smaller to reduce costs for all blob sizes.</p>
+<p>The Walrus teams are focused on both making storage of small blobs more cost efficient,
+as well as the size of metadata smaller to reduce costs for all blob sizes.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="sui-structures"><a class="header" href="#sui-structures">Sui Structures</a></h1>
 <p>This section is optional and enables advanced use cases, leveraging Sui smart contract interactions
