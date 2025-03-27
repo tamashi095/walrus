@@ -2509,28 +2509,27 @@ explained in a <a href="walrus-sites/./portal.html">later section</a>, consider 
 by whoever wants to have their own, and even on <code>localhost</code>). Further, the only function of the
 portal is to retrieve the metadata (from Sui) and the resource files (from Walrus) that constitute
 the site.</p>
-<p>If you have a Sui wallet with some Testnet SUI, you can try and "mint a new Flatlander" from the
-site. This creates an NFT from the collection and shows you two links: one to the explorer, and one
-to the "Flatlander site". This latter site is a special Walrus Site that exists only for that NFT,
+<p>If you have a Sui wallet with some SUI, you can try and "mint a new Flatlander" from the site. This
+creates an NFT from the collection and shows you two links: one to the explorer, and one to the
+"Flatlander site". This latter site is a special Walrus Site page that exists only for that NFT,
 and has special characteristics (the background color, the image, ...) that are based on the
 contents of the NFT.</p>
 <p>The URL to this per-NFT site looks something like this:
-<code>https://2hzpawjycxuiuh36047yocxapc69g8ercrypa7ccsk8ek4iqu6.wal.app/</code>. You'll notice that the
-domain remains <code>wal.app</code>, but the subdomain is a long and random-looking string. This string is
-actually the <a href="https://en.wikipedia.org/wiki/Base36">Base36</a> encoding of the object ID of the NFT,
-which is
-<a href="https://suiscan.xyz/testnet/object/0x644bc958052463785c026a13be051d579c8a4d2dc93b1874dce5839d4fb18c5e">0x644bc958...</a>.</p>
+<code>https://flatland.wal.app/0x811285f7bbbaad302e23a3467ed8b8e56324ab31294c27d7392dac649b215716</code>.
+You'll notice that the domain remains <code>wal.app</code>, but the path is a long and random-looking
+string. This string is actually the <a href="https://simple.wikipedia.org/wiki/Hexadecimal">hexadecimal</a>
+encoding of the object ID of the NFT, which is <a href="https://suiscan.xyz/mainnet/object/0x811285f7bbbaad302e23a3467ed8b8e56324ab31294c27d7392dac649b215716">0x811285f7b...</a>. This path is unique to
+each NFT and is used to fetch the metadata and resource files for its' corresponding page. The page
+is then rendered based on the characteristics of the NFT.</p>
 <p>In summary:</p>
 <ul>
 <li>Walrus Sites are served through a portal; in this case, <code>https://wal.app</code>. There can be many
 portals, and anyone can host one.</li>
 <li>The subdomain on the URL points to a specific object on Sui that allows the browser to fetch and
-render the site resources. This pointer can be
-<ul>
-<li>a SuiNS name, such as <code>flatland</code> in <code>https://flatland.wal.app</code>, or</li>
-<li>the Base36 encoding of a the Sui object ID, such as <code>0x644bc958...</code> in the example above.</li>
-</ul>
-</li>
+render the site resources. This pointer should be a SuiNS name, such as <code>flatland</code> in
+<code>https://flatland.wal.app</code>.</li>
+<li>It is possible for each path to be mapped to a specific object on Sui that allows the browser to
+fetch and render a page based on the characteristics of the NFT.</li>
 </ul>
 <p>Curious to know how this magic is possible? Read the <a href="walrus-sites/./overview.html">technical overview</a>! If you
 just want to get started trying Walrus Sites out, check the <a href="walrus-sites/./tutorial.html">tutorial</a>.</p>
@@ -3285,9 +3284,23 @@ that the wallet connection in the browser works as expected.</p>
 <p>To do so, we give each Walrus Site a specific <em>subdomain</em> of the portal's domain. For example, the
 Flatland mint dApp is hosted at <a href="https://flatland.wal.app">https://flatland.wal.app</a>, where the subdomain <code>flatland</code> is
 uniquely associated to the object ID of the Walrus Site through SuiNS.</p>
-<p>Walrus Sites also work without SuiNS: a site can <em>always</em> be browsed by using as subdomain the
-Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this URL is:
-<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app</a>.</p>
+<p>Walrus Sites also work <em>without</em> SuiNS: when a site is accessed through a self-hosted portal, or
+through a portal that supports Base36 domain resolution, a site can be browsed by using as
+subdomain the Base36 encoding of the Sui object ID of the site.</p>
+<div id="admonition-danger" class="admonition admonish-danger" role="note" aria-labelledby="admonition-danger-title">
+<div class="admonition-title">
+<div id="admonition-danger-title">
+<p>Danger</p>
+</div>
+<a class="admonition-anchor-link" href="walrus-sites/overview.html#admonition-danger"></a>
+</div>
+<div>
+<p>The <code>wal.app</code> portal does not support Base36 domain resolution; therefore,
+<a href="https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app">https://58gr4pinoayuijgdixud23441t55jd94ugep68fsm72b8mwmq2.wal.app</a> is not a valid URL. If you
+want to access such a site, you should either use another portal or
+<a href="walrus-sites/./portal.html#running-a-local-portal">host your own</a>.</p>
+</div>
+</div>
 <p>Base36 was chosen for two reasons, forced by the subdomain standards:</p>
 <ol>
 <li>A subdomain can have at most 63 characters, while a Hex-encoded Sui object ID requires 64.</li>
@@ -3298,7 +3311,8 @@ Base36 encoding of the Sui object ID of the site. For the Flatland dApp, this UR
 <p>As mentioned before, we provide two types of portals to browse Walrus Sites:</p>
 <ul>
 <li>The server-side portal, which is a server that resolves a Walrus Site, returning it to the
-browser. The server-side portal is hosted at <a href="https://wal.app">https://wal.app</a>.</li>
+browser. The server-side portal is hosted at <a href="https://wal.app">https://wal.app</a>. This portal only supports sites
+that are associated with a SuiNS name.</li>
 <li>The service-worker portal, which is a service worker that is installed in the browser and
 resolves a Walrus Site. The service-worker portal is no longer hosted at a specific domain, but
 the code is still maintained so that it can be used by anyone.</li>
