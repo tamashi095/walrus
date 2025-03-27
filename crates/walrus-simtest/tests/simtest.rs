@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Contains dedicated Walrus simulation tests.
@@ -7,7 +7,7 @@
 #[cfg(msim)]
 mod tests {
     use std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         sync::{atomic::AtomicBool, Arc, Mutex},
         time::Duration,
     };
@@ -17,6 +17,7 @@ mod tests {
     use sui_macros::{
         clear_fail_point,
         register_fail_point,
+        register_fail_point_arg,
         register_fail_point_async,
         register_fail_points,
     };
@@ -28,6 +29,7 @@ mod tests {
         encoding::{Primary, Secondary},
         keys::{NetworkKeyPair, ProtocolKeyPair},
         test_utils::random_blob_id,
+        Epoch,
         DEFAULT_ENCODING,
     };
     use walrus_proc_macros::walrus_simtest;
@@ -398,6 +400,61 @@ mod tests {
         }
     }
 
+    /// BlobInfoConsistencyCheck is a helper struct to check the consistency of the blob info.
+    struct BlobInfoConsistencyCheck {
+        certified_blob_digest_map: Arc<Mutex<HashMap<Epoch, HashMap<ObjectID, u64>>>>,
+        checked: Arc<AtomicBool>,
+    }
+
+    impl BlobInfoConsistencyCheck {
+        pub fn new() -> Self {
+            let certified_blob_digest_map = Arc::new(Mutex::new(HashMap::new()));
+            let certified_blob_digest_map_clone = certified_blob_digest_map.clone();
+
+            register_fail_point_arg(
+                "storage_node_certified_blob_digest",
+                move || -> Option<Arc<Mutex<HashMap<Epoch, HashMap<ObjectID, u64>>>>> {
+                    Some(certified_blob_digest_map_clone.clone())
+                },
+            );
+
+            Self {
+                certified_blob_digest_map,
+                checked: Arc::new(AtomicBool::new(false)),
+            }
+        }
+
+        pub fn check_storage_node_consistency(&self) {
+            self.checked
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+
+            // Ensure that for all epochs, all nodes have the same certified blob digest
+            let digest_map = self.certified_blob_digest_map.lock().unwrap();
+            for (epoch, node_digest_map) in digest_map.iter() {
+                // Ensure that for the same epoch, all nodes have the same certified blob digest
+                let mut epoch_digest = None;
+                for (node_id, digest) in node_digest_map.iter() {
+                    tracing::info!(
+                        "blob info consistency check: node {node_id} has digest \
+                        {digest} in epoch {epoch}",
+                    );
+                    if epoch_digest.is_none() {
+                        epoch_digest = Some(digest);
+                    } else {
+                        assert_eq!(epoch_digest, Some(digest));
+                    }
+                }
+            }
+        }
+    }
+
+    impl Drop for BlobInfoConsistencyCheck {
+        fn drop(&mut self) {
+            assert!(self.checked.load(std::sync::atomic::Ordering::SeqCst));
+            clear_fail_point("storage_node_certified_blob_digest");
+        }
+    }
+
     // Tests that we can create a Walrus cluster with a Sui cluster and run basic
     // operations deterministically.
     #[ignore = "ignore integration simtests by default"]
@@ -409,6 +466,8 @@ mod tests {
             config.set_random_beacon_for_testing(false);
             config
         });
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         let (_sui_cluster, _cluster, client) =
             test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
@@ -441,6 +500,8 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     // Tests the scenario where a single node crashes and restarts.
@@ -467,6 +528,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         // Tracks if a crash has been triggered.
         let fail_triggered = Arc::new(AtomicBool::new(false));
@@ -533,6 +596,8 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     // Action taken during a various failpoints. There is a chance with `probability` that the
@@ -674,6 +739,8 @@ mod tests {
             .await
             .unwrap();
 
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
+
         let client_arc = Arc::new(client);
 
         // Starts a background workload that a client keeps writing and retrieving data.
@@ -762,6 +829,8 @@ mod tests {
         );
 
         workload_handle.abort();
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     // Simulates repeated node crash and restart with sim node id.
@@ -825,6 +894,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         let client_arc = Arc::new(client);
         let client_clone = client_arc.clone();
@@ -924,6 +995,8 @@ mod tests {
                 .node_status,
             "Active"
         );
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     // This test simulates a scenario where a node is repeatedly moving shards among storage nodes,
@@ -941,6 +1014,8 @@ mod tests {
             ))
             .await;
         });
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         // We use a very short epoch duration of 60 seconds so that we can exercise more epoch
         // changes in the test.
@@ -1018,6 +1093,8 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     #[ignore = "ignore integration simtests by default"]
@@ -1042,6 +1119,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         assert!(walrus_cluster.nodes[5].node_id.is_none());
 
@@ -1179,6 +1258,9 @@ mod tests {
             }
             tokio::time::sleep(Duration::from_secs(1)).await;
         }
+
+        blob_info_consistency_check.check_storage_node_consistency();
+
         clear_fail_point("fail_point_direct_shard_sync_recovery");
     }
 
@@ -1203,6 +1285,8 @@ mod tests {
             )
             .await
             .expect("Failed to setup test cluster");
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         assert!(walrus_cluster.nodes[5].node_id.is_none());
         let client_arc = Arc::new(client);
@@ -1364,6 +1448,8 @@ mod tests {
                 .node_status,
             "Active"
         );
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     #[ignore = "ignore integration simtests by default"]
@@ -1387,6 +1473,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         assert!(walrus_cluster.nodes[5].node_id.is_some());
         let client_arc = Arc::new(client);
@@ -1438,6 +1526,8 @@ mod tests {
         wait_until_node_is_active(&walrus_cluster.nodes[5], Duration::from_secs(100))
             .await
             .expect("Node should be active");
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     #[ignore = "ignore integration simtests by default"]
@@ -1461,6 +1551,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         assert!(walrus_cluster.nodes[5].node_id.is_none());
         let client_arc = Arc::new(client);
@@ -1556,6 +1648,8 @@ mod tests {
             new_protocol_key_pair.public(),
             config.read().await.protocol_key_pair().public()
         );
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     /// Waits until the node's protocol key pair in the config matches the target public key.
@@ -1607,6 +1701,8 @@ mod tests {
             )
             .await
             .unwrap();
+
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
 
         let client_arc = Arc::new(client);
 
@@ -1660,6 +1756,8 @@ mod tests {
         );
 
         workload_handle.abort();
+
+        blob_info_consistency_check.check_storage_node_consistency();
 
         clear_fail_point("start_node_recovery_entry");
     }
@@ -1780,6 +1878,8 @@ mod tests {
             .await
             .unwrap();
 
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
+
         assert!(walrus_cluster.nodes[5].node_id.is_some());
         let client_arc = Arc::new(client);
 
@@ -1810,6 +1910,8 @@ mod tests {
         )
         .await
         .expect("Node config should be synced");
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 
     /// Gets the last certified event blob from the client.
@@ -1922,6 +2024,8 @@ mod tests {
             .await
             .unwrap();
 
+        let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
+
         let client = Arc::new(client);
 
         // Run workload to get some event blobs certified
@@ -1942,5 +2046,7 @@ mod tests {
 
         // Event blob should make progress again.
         assert_ne!(stuck_blob.blob_id, recovered_blob.blob_id);
+
+        blob_info_consistency_check.check_storage_node_consistency();
     }
 }
