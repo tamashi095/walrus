@@ -856,15 +856,11 @@ publisher service was augmented with facilities to authenticate requests and acc
 user.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="getting-started-1"><a class="header" href="#getting-started-1">Getting started</a></h1>
-<p>You want to get a taste of Walrus? Here are some distributed applications (dapps) that
-you can use from your browser:</p>
+<p>You want to get a taste of Walrus? Here are some sites that are built on and/or use Walrus:</p>
 <ul>
-<li><a href="https://publish.wal.app">Publish a blob and see it</a> on Walrus.</li>
 <li><a href="https://flatland.wal.app">Mint a toy NFT</a> on the flatland application.</li>
+<li><a href="https://snowreads.wal.app">Browse scientific papers</a>.</li>
 </ul>
-<p>The above dapps are on the Walrus <em>Testnet</em>, which provides a sandbox for experimentation, and
-uses tokens with no value. To use or develop against the Walrus Mainnet you will need to use real
-WAL and SUI tokens.</p>
 <p>You can explore blobs that are stored on Walrus through the <a href="https://walruscan.com">Walruscan explorer</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="setup"><a class="header" href="#setup">Setup</a></h1>
@@ -944,28 +940,19 @@ Windows. The Ubuntu version most likely works on other Linux distributions as we
 <tr><td>MacOS</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/walrus-mainnet-latest-macos-x86_64"><code>macos-x86_64</code></a></td></tr>
 <tr><td>Windows</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/walrus-mainnet-latest-windows-x86_64.exe"><code>windows-x86_64.exe</code></a></td></tr>
 </tbody></table>
-</div><div id="admonition-windows" class="admonition admonish-note" role="note" aria-labelledby="admonition-windows-title">
-<div class="admonition-title">
-<div id="admonition-windows-title">
-<p>Windows</p>
-</div>
-<a class="admonition-anchor-link" href="usage/setup.html#admonition-windows"></a>
-</div>
-<div>
-<p>We now offer a pre-built binary also for Windows. However, most of the remaining instructions assume
-a UNIX-based system for the directory structure, commands, etc. If you use Windows, you may need to
-adapt most of those.</p>
-</div>
 </div>
 <h3 id="nix-install"><a class="header" href="#nix-install">Install via script</a></h3>
 <p>To download and install <code>walrus</code> to your <code>"$HOME"/.local/bin</code> directory, run one of the following
 commands in your terminal then follow on-screen instructions. See <a href="usage/setup.html#windows-install">Windows
 instructions</a> if you are on Windows.</p>
-<pre><code class="language-sh"># Run a first-time install.
-curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/setup/walrus-install.sh | sh
+<pre><code class="language-sh"># Run a first-time install using the latest Mainnet version.
+curl -sSf https://docs.wal.app/setup/walrus-install.sh | sh
+
+# Install the latest Testnet version instead.
+curl -sSf https://docs.wal.app/setup/walrus-install.sh | sh -s -- -n testnet
 
 # Update an existing installation (overwrites prior version of walrus).
-curl -sSf https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/setup/walrus-install.sh | sh -s -- -f
+curl -sSf https://docs.wal.app/setup/walrus-install.sh | sh -s -- -f
 </code></pre>
 <p>Make sure that the <code>"$HOME"/.local/bin</code> directory is in your <code>$PATH</code>.</p>
 <p>Once this is done, you should be able to run Walrus by using the <code>walrus</code> command in your terminal.</p>
@@ -1001,9 +988,27 @@ Note that due to DoS protection, it may not be possible to download the binaries
 )
 </code></pre>
 <p>From there, you'll need to place <code>walrus.exe</code> somewhere in your <code>PATH</code>.</p>
+<div id="admonition-windows" class="admonition admonish-note" role="note" aria-labelledby="admonition-windows-title">
+<div class="admonition-title">
+<div id="admonition-windows-title">
+<p>Windows</p>
+</div>
+<a class="admonition-anchor-link" href="usage/setup.html#admonition-windows"></a>
+</div>
+<div>
+<p>Note that most of the remaining instructions assume a UNIX-based system for the directory structure,
+commands, etc. If you use Windows, you may need to adapt most of those.</p>
+</div>
+</div>
 <h3 id="github-releases"><a class="header" href="#github-releases">GitHub releases</a></h3>
 <p>You can find all our releases including release notes on <a href="https://github.com/MystenLabs/walrus/releases">GitHub</a>.
 Simply download the archive for your system and extract the <code>walrus</code> binary.</p>
+<h3 id="install-via-cargo"><a class="header" href="#install-via-cargo">Install via Cargo</a></h3>
+<p>You can also install Walrus via Cargo. For example, to install the latest Mainnet version:</p>
+<pre><code class="language-sh">cargo install --git https://github.com/MystenLabs/walrus --branch mainnet walrus-service --locked
+</code></pre>
+<p>In place of <code>--branch mainnet</code>, you can also specify specific tags (e.g., <code>--tag mainnet-v1.18.2</code>)
+or commits (e.g., <code>--rev b2009ac73388705f379ddad48515e1c1503fc8fc</code>).</p>
 <h3 id="build-from-source"><a class="header" href="#build-from-source">Build from source</a></h3>
 <p>Walrus is open-source software published under the Apache 2 license. The code is developed in a
 <code>git</code> repository at <a href="https://github.com/MystenLabs/walrus">https://github.com/MystenLabs/walrus</a>.</p>
@@ -1050,9 +1055,8 @@ default_context: mainnet
 <a class="admonition-anchor-link" href="usage/setup.html#admonition-tip-1"></a>
 </div>
 <div>
-<p>The easiest way to obtain the latest configuration is by downloading it from GitHub:</p>
-<pre><code class="language-sh">curl https://raw.githubusercontent.com/MystenLabs/walrus/refs/heads/main/setup/client_config_mainnet.yaml \
-    -o ~/.config/walrus/client_config.yaml
+<p>The easiest way to obtain the latest configuration is by downloading it directly from Walrus:</p>
+<pre><code class="language-sh">curl https://docs.wal.app/setup/client_config.yaml -o ~/.config/walrus/client_config.yaml
 </code></pre>
 </div>
 </div>
