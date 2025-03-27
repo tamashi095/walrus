@@ -115,6 +115,7 @@
       "http://walrus.globalstake.io:9000": { "cache": true },
       "http://walrus.krates.ai:9000": {},
       "http://walrus.testnet.pops.one:9000": {},
+      "http://waltest.chainflow.io:9000": {},
       "http://37.27.230.228:9000": {},
       "http://65.21.139.112:9000": {},
       "http://93.115.27.108:9000": {}
@@ -167,6 +168,7 @@
       "http://walrus-tn.juicystake.io:9090": {},
       "http://walrus.krates.ai:9001": {},
       "http://walrus.testnet.pops.one:9001": {},
+      "http://waltest.chainflow.io:9001": {},
       "http://37.27.230.228:9001": {}
     }
   }
