@@ -2552,29 +2552,22 @@ prepare your environment for development.</p>
 <h2 id="installation-1"><a class="header" href="#installation-1">Installation</a></h2>
 <p>Similar to the <code>walrus</code> client CLI tool, we currently provide the <code>site-builder</code> client binary for
 macOS (Intel and Apple CPUs), Ubuntu, and Windows:</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h3 id="mainnet-binaries"><a class="header" href="#mainnet-binaries">Mainnet Binaries</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>OS</th><th>CPU</th><th>Architecture</th></tr></thead><tbody>
 <tr><td>Ubuntu</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-mainnet-latest-ubuntu-x86_64"><code>site-builder-mainnet-latest-ubuntu-x86_64</code></a></td></tr>
 <tr><td>MacOS</td><td>Apple Silicon</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-mainnet-latest-macos-arm64"><code>site-builder-mainnet-latest-macos-arm64</code></a></td></tr>
 <tr><td>MacOS</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-mainnet-latest-macos-x86_64"><code>site-builder-mainnet-latest-macos-x86_64</code></a></td></tr>
 <tr><td>Windows</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-mainnet-latest-windows-x86_64.exe"><code>site-builder-mainnet-latest-windows-x86_64.exe</code></a></td></tr>
 </tbody></table>
-</div></div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+</div>
+<h3 id="testnet-binaries"><a class="header" href="#testnet-binaries">Testnet Binaries</a></h3>
 <div class="table-wrapper"><table><thead><tr><th>OS</th><th>CPU</th><th>Architecture</th></tr></thead><tbody>
 <tr><td>Ubuntu</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-testnet-latest-ubuntu-x86_64"><code>site-builder-testnet-latest-ubuntu-x86_64</code></a></td></tr>
 <tr><td>MacOS</td><td>Apple Silicon</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-testnet-latest-macos-arm64"><code>site-builder-testnet-latest-macos-arm64</code></a></td></tr>
 <tr><td>MacOS</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-testnet-latest-macos-x86_64"><code>site-builder-testnet-latest-macos-x86_64</code></a></td></tr>
 <tr><td>Windows</td><td>Intel 64bit</td><td><a href="https://storage.googleapis.com/mysten-walrus-binaries/site-builder-testnet-latest-windows-x86_64.exe"><code>site-builder-testnet-latest-windows-x86_64.exe</code></a></td></tr>
 </tbody></table>
-</div></div>
-</div>
-<div id="admonition-windows" class="admonition admonish-note" role="note" aria-labelledby="admonition-windows-title">
+</div><div id="admonition-windows" class="admonition admonish-note" role="note" aria-labelledby="admonition-windows-title">
 <div class="admonition-title">
 <div id="admonition-windows-title">
 <p>Windows</p>
@@ -2589,24 +2582,16 @@ adapt most of those.</p>
 </div>
 <p>You can download the latest build from our Google Cloud Storage (GCS) bucket (correctly setting the
 <code>$SYSTEM</code> variable):</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h3 id="mainnet-curl-request"><a class="header" href="#mainnet-curl-request">Mainnet curl request</a></h3>
 <pre><code class="language-sh">SYSTEM= # set this to your system: ubuntu-x86_64, ubuntu-x86_64-generic, macos-x86_64, macos-arm64, windows-x86_64.exe
 curl https://storage.googleapis.com/mysten-walrus-binaries/site-builder-mainnet-latest-$SYSTEM -o site-builder
 chmod +x site-builder
 </code></pre>
-</div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<h3 id="testnet-curl-request"><a class="header" href="#testnet-curl-request">Testnet curl request</a></h3>
 <pre><code class="language-sh">SYSTEM= # set this to your system: ubuntu-x86_64, ubuntu-x86_64-generic, macos-x86_64, macos-arm64, windows-x86_64.exe
 curl https://storage.googleapis.com/mysten-walrus-binaries/site-builder-testnet-latest-$SYSTEM -o site-builder
 chmod +x site-builder
 </code></pre>
-</div>
-</div>
 <p>To be able to run it simply as <code>site-builder</code>, move the binary to any directory included in your
 <code>$PATH</code> environment variable. Standard locations are <code>/usr/local/bin/</code>, <code>$HOME/bin/</code>, or
 <code>$HOME/.local/bin/</code>.</p>
@@ -3415,36 +3400,20 @@ we need.</p>
 <p>The environment variables are set in the <code>.env.local</code> file at the root of each portal directory.
 To just run a simple instance of a portal, you can use the environment variables specified
 in the <code>.env.&lt;network&gt;.example</code> file:</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h5 id="mainnet-server-portal-environment-variables"><a class="header" href="#mainnet-server-portal-environment-variables">Mainnet Server Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/server/.env.mainnet.example ./portal/server/.env.local
 </code></pre>
-</div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<h5 id="testnet-server-portal-environment-variables"><a class="header" href="#testnet-server-portal-environment-variables">Testnet Server Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/server/.env.testnet.example ./portal/server/.env.local
 </code></pre>
-</div>
-</div>
 <p>Likewise, if you want to run the service-worker portal, you can copy the <code>.env.&lt;network&gt;.example</code>
 file to <code>.env.local</code> in the <code>portal/worker</code> directory.</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h5 id="mainnet-service-worker-portal-environment-variables"><a class="header" href="#mainnet-service-worker-portal-environment-variables">Mainnet Service Worker Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/worker/.env.mainnet.example ./portal/worker/.env.local
 </code></pre>
-</div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<h5 id="testnet-service-worker-portal-environment-variables"><a class="header" href="#testnet-service-worker-portal-environment-variables">Testnet Service Worker Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/worker/.env.testnet.example ./portal/worker/.env.local
 </code></pre>
-</div>
-</div>
 <p>For a more detailed configuration, you can modify the <code>.env.local</code> files to suit your needs.
 As a reference, here are the definitions of the environment variables:</p>
 <div id="admonition-note" class="admonition admonish-note" role="note" aria-labelledby="admonition-note-title">

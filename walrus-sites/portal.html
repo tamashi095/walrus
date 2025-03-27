@@ -296,36 +296,20 @@ we need.</p>
 <p>The environment variables are set in the <code>.env.local</code> file at the root of each portal directory.
 To just run a simple instance of a portal, you can use the environment variables specified
 in the <code>.env.&lt;network&gt;.example</code> file:</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h5 id="mainnet-server-portal-environment-variables"><a class="header" href="#mainnet-server-portal-environment-variables">Mainnet Server Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/server/.env.mainnet.example ./portal/server/.env.local
 </code></pre>
-</div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<h5 id="testnet-server-portal-environment-variables"><a class="header" href="#testnet-server-portal-environment-variables">Testnet Server Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/server/.env.testnet.example ./portal/server/.env.local
 </code></pre>
-</div>
-</div>
 <p>Likewise, if you want to run the service-worker portal, you can copy the <code>.env.&lt;network&gt;.example</code>
 file to <code>.env.local</code> in the <code>portal/worker</code> directory.</p>
-<div class="mdbook-tabs-container">
-<nav class="mdbook-tabs">
-<button class="mdbook-tab active" data-tabname="Mainnet">Mainnet</button>
-<button class="mdbook-tab" data-tabname="Testnet">Testnet</button>
-</nav>
-<div class="mdbook-tab-content" data-tabname="Mainnet">
+<h5 id="mainnet-service-worker-portal-environment-variables"><a class="header" href="#mainnet-service-worker-portal-environment-variables">Mainnet Service Worker Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/worker/.env.mainnet.example ./portal/worker/.env.local
 </code></pre>
-</div>
-<div class="mdbook-tab-content hidden" data-tabname="Testnet">
+<h5 id="testnet-service-worker-portal-environment-variables"><a class="header" href="#testnet-service-worker-portal-environment-variables">Testnet Service Worker Portal Environment Variables</a></h5>
 <pre><code class="language-sh">cp ./portal/worker/.env.testnet.example ./portal/worker/.env.local
 </code></pre>
-</div>
-</div>
 <p>For a more detailed configuration, you can modify the <code>.env.local</code> files to suit your needs.
 As a reference, here are the definitions of the environment variables:</p>
 <div id="admonition-note" class="admonition admonish-note" role="note" aria-labelledby="admonition-note-title">
