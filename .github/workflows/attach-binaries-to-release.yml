@@ -3,16 +3,13 @@ run-name: Attach Walrus binaries to a ${{ inputs.walrus_tag }} release
 
 on:
   release:
-    types: created
+    types: published
   workflow_dispatch:
     inputs:
       walrus_tag:
         description: "Walrus repo tag to attach builds to"
         type: string
         required: true
-
-permissions:
-  contents: write
 
 concurrency: ${{ github.workflow }}-${{ inputs.walrus_tag || github.ref }}
 
