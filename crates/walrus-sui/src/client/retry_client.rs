@@ -82,7 +82,7 @@ use crate::{
 };
 
 /// The list of HTTP status codes that are retriable.
-const RETRIABLE_RPC_ERRORS: &[&str] = &["429", "500", "502", "Request timeout"];
+const RETRIABLE_RPC_ERRORS: &[&str] = &["429", "500", "502"];
 /// The list of gRPC status codes that are retriable.
 const RETRIABLE_GRPC_ERRORS: &[tonic::Code] = &[
     tonic::Code::ResourceExhausted,
@@ -126,12 +126,20 @@ impl RetriableRpcError for sui_sdk::error::Error {
     fn is_retriable_rpc_error(&self) -> bool {
         tracing::warn!("sui_sdk::error::Error is_retriable_rpc_error: {:?}", self);
         if let sui_sdk::error::Error::RpcError(rpc_error) = self {
-            let error_string = rpc_error.to_string();
-            if RETRIABLE_RPC_ERRORS
-                .iter()
-                .any(|&s| error_string.contains(s))
-            {
-                return true;
+            match rpc_error {
+                jsonrpsee::core::ClientError::RequestTimeout => {
+                    return true;
+                }
+                jsonrpsee::core::ClientError::Transport(error) => {
+                    let error_string = error.to_string();
+                    if RETRIABLE_RPC_ERRORS
+                        .iter()
+                        .any(|&s| error_string.contains(s))
+                    {
+                        return true;
+                    }
+                }
+                _ => {}
             }
         }
         false
@@ -1340,7 +1348,7 @@ fn maybe_return_injected_error_in_stake_pool_transaction(
 
         // Simulate a retriable RPC error (502 Bad Gateway)
         Err(sui_sdk::error::Error::RpcError(
-            jsonrpsee::core::ClientError::Custom(
+            jsonrpsee::core::ClientError::Transport(
                 "server returned an error status code: 502".into(),
             ),
         ))?;
