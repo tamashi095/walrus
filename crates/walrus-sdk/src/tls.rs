@@ -176,21 +176,31 @@ impl TlsCertificateVerifier {
                 subject_name = subject_name,
                 "requiring public key for connections"
             );
+
             let subject_name =
                 parse_subject_alt_name(subject_name).or(Err(VerifierBuildError::InvalidSubject))?;
+            tracing::info!("ZZZZ adding subject name to verifier: {:?}", subject_name);
             let certificate = create_unsigned_certificate(&public_key, subject_name);
-
+            tracing::info!("ZZZZ adding certificate to verifier: {:?}", certificate);
             trust_root
                 .add(certificate)
                 .expect("generated certificate is valid");
-
+            tracing::info!("ZZZZ adding trusted root to verifier");
             Some(public_key)
         } else {
             None
         };
 
+        tracing::info!("ZZZZ adding add_parsable_certificates: {:?}", roots);
+
         trust_root.add_parsable_certificates(roots);
-        let inner: Arc<_> = WebPkiServerVerifier::builder(trust_root.into()).build()?;
+        tracing::info!("ZZZZ adding add_parsable_certificates done");
+        // Print all the features enabled in the current environment
+        tracing::info!("ZZZZ features: {:?}", std::env::vars());
+        let rrr = WebPkiServerVerifier::builder(trust_root.into()).build();
+        tracing::info!("ZZZZ builder result: {:?}", rrr);
+        let inner: Arc<_> = rrr?;
+        tracing::info!("ZZZZ builder done");
         let inner = Arc::into_inner(inner).expect("uniquely owned arc");
 
         Ok(Self { inner, public_key })

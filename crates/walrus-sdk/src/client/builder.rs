@@ -162,9 +162,14 @@ impl ClientBuilder {
         }
 
         let verifier = if let Some(public_key) = self.server_public_key {
-            TlsCertificateVerifier::new_with_pinned_public_key(public_key, host, self.roots)
-                .map_err(BuildErrorKind::Tls)?
+            tracing::info!("ZZZZ adding public key to verifier: {:?}", public_key);
+            let r =
+                TlsCertificateVerifier::new_with_pinned_public_key(public_key, host, self.roots)
+                    .map_err(BuildErrorKind::Tls);
+            tracing::info!("ZZZZ adding public key to verifier result: {:?}", r);
+            r?
         } else {
+            tracing::info!("ZZZZ adding no public key to verifier");
             TlsCertificateVerifier::new(self.roots).map_err(BuildErrorKind::Tls)?
         };
 

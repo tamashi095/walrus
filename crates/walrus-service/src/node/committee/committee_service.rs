@@ -740,6 +740,7 @@ async fn add_members_from_committee<T: NodeService>(
     let mut n_created = 0usize;
 
     for member in committee.members() {
+        tracing::info!("ZZZZ adding member to services: {:?}", member.public_key);
         let public_key = &member.public_key;
         match service_factory.make_service(member, encoding_config).await {
             Ok(service) => {
@@ -764,6 +765,7 @@ async fn add_members_from_committee<T: NodeService>(
                 );
             }
         }
+        tracing::info!("ZZZZ added {} services", n_created);
     }
 
     walrus_core::ensure!(
