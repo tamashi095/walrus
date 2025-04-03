@@ -178,7 +178,7 @@ pub enum QuiltError {
     TooManyBlobs(usize, usize),
     /// The quilt is too large.
     #[error("the quilt is too large: {0}")]
-    TooLargeQuilt(usize),
+    QuiltOversize(String),
     /// Index is out of bounds.
     #[error("index is out of bounds: {0} > max index: {1}")]
     IndexOutOfBounds(usize, usize),
@@ -214,8 +214,8 @@ impl QuiltError {
         Self::TooManyBlobs(num_blobs, max_blobs)
     }
     /// The quilt is too large.
-    pub fn too_large_quilt(quilt_size: usize) -> Self {
-        Self::TooLargeQuilt(quilt_size)
+    pub fn quilt_oversize(reason: String) -> Self {
+        Self::QuiltOversize(reason)
     }
     /// Index is out of bounds.
     pub fn index_out_of_bounds(index: usize, max_index: usize) -> Self {

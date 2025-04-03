@@ -396,7 +396,12 @@ impl<'a> QuiltEncoder<'a> {
         let mut blob_with_ids = Vec::new();
         for blob_with_identifier in self.blobs.iter() {
             let encoder = BlobEncoder::new(self.config.clone(), blob_with_identifier.blob)
-                .map_err(|_| QuiltError::too_large_quilt(blob_with_identifier.blob.len()))?;
+                .map_err(|_| {
+                    QuiltError::quilt_oversize(format!(
+                        "blob is too large: {}",
+                        blob_with_identifier.blob.len()
+                    ))
+                })?;
             let metadata = encoder.compute_metadata();
             blob_with_ids.push((blob_with_identifier, *metadata.blob_id()));
         }
@@ -418,37 +423,31 @@ impl<'a> QuiltEncoder<'a> {
 
         let mut quilt_index = QuiltIndex { quilt_blocks };
 
-        // Get just the serialized size without actually serializing.
+        // Get the serialized quilt index size.
         let serialized_index_size = bcs::serialized_size(&quilt_index).map_err(|e| {
-            QuiltError::quilt_index_der_ser_error(format!("failed to serialize quilt index {}", e))
+            QuiltError::quilt_index_der_ser_error(format!("failed to serialize quilt index: {}", e))
         })? as u64;
 
         // Calculate total size including the 8-byte size prefix.
         let index_total_size = QUILT_INDEX_SIZE_PREFIX_SIZE + serialized_index_size as usize;
 
-        // Calculate blob sizes for symbol size computation.
-        let blob_sizes: Vec<usize> = blob_with_ids
-            .iter()
-            .map(|(bwd, _)| bwd.blob.len())
+        // Collect blob sizes for symbol size computation.
+        let all_sizes: Vec<usize> = core::iter::once(index_total_size)
+            .chain(blob_with_ids.iter().map(|(bwd, _)| bwd.blob.len()))
             .collect();
-        let total_blob_size = blob_sizes.iter().sum::<usize>();
-        let mut all_sizes = vec![index_total_size];
-        all_sizes.extend(blob_sizes);
 
-        // TODO(heliu): We need to consider the quilt size instead of the total blob size.
         let required_alignment = self.config.encoding_type().required_alignment() as usize;
-        let symbol_size = compute_symbol_size(&all_sizes, n_columns, n_rows, required_alignment)
-            .map_err(|_| QuiltError::too_large_quilt(total_blob_size))?;
+        let symbol_size = compute_symbol_size(&all_sizes, n_columns, n_rows, required_alignment)?;
 
         let row_size = symbol_size * n_columns;
         let column_size = symbol_size * n_rows;
         let mut data = vec![0u8; row_size * n_rows];
 
         // Calculate columns needed for the index.
-        let index_cols_needed = index_total_size.div_ceil(symbol_size * n_rows);
+        let index_cols_needed = index_total_size.div_ceil(column_size);
         let mut current_col = index_cols_needed;
 
-        // First pass: Fill data with actual blobs and collect quilt blocks.
+        // First pass: Fill data with actual blobs and populate quilt blocks.
         for (i, (blob_with_identifier, blob_id)) in blob_with_ids.iter().enumerate() {
             let mut cur = current_col;
             let cols_needed = blob_with_identifier.blob.len().div_ceil(column_size);
@@ -458,9 +457,8 @@ impl<'a> QuiltEncoder<'a> {
                 cols_needed,
                 cur
             );
-            if cur + cols_needed > n_columns {
-                return Err(QuiltError::too_large_quilt(total_blob_size));
-            }
+
+            assert!(cur + cols_needed <= n_columns);
 
             // Copy blob data into columns.
             let mut row = 0;
@@ -534,8 +532,10 @@ impl<'a> QuiltEncoder<'a> {
 
         tracing::debug!("starting to encode blob with metadata");
         let quilt = self.construct_quilt()?;
-        let encoder = BlobEncoder::new(self.config.clone(), quilt.data.as_slice())
-            .map_err(|_| QuiltError::too_large_quilt(quilt.data.len()))?;
+        let encoder =
+            BlobEncoder::new(self.config.clone(), quilt.data.as_slice()).map_err(|_| {
+                QuiltError::quilt_oversize(format!("quilt is too large: {}", quilt.data.len()))
+            })?;
 
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
 
@@ -586,6 +586,13 @@ fn compute_symbol_size(
     min_val = cmp::max(min_val, QUILT_INDEX_SIZE_PREFIX_SIZE.div_ceil(nr));
 
     let symbol_size = min_val.div_ceil(required_alignment) * required_alignment;
+    if symbol_size > u16::MAX as usize {
+        return Err(QuiltError::quilt_oversize(format!(
+            "the resulting symbol size {} is too large, remove some blobs",
+            symbol_size
+        )));
+    }
+
     Ok(symbol_size)
 }
 
