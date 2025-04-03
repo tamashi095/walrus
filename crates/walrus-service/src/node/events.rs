@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Service functionality for downloading and processing events from the full node.
@@ -13,13 +13,13 @@ use std::{
 
 use anyhow::bail;
 use byteorder::{BigEndian, ReadBytesExt, WriteBytesExt};
+use checkpoint_downloader::AdaptiveDownloaderConfig;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationSeconds};
 use sui_rpc_api::Client;
 use sui_types::{event::EventID, messages_checkpoint::CheckpointSequenceNumber};
 use walrus_core::{BlobId, Epoch};
 use walrus_sui::types::{BlobEvent, ContractEvent};
-use walrus_utils::checkpoint_downloader::AdaptiveDownloaderConfig;
 
 pub mod event_blob;
 pub mod event_blob_writer;
@@ -35,6 +35,10 @@ pub struct EventProcessorConfig {
     #[serde_as(as = "DurationSeconds")]
     #[serde(rename = "pruning_interval_secs")]
     pub pruning_interval: Duration,
+    /// The timeout for the RPC client.
+    #[serde_as(as = "DurationSeconds")]
+    #[serde(rename = "checkpoint_request_timeout_secs")]
+    pub checkpoint_request_timeout: Duration,
     /// Configuration options for the pipelined checkpoint fetcher.
     pub adaptive_downloader_config: AdaptiveDownloaderConfig,
     /// Minimum checkpoint lag threshold for event blob based catch-up.
@@ -50,6 +54,7 @@ impl Default for EventProcessorConfig {
     fn default() -> Self {
         Self {
             pruning_interval: Duration::from_secs(3600),
+            checkpoint_request_timeout: Duration::from_secs(60),
             adaptive_downloader_config: Default::default(),
             event_stream_catchup_min_checkpoint_lag: 20_000,
         }
@@ -164,12 +169,6 @@ impl PositionedStreamEvent {
     /// Returns true if the element is a marker event that indicates the end of a checkpoint.
     pub fn is_end_of_checkpoint_marker(&self) -> bool {
         matches!(self.element, EventStreamElement::CheckpointBoundary)
-    }
-
-    /// Returns true if the element is an event that indicates the end of an epoch.
-    pub fn is_end_of_epoch_event(&self) -> bool {
-        // TODO: Update this once we add an epoch change event
-        false
     }
 }
 
@@ -308,13 +307,18 @@ async fn check_experimental_rest_endpoint_exists(client: Client) -> anyhow::Resu
     // cyclic dependency errors
     let latest_checkpoint = client.get_latest_checkpoint().await?;
     let mut total_remaining_attempts = 5;
-    while client
+    while let Err(e) = client
         .get_full_checkpoint(latest_checkpoint.sequence_number)
         .await
-        .is_err()
     {
         total_remaining_attempts -= 1;
         if total_remaining_attempts == 0 {
+            tracing::error!(
+                error = ?e,
+                "failed to get full checkpoint after {} attempts. \
+                REST endpoint may not be available.",
+                5
+            );
             return Ok(false);
         }
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;

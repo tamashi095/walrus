@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
@@ -269,14 +269,15 @@ impl ProtocolCommands for TargetProtocol {
 
                 let run_command = [
                     format!("./{BINARY_PATH}/walrus-stress"),
-                    format!("--write-load {load_per_client}"),
-                    format!("--read-load {load_per_client}"),
                     format!("--config-path {}", client_config_path.display()),
-                    format!("--n-clients {number_of_tasks}"),
                     format!(
                         "--metrics-port {}",
                         parameters.client_parameters.metrics_port
                     ),
+                    String::from("stress"),
+                    format!("--write-load {load_per_client}"),
+                    format!("--read-load {load_per_client}"),
+                    format!("--n-clients {number_of_tasks}"),
                     format!(
                         "--sui-network {}",
                         parameters.node_parameters.sui_network.r#type()

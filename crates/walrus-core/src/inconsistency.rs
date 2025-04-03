@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Proofs for inconsistent encoding.
@@ -103,8 +103,6 @@ impl<T: EncodingAxis, U: MerkleAuth> InconsistencyProof<T, U> {
     /// Creates a new inconsistency proof from the provided index and recovery symbols.
     ///
     /// This does *not* verify that the proof is correct. Use [`Self::verify`] for that.
-    // TODO(mlegner): Include the minimal number of recovery symbols that suffice to decode the
-    // sliver. This includes filtering out invalid recovery symbols. (#351)
     pub fn new(
         target_sliver_index: SliverIndex,
         recovery_symbols: Vec<RecoverySymbol<T, U>>,

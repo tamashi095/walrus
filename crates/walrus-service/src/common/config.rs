@@ -1,14 +1,21 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Common configuration module.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use walrus_sui::{
-    client::{contract_config::ContractConfig, SuiClientError, SuiContractClient, SuiReadClient},
+    client::{
+        contract_config::ContractConfig,
+        rpc_config::RpcFallbackConfig,
+        SuiClientError,
+        SuiClientMetricSet,
+        SuiContractClient,
+        SuiReadClient,
+    },
     config::WalletConfig,
 };
 use walrus_utils::backoff::ExponentialBackoffConfig;
@@ -37,8 +44,14 @@ pub struct SuiConfig {
     #[serde(default, skip_serializing_if = "defaults::is_default")]
     pub backoff_config: ExponentialBackoffConfig,
     /// Gas budget for transactions.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
     pub gas_budget: Option<u64>,
+    /// The config for rpc fallback.
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
+    pub rpc_fallback_config: Option<RpcFallbackConfig>,
+    /// Additional RPC endpoints to use for the event processor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_rpc_endpoints: Vec<String>,
 }
 
 impl SuiConfig {
@@ -53,14 +66,28 @@ impl SuiConfig {
     }
 
     /// Creates a [`SuiContractClient`] based on the configuration.
-    pub async fn new_contract_client(&self) -> Result<SuiContractClient, SuiClientError> {
-        SuiContractClient::new(
-            WalletConfig::load_wallet_context(Some(&self.wallet_config))?,
-            &self.contract_config,
-            self.backoff_config.clone(),
-            self.gas_budget,
-        )
-        .await
+    pub async fn new_contract_client(
+        &self,
+        metrics: Option<Arc<SuiClientMetricSet>>,
+    ) -> Result<SuiContractClient, SuiClientError> {
+        if let Some(metrics) = metrics {
+            SuiContractClient::new_from_wallet_with_metrics(
+                WalletConfig::load_wallet_context(Some(&self.wallet_config))?,
+                &self.contract_config,
+                self.backoff_config.clone(),
+                self.gas_budget,
+                metrics,
+            )
+            .await
+        } else {
+            SuiContractClient::new(
+                WalletConfig::load_wallet_context(Some(&self.wallet_config))?,
+                &self.contract_config,
+                self.backoff_config.clone(),
+                self.gas_budget,
+            )
+            .await
+        }
     }
 }
 
@@ -71,6 +98,8 @@ impl From<&SuiConfig> for SuiReaderConfig {
             contract_config: config.contract_config.clone(),
             event_polling_interval: config.event_polling_interval,
             backoff_config: config.backoff_config.clone(),
+            rpc_fallback_config: config.rpc_fallback_config.clone(),
+            additional_rpc_endpoints: config.additional_rpc_endpoints.clone(),
         }
     }
 }
@@ -96,6 +125,12 @@ pub struct SuiReaderConfig {
     /// The configuration for the backoff strategy used for retries.
     #[serde(default, skip_serializing_if = "defaults::is_default")]
     pub backoff_config: ExponentialBackoffConfig,
+    /// The URL of the checkpoint download fallback endpoint.
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
+    pub rpc_fallback_config: Option<RpcFallbackConfig>,
+    /// Additional RPC endpoints to use for the event processor.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub additional_rpc_endpoints: Vec<String>,
 }
 
 impl SuiReaderConfig {
@@ -127,5 +162,12 @@ pub mod defaults {
         // The `cfg!(test)` check is there to allow serializing the full configuration, specifically
         // to generate the example configuration files.
         !cfg!(test) && t == &T::default()
+    }
+
+    /// Returns true iff the value is `None` and we don't run in test mode.
+    pub fn is_none<T>(t: &Option<T>) -> bool {
+        // The `cfg!(test)` check is there to allow serializing the full configuration, specifically
+        // to generate the example configuration files.
+        !cfg!(test) && t.is_none()
     }
 }

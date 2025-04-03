@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
@@ -177,7 +177,7 @@ impl<P: ProtocolCommands + ProtocolMetrics> Orchestrator<P> {
             // * sysstat - for getting disk stats
             // * iftop - for getting network stats
             // * libssl-dev - Required to compile the orchestrator
-            // TODO(alberto): Remove libssl-dev dependency #221
+            // TODO(alberto): Remove libssl-dev dependency (#221).
             "sudo apt-get -y install build-essential sysstat iftop libssl-dev",
             "sudo apt-get -y install linux-tools-common linux-tools-generic pkg-config",
             // Install rust (non-interactive).

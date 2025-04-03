@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Facilities to deploy a Walrus testbed.
@@ -26,7 +26,7 @@ use walrus_core::{
     ShardIndex,
 };
 use walrus_sui::{
-    client::SuiContractClient,
+    client::{rpc_config::RpcFallbackConfig, SuiContractClient},
     config::{load_wallet_context_from_path, WalletConfig},
     system_setup::InitSystemParams,
     test_utils::system_setup::{
@@ -503,6 +503,7 @@ pub async fn deploy_walrus_contract(
 }
 
 /// Create client configurations for the testbed and fund the client wallet with SUI and WAL.
+#[allow(clippy::too_many_arguments)]
 pub async fn create_client_config(
     system_ctx: &SystemContext,
     working_dir: &Path,
@@ -511,19 +512,20 @@ pub async fn create_client_config(
     admin_contract_client: &mut SuiContractClient,
     exchange_objects: Vec<ObjectID>,
     sui_amount: u64,
+    wallet_name: &str,
 ) -> anyhow::Result<client::Config> {
     // Create the working directory if it does not exist
     fs::create_dir_all(working_dir).expect("Failed to create working directory");
 
     // Create wallet for the client
-    let client_wallet_path = working_dir.join("sui_client.yaml");
-    let mut client_wallet = create_wallet(
-        &client_wallet_path,
+    let sui_client_wallet_path = working_dir.join(format!("{}.yaml", wallet_name));
+    let mut sui_client_wallet_context = create_wallet(
+        &sui_client_wallet_path,
         sui_network.env(),
-        Some("sui_client.keystore"),
+        Some(&format!("{}.keystore", wallet_name)),
     )?;
 
-    let client_address = client_wallet.active_address()?;
+    let client_address = sui_client_wallet_context.active_address()?;
 
     // Get Sui coins from faucet or the admin wallet.
     get_sui_from_wallet_or_faucet(
@@ -542,15 +544,15 @@ pub async fn create_client_config(
         .await?;
 
     let wallet_path = if let Some(final_directory) = set_config_dir {
-        replace_keystore_path(&client_wallet_path, final_directory)
+        replace_keystore_path(&sui_client_wallet_path, final_directory)
             .context("replacing the keystore path failed")?;
         final_directory.join(
-            client_wallet_path
+            sui_client_wallet_path
                 .file_name()
                 .expect("file name should exist"),
         )
     } else {
-        client_wallet_path
+        sui_client_wallet_path
     };
 
     let contract_config = system_ctx.contract_config();
@@ -573,6 +575,7 @@ pub async fn create_backup_config(
     working_dir: &Path,
     database_url: &str,
     rpc: String,
+    rpc_fallback_config: Option<RpcFallbackConfig>,
 ) -> anyhow::Result<BackupConfig> {
     Ok(BackupConfig::new_with_defaults(
         working_dir.join("backup"),
@@ -581,6 +584,8 @@ pub async fn create_backup_config(
             contract_config: system_ctx.contract_config(),
             backoff_config: ExponentialBackoffConfig::default(),
             event_polling_interval: defaults::polling_interval(),
+            rpc_fallback_config,
+            additional_rpc_endpoints: vec![],
         },
         database_url.to_string(),
     ))
@@ -597,6 +602,7 @@ pub async fn create_storage_node_configs(
     set_config_dir: Option<&Path>,
     set_db_path: Option<&Path>,
     faucet_cooldown: Option<Duration>,
+    rpc_fallback_config: Option<RpcFallbackConfig>,
     admin_contract_client: &mut SuiContractClient,
     use_legacy_event_provider: bool,
     disable_event_blob_writer: bool,
@@ -705,6 +711,8 @@ pub async fn create_storage_node_configs(
             wallet_config: WalletConfig::from_path(wallet_path),
             backoff_config: ExponentialBackoffConfig::default(),
             gas_budget: None,
+            rpc_fallback_config: rpc_fallback_config.clone(),
+            additional_rpc_endpoints: vec![],
         });
 
         let storage_path = set_db_path
@@ -754,6 +762,8 @@ pub async fn create_storage_node_configs(
             config_synchronizer: Default::default(),
             storage_node_cap: None,
             num_uncertified_blob_threshold: Some(10),
+            balance_check: Default::default(),
+            thread_pool: Default::default(),
         });
     }
 

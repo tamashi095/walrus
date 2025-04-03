@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 module walrus::staking_inner;
@@ -33,8 +33,9 @@ use walrus::{
 /// The minimum amount of staked WAL required to be included in the active set.
 const MIN_STAKE: u64 = 0;
 
+// TODO: Remove once solutions are in place to prevent hitting move execution limits (#935).
+//
 /// Temporary upper limit for the number of storage nodes.
-/// TODO: Remove once solutions are in place to prevent hitting move execution limits (#935).
 const TEMP_ACTIVE_SET_SIZE_LIMIT: u16 = 111;
 
 /// The number of nodes from which a flat shards limit is applied.
@@ -440,7 +441,7 @@ public(package) fun destroy_empty_pool(
     self.pools.remove(node_id).destroy_empty()
 }
 
-/// Stakes the given amount of `T` with the pool, returning the `StakedWal`.
+/// Stakes the given amount of `WAL` with the pool, returning the `StakedWal`.
 public(package) fun stake_with_pool(
     self: &mut StakingInnerV1,
     to_stake: Coin<WAL>,

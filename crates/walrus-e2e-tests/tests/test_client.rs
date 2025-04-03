@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Contains end-to-end tests for the Walrus client interacting with a Walrus test cluster.
@@ -793,8 +793,6 @@ async fn test_delete_blob(blobs_to_create: u32) -> TestResult {
         .await?;
     assert_eq!(blobs.len(), 1);
 
-    // TODO(mlegner): Check correct handling on nodes.
-
     Ok(())
 }
 
@@ -862,6 +860,7 @@ async fn test_blocklist() -> TestResult {
             None,
             ClientCommunicationConfig::default_for_test(),
             false,
+            None,
         )
         .await?;
     let client = client.as_ref();
@@ -1099,6 +1098,7 @@ async fn test_repeated_shard_move() -> TestResult {
             None,
             ClientCommunicationConfig::default_for_test(),
             false,
+            None,
         )
         .await?;
 
@@ -1481,6 +1481,7 @@ async fn test_quorum_contract_upgrade() -> TestResult {
             false,
             Some(contract_dir.path().to_path_buf()),
             true,
+            None,
         )
         .await?;
 
@@ -1916,6 +1917,7 @@ async fn test_shard_move_out_and_back_in_immediately() -> TestResult {
             None,
             ClientCommunicationConfig::default_for_test(),
             false,
+            None,
         )
         .await?;
 

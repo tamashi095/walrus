@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Client to call Walrus move functions from rust.
@@ -571,12 +571,9 @@ impl SuiReadClient {
             .select_coins(owner_address, coin_type_option, min_balance.into(), exclude)
             .await
             .map_err(|err| match err {
-                sui_sdk::error::Error::InsufficientFund {
-                    address: _,
-                    amount: _,
-                } => match coin_type {
+                sui_sdk::error::Error::InsufficientFund { address: _, amount } => match coin_type {
                     CoinType::Wal => SuiClientError::NoCompatibleWalCoins,
-                    CoinType::Sui => SuiClientError::NoCompatibleGasCoins,
+                    CoinType::Sui => SuiClientError::NoCompatibleGasCoins(Some(amount)),
                 },
                 err => SuiClientError::from(err),
             })
@@ -1214,12 +1211,10 @@ where
 
                 // Do an exponential backoff until `MAX_POLLING_INTERVAL` is reached
                 // unless `initial_polling_interval` is larger
-                // TODO(karl): Stop retrying and switch to a different full node.
-                // Ideally, we cut off the stream after retrying
-                // for a few times and then switch to a different full node.
-                // This logic would need to be handled by a consumer of the
+                // TODO (WAL-213): Stop retrying and switch to a different full node.
+                // Ideally, we cut off the stream after retrying for a few times and then switch to
+                // a different full node. This logic would need to be handled by a consumer of the
                 // stream. Until that is in place, retry indefinitely.
-                // See https://github.com/MystenLabs/walrus/issues/144.
                 polling_interval = polling_interval
                     .saturating_mul(2)
                     .min(MAX_POLLING_INTERVAL)

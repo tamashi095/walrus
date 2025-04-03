@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Contains end-to-end tests for the epoch change mechanism.
@@ -31,6 +31,7 @@ async fn nodes_drive_epoch_change() -> walrus_test_utils::Result {
             None,
             ClientCommunicationConfig::default_for_test(),
             false,
+            None,
         )
         .await?;
 

@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! CLI tool to generate Walrus configurations and deploy testbeds.
@@ -23,7 +23,10 @@ use walrus_service::{
     testbed,
     utils::version,
 };
-use walrus_sui::{client::UpgradeType, utils::SuiNetwork};
+use walrus_sui::{
+    client::{rpc_config::RpcFallbackConfigArgs, UpgradeType},
+    utils::SuiNetwork,
+};
 
 const VERSION: &str = version!();
 #[derive(Parser)]
@@ -216,6 +219,12 @@ struct GenerateDryRunConfigsArgs {
     /// The amount of SUI (in MIST) to send to all created wallets.
     #[clap(long, default_value_t = 1_000_000_000, requires = "admin_wallet_path")]
     sui_amount: u64,
+    /// The config for rpc fallback.
+    #[clap(flatten)]
+    rpc_fallback_config_args: Option<RpcFallbackConfigArgs>,
+    /// Any extra client wallets to generate. Each will get 1 Million WAL and some Sui.
+    #[clap(long)]
+    extra_client_wallets: Option<String>,
 }
 
 #[derive(Debug, Clone, clap::Args)]
@@ -430,8 +439,10 @@ mod commands {
             use_legacy_event_provider,
             disable_event_blob_writer,
             backup_database_url,
+            rpc_fallback_config_args,
             admin_wallet_path,
             sui_amount,
+            extra_client_wallets,
         }: GenerateDryRunConfigsArgs,
     ) -> anyhow::Result<()> {
         utils::init_tracing_subscriber()?;
@@ -464,21 +475,15 @@ mod commands {
             .new_contract_client(admin_wallet, ExponentialBackoffConfig::default(), None)
             .await?;
 
-        let client_config = create_client_config(
-            &testbed_config.system_ctx,
+        create_client_wallets(
+            &testbed_config,
             working_dir.as_path(),
-            testbed_config.sui_network.clone(),
             set_config_dir.as_deref(),
             &mut admin_contract_client,
-            testbed_config.exchange_object.into_iter().collect(),
             sui_amount,
+            extra_client_wallets,
         )
         .await?;
-        let serialized_client_config =
-            serde_yaml::to_string(&client_config).context("Failed to serialize client configs")?;
-        let client_config_path = working_dir.join("client_config.yaml");
-        fs::write(client_config_path, serialized_client_config)
-            .context("Failed to write client configs")?;
 
         if let Some(database_url) = backup_database_url {
             let backup_config = create_backup_config(
@@ -486,6 +491,9 @@ mod commands {
                 working_dir.as_path(),
                 database_url.as_str(),
                 testbed_config.sui_network.env().rpc,
+                rpc_fallback_config_args
+                    .as_ref()
+                    .and_then(|args| args.to_config()),
             )
             .await?;
             let serialized_backup_config = serde_yaml::to_string(&backup_config)
@@ -505,6 +513,9 @@ mod commands {
             set_config_dir.as_deref(),
             set_db_path.as_deref(),
             faucet_cooldown,
+            rpc_fallback_config_args
+                .as_ref()
+                .and_then(|args| args.to_config()),
             &mut admin_contract_client,
             use_legacy_event_provider,
             disable_event_blob_writer,
@@ -552,6 +563,57 @@ mod commands {
 
         contract_client.migrate_contracts(new_package_id).await?;
         println!("Successfully upgraded the system contract:\npackage_id: {new_package_id}");
+        Ok(())
+    }
+
+    /// Helper to create client wallets as requested.
+    async fn create_client_wallets(
+        testbed_config: &TestbedConfig,
+        working_dir: &Path,
+        set_config_dir: Option<&Path>,
+        admin_contract_client: &mut SuiContractClient,
+        sui_amount: u64,
+        extra_client_wallets: Option<String>,
+    ) -> anyhow::Result<()> {
+        // The "sui_client" wallet is always created, and we add on any extra client wallets as
+        // requested.
+        // TODO: This is a bit of technical debt. We should probably not have implicit wallets
+        // created. It would be best if all callsites passed their desired client wallets in. See
+        // WAL-737.
+        let mut client_wallets = vec![(
+            String::from("sui_client"),
+            String::from("client_config.yaml"),
+        )];
+        if let Some(extra_client_wallets) = extra_client_wallets {
+            client_wallets.extend(
+                extra_client_wallets
+                    .split(',')
+                    .map(|x| (String::from(x), format!("client_config_{x}.yaml"))),
+            );
+        }
+        for (sui_wallet_name, walrus_config_filename) in client_wallets {
+            tracing::debug!(
+                sui_wallet_name,
+                walrus_config_filename,
+                "creating client wallet configuration"
+            );
+            let client_config = create_client_config(
+                &testbed_config.system_ctx,
+                working_dir,
+                testbed_config.sui_network.clone(),
+                set_config_dir,
+                admin_contract_client,
+                testbed_config.exchange_object.into_iter().collect(),
+                sui_amount,
+                &sui_wallet_name,
+            )
+            .await?;
+            let serialized_client_config = serde_yaml::to_string(&client_config)
+                .context("Failed to serialize client configs")?;
+            let client_config_path = working_dir.join(walrus_config_filename);
+            fs::write(client_config_path, serialized_client_config)
+                .context("Failed to write client configs")?;
+        }
         Ok(())
     }
 }

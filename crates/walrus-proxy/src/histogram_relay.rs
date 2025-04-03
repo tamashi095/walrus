@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 use std::{
     collections::VecDeque,
@@ -193,7 +193,7 @@ fn extract_histograms(data: Vec<MetricFamily>) -> impl Iterator<Item = MetricFam
         });
 
         let only_histograms = protobuf::RepeatedField::from_iter(metrics);
-        if only_histograms.len() == 0 {
+        if only_histograms.is_empty() {
             return None;
         }
 

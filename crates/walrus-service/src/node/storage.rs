@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use core::fmt::{self, Display};
@@ -8,11 +8,14 @@ use std::{
     ops::Bound::{Excluded, Included},
     path::Path,
     sync::Arc,
+    time::Instant,
 };
 
 use blob_info::{BlobInfoIterator, PerObjectBlobInfo};
 use event_cursor_table::EventIdWithProgress;
 use itertools::Itertools;
+use metrics::{CommonDatabaseMetrics, Labels, OperationType};
+use prometheus::Registry;
 use rocksdb::Options;
 use serde::{Deserialize, Serialize};
 use sui_sdk::types::event::EventID;
@@ -34,11 +37,21 @@ use walrus_sui::types::BlobEvent;
 
 use self::{
     blob_info::{BlobInfo, BlobInfoApi, BlobInfoTable},
+    constants::{
+        metadata_cf_name,
+        node_status_cf_name,
+        pending_recover_slivers_column_family_name,
+        primary_slivers_column_family_name,
+        secondary_slivers_column_family_name,
+        shard_status_column_family_name,
+        shard_sync_progress_column_family_name,
+    },
     event_cursor_table::EventCursorTable,
 };
 use super::errors::{ShardNotAssigned, SyncShardServiceError};
 
 pub(crate) mod blob_info;
+pub(crate) mod constants;
 
 mod database_config;
 pub use database_config::DatabaseConfig;
@@ -47,13 +60,28 @@ mod event_cursor_table;
 pub(super) use event_cursor_table::EventProgress;
 
 mod event_sequencer;
+mod metrics;
 mod shard;
 
-pub(crate) use shard::{ShardStatus, ShardStorage};
+pub(crate) use shard::{
+    pending_recover_slivers_column_family_options,
+    primary_slivers_column_family_options,
+    secondary_slivers_column_family_options,
+    shard_status_column_family_options,
+    shard_sync_progress_column_family_options,
+    PrimarySliverData,
+    SecondarySliverData,
+    ShardStatus,
+    ShardStorage,
+};
 
-/// Error returned if a requested operation would block.
-#[derive(Debug, Clone, Copy)]
-pub struct WouldBlockError;
+pub(crate) fn metadata_options(db_config: &DatabaseConfig) -> Options {
+    db_config.metadata().to_options()
+}
+
+pub(crate) fn node_status_options(db_config: &DatabaseConfig) -> Options {
+    db_config.node_status().to_options()
+}
 
 /// The status of the node.
 //
@@ -117,6 +145,8 @@ pub struct Storage {
     event_cursor: EventCursorTable,
     shards: Arc<RwLock<HashMap<ShardIndex, Arc<ShardStorage>>>>,
     config: DatabaseConfig,
+    metrics: Arc<CommonDatabaseMetrics>,
+    metrics_registry: Registry,
 }
 
 /// An opaque lock object that can be required to later access the shards map.
@@ -135,14 +165,12 @@ impl StorageShardLock {
 }
 
 impl Storage {
-    const NODE_STATUS_COLUMN_FAMILY_NAME: &'static str = "node_status";
-    const METADATA_COLUMN_FAMILY_NAME: &'static str = "metadata";
-
     /// Opens the storage database located at the specified path, creating the database if absent.
     pub fn open(
         path: &Path,
         db_config: DatabaseConfig,
         metrics_config: MetricConf,
+        registry: Registry,
     ) -> Result<Self, anyhow::Error> {
         let mut db_opts = Options::from(&db_config.global);
         db_opts.create_missing_column_families(true);
@@ -161,17 +189,34 @@ impl Storage {
             .copied()
             .flat_map(|id| {
                 [
-                    ShardStorage::primary_slivers_column_family_options(id, &db_config),
-                    ShardStorage::secondary_slivers_column_family_options(id, &db_config),
-                    ShardStorage::shard_status_column_family_options(id, &db_config),
-                    ShardStorage::shard_sync_progress_column_family_options(id, &db_config),
-                    ShardStorage::pending_recover_slivers_column_family_options(id, &db_config),
+                    (
+                        primary_slivers_column_family_name(id),
+                        primary_slivers_column_family_options(&db_config),
+                    ),
+                    (
+                        secondary_slivers_column_family_name(id),
+                        secondary_slivers_column_family_options(&db_config),
+                    ),
+                    (
+                        shard_status_column_family_name(id),
+                        shard_status_column_family_options(&db_config),
+                    ),
+                    (
+                        shard_sync_progress_column_family_name(id),
+                        shard_sync_progress_column_family_options(&db_config),
+                    ),
+                    (
+                        pending_recover_slivers_column_family_name(id),
+                        pending_recover_slivers_column_family_options(&db_config),
+                    ),
                 ]
             })
             .collect::<Vec<_>>();
 
-        let (node_status_cf_name, node_status_options) = Self::node_status_options(&db_config);
-        let (metadata_cf_name, metadata_options) = Self::metadata_options(&db_config);
+        let node_status_cf_name = node_status_cf_name();
+        let node_status_options = node_status_options(&db_config);
+        let metadata_options = metadata_options(&db_config);
+        let metadata_cf_name = metadata_cf_name();
         let blob_info_column_families = BlobInfoTable::options(&db_config);
         let (event_cursor_cf_name, event_cursor_options) = EventCursorTable::options(&db_config);
 
@@ -216,7 +261,7 @@ impl Storage {
             existing_shards_ids
                 .into_iter()
                 .map(|id| {
-                    ShardStorage::create_or_reopen(id, &database, &db_config, None)
+                    ShardStorage::create_or_reopen(id, &database, &db_config, None, &registry)
                         .map(|shard| (id, Arc::new(shard)))
                 })
                 .collect::<Result<_, _>>()?,
@@ -230,6 +275,11 @@ impl Storage {
             event_cursor,
             shards,
             config: db_config,
+            metrics: Arc::new(CommonDatabaseMetrics::new_with_id(
+                &registry,
+                "storage".to_owned(),
+            )),
+            metrics_registry: registry,
         })
     }
 
@@ -268,24 +318,42 @@ impl Storage {
         mut locked_map: StorageShardLock,
         new_shards: &[ShardIndex],
     ) -> Result<(), TypedStoreError> {
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: "shards",
+            operation_name: OperationType::Create,
+            query_summary: "CREATE shards",
+            ..Labels::default()
+        };
+        tracing::info!(count = new_shards.len(), "creating storage for shards");
+
         for &shard_index in new_shards {
             match locked_map.shards_guard.entry(shard_index) {
                 Entry::Vacant(entry) => {
-                    let shard_storage = Arc::new(ShardStorage::create_or_reopen(
+                    let shard_storage = ShardStorage::create_or_reopen(
                         shard_index,
                         &self.database,
                         &self.config,
                         Some(ShardStatus::None),
-                    )?);
+                        &self.metrics_registry,
+                    )
+                    .inspect_err(|error| {
+                        self.metrics
+                            .observe_operation_duration(labels.with_error(error), start.elapsed());
+                    })?;
+
                     tracing::info!(
                         walrus.shard_index = %shard_index,
                         "successfully created storage for shard"
                     );
-                    entry.insert(shard_storage);
+                    entry.insert(Arc::new(shard_storage));
                 }
                 Entry::Occupied(_) => (),
             }
         }
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(Ok(&())), start.elapsed());
         Ok(())
     }
 
@@ -333,25 +401,13 @@ impl Storage {
     ///
     /// For each shard, the status is returned if it can be determined, otherwise, `None` is
     /// returned.
-    ///
-    /// Returns an error if the operation would block.
-    pub fn try_list_shard_status(
-        &self,
-    ) -> Result<HashMap<ShardIndex, Option<ShardStatus>>, WouldBlockError> {
-        let shards = match self.shards.try_read() {
-            Ok(shards) => shards,
-            Err(_) => {
-                tracing::debug!("try_list_shard_status would block");
-                return Err(WouldBlockError);
-            }
-        };
+    pub async fn list_shard_status(&self) -> HashMap<ShardIndex, Option<ShardStatus>> {
+        let shards = self.shards.read().await;
 
-        let status_list = shards
+        shards
             .iter()
             .map(|(shard, storage)| (*shard, storage.status().ok()))
-            .collect();
-
-        Ok(status_list)
+            .collect()
     }
 
     /// Store the verified metadata without updating blob info. This is only
@@ -390,11 +446,23 @@ impl Storage {
         blob_id: &BlobId,
         metadata: &BlobMetadata,
     ) -> Result<(), TypedStoreError> {
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: metadata_cf_name(),
+            operation_name: OperationType::Insert,
+            query_summary: "INSERT metadata BY blob_id, UPDATE blob_info",
+            ..Default::default()
+        };
+
         let mut batch = self.metadata.batch();
         batch.insert_batch(&self.metadata, [(blob_id, metadata)])?;
         self.blob_info
             .set_metadata_stored(&mut batch, blob_id, true)?;
-        batch.write()
+        let response = batch.write();
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+        response
     }
 
     /// Returns the blob info for `blob_id`.
@@ -483,9 +551,20 @@ impl Storage {
         &self,
         blob_id: &BlobId,
     ) -> Result<Option<VerifiedBlobMetadataWithId>, TypedStoreError> {
-        Ok(self
-            .metadata
-            .get(blob_id)?
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: metadata_cf_name(),
+            operation_name: OperationType::Get,
+            query_summary: "GET metadata BY blob_id",
+            ..Labels::default()
+        };
+
+        let response = self.metadata.get(blob_id);
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+
+        Ok(response?
             .map(|inner| VerifiedBlobMetadataWithId::new_verified_unchecked(*blob_id, inner)))
     }
 
@@ -555,20 +634,6 @@ impl Storage {
         }
 
         Ok(shards_with_sliver_pairs)
-    }
-
-    fn node_status_options(db_config: &DatabaseConfig) -> (&'static str, Options) {
-        (
-            Self::NODE_STATUS_COLUMN_FAMILY_NAME,
-            db_config.node_status().to_options(),
-        )
-    }
-
-    fn metadata_options(db_config: &DatabaseConfig) -> (&'static str, Options) {
-        (
-            Self::METADATA_COLUMN_FAMILY_NAME,
-            db_config.metadata().to_options(),
-        )
     }
 
     /// Returns the shards currently present in the storage.
@@ -683,14 +748,14 @@ pub(crate) mod tests {
         PermanentBlobInfoV1,
         ValidBlobInfoV1,
     };
-    use prometheus::Registry;
-    use shard::{
+    use constants::{
         pending_recover_slivers_column_family_name,
         primary_slivers_column_family_name,
         secondary_slivers_column_family_name,
         shard_status_column_family_name,
         shard_sync_progress_column_family_name,
     };
+    use prometheus::Registry;
     use tempfile::TempDir;
     use tokio::runtime::Runtime;
     use walrus_core::{
@@ -1111,6 +1176,7 @@ pub(crate) mod tests {
                 directory.path(),
                 DatabaseConfig::default(),
                 MetricConf::default(),
+                Registry::default(),
             )?;
 
             for shard_id in [SHARD_INDEX, OTHER_SHARD_INDEX] {
@@ -1149,6 +1215,7 @@ pub(crate) mod tests {
                 directory.path(),
                 DatabaseConfig::default(),
                 MetricConf::default(),
+                Registry::default(),
             )?;
 
             // Check that the shard status is restored correctly.
@@ -1183,49 +1250,42 @@ pub(crate) mod tests {
         let test_shard_index = ShardIndex(123);
         let storage = empty_storage().await;
 
-        let primary_cfs = ShardStorage::primary_slivers_column_family_options(
-            test_shard_index,
-            &DatabaseConfig::default(),
-        );
+        let primary_cfs_name = primary_slivers_column_family_name(test_shard_index);
+        let primary_cfs_options = primary_slivers_column_family_options(&DatabaseConfig::default());
 
-        let secondary_cfs = ShardStorage::secondary_slivers_column_family_options(
-            test_shard_index,
-            &DatabaseConfig::default(),
-        );
+        let secondary_cfs_name = secondary_slivers_column_family_name(test_shard_index);
+        let secondary_cfs_options =
+            secondary_slivers_column_family_options(&DatabaseConfig::default());
 
-        let status_cfs = ShardStorage::shard_status_column_family_options(
-            test_shard_index,
-            &DatabaseConfig::default(),
-        );
+        let status_cfs_name = shard_status_column_family_name(test_shard_index);
+        let status_cfs = shard_status_column_family_options(&DatabaseConfig::default());
 
-        let sync_progress_cfs = ShardStorage::shard_sync_progress_column_family_options(
-            test_shard_index,
-            &DatabaseConfig::default(),
-        );
+        let sync_progress_cfs_name = shard_sync_progress_column_family_name(test_shard_index);
+        let sync_progress_cfs =
+            shard_sync_progress_column_family_options(&DatabaseConfig::default());
 
-        let pending_recover_cfs = ShardStorage::pending_recover_slivers_column_family_options(
-            test_shard_index,
-            &DatabaseConfig::default(),
-        );
+        let pending_recover_cfs_name = pending_recover_slivers_column_family_name(test_shard_index);
+        let pending_recover_cfs =
+            pending_recover_slivers_column_family_options(&DatabaseConfig::default());
 
         // Create all but secondary sliver column family. When restarting the storage, the
         // shard should not be detected as existing.
         storage
             .inner
             .database
-            .create_cf(&primary_cfs.0, &primary_cfs.1)?;
+            .create_cf(&primary_cfs_name, &primary_cfs_options)?;
         storage
             .inner
             .database
-            .create_cf(&status_cfs.0, &status_cfs.1)?;
+            .create_cf(&status_cfs_name, &status_cfs)?;
         storage
             .inner
             .database
-            .create_cf(&sync_progress_cfs.0, &sync_progress_cfs.1)?;
+            .create_cf(&sync_progress_cfs_name, &sync_progress_cfs)?;
         storage
             .inner
             .database
-            .create_cf(&pending_recover_cfs.0, &pending_recover_cfs.1)?;
+            .create_cf(&pending_recover_cfs_name, &pending_recover_cfs)?;
         assert!(!ShardStorage::existing_cf_shards_ids(
             storage.temp_dir.path(),
             &Options::default()
@@ -1237,7 +1297,7 @@ pub(crate) mod tests {
         storage
             .inner
             .database
-            .create_cf(&secondary_cfs.0, &secondary_cfs.1)?;
+            .create_cf(&secondary_cfs_name, &secondary_cfs_options)?;
         assert!(
             ShardStorage::existing_cf_shards_ids(storage.temp_dir.path(), &Options::default())
                 .contains(&test_shard_index)
@@ -1280,6 +1340,7 @@ pub(crate) mod tests {
                 path_clone.as_path(),
                 DatabaseConfig::default(),
                 MetricConf::default(),
+                Registry::default(),
             )?;
 
             // Check shard files exist.
@@ -1298,6 +1359,7 @@ pub(crate) mod tests {
                 directory.path(),
                 DatabaseConfig::default(),
                 MetricConf::default(),
+                Registry::default(),
             )?;
 
             // Reload storage and the shard should not exist.
@@ -1568,6 +1630,55 @@ pub(crate) mod tests {
         for blob_id in blob_ids.iter().take(6).skip(5) {
             assert!(all_certified_blob_ids(&storage, Some(*blob_id), new_epoch)?.is_empty());
         }
+
+        Ok(())
+    }
+
+    // A sanity check to ensure that after certified_blob_info_iter_before_epoch is created,
+    // any update to the blob info table will not affect the iterator.
+    #[tokio::test]
+    async fn test_certified_blob_info_iter_before_epoch_is_isolated() -> TestResult {
+        let storage = empty_storage().await;
+        let blob_info = storage.inner.blob_info.clone();
+
+        let blob_ids = [
+            BlobId([0; 32]),
+            BlobId([1; 32]),
+            BlobId([2; 32]),
+            BlobId([3; 32]),
+            BlobId([4; 32]),
+        ];
+
+        let blob_info_map = HashMap::from([
+            (blob_ids[0], certified_blob_info(2)),
+            (blob_ids[1], certified_blob_info(5)),
+            (blob_ids[2], certified_blob_info(2)),
+            (blob_ids[3], certified_blob_info(2)),
+        ]);
+
+        let mut batch = blob_info.batch();
+        blob_info.insert_batch(&mut batch, blob_info_map.iter())?;
+        batch.write()?;
+
+        // Create the iterator, which should take the snapshot of the blob info table at the
+        // creation time.
+        let certified_blob_iter = storage
+            .inner
+            .blob_info
+            .certified_blob_info_iter_before_epoch(3, Unbounded);
+
+        // Update blob info table, and these updates should not be visible to the iterator.
+        blob_info.insert(&blob_ids[4], &certified_blob_info(2))?;
+        blob_info.remove(&blob_ids[0])?;
+
+        // Check that the certified blob list matches the state of the blob info table at the
+        // creation time.
+        assert_eq!(
+            certified_blob_iter
+                .map(|result| result.map(|(id, _info)| id))
+                .collect::<Result<Vec<_>, _>>()?,
+            vec![blob_ids[0], blob_ids[2], blob_ids[3]]
+        );
 
         Ok(())
     }

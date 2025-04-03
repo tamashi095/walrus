@@ -1,0 +1,44 @@
+name: Build and deploy GitHub Pages preview for PRs
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - closed
+    paths:
+      - "book.toml"
+      - "docs/book/**"
+      - "docs/theme/**"
+      - "docs/mdbook-admonish.css"
+      - ".github/actions/build-mdbook/action.yaml"
+      - ".github/workflows/pages-preview.yaml"
+
+concurrency: preview-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  build-with-linkcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
+      - uses: ./.github/actions/build-mdbook
+        if: github.event.action != 'closed'
+
+  preview:
+    runs-on: ubuntu-latest
+    if: github.repository_owner == 'MystenLabs'
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
+      - uses: ./.github/actions/build-mdbook
+        with:
+          with_linkcheck: "false"
+        if: github.event.action != 'closed'
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@df22037db54ab6ee34d3c1e2b8810ac040a530c6 # pin@v1.6.0
+        with:
+          source-dir: docs/build/html

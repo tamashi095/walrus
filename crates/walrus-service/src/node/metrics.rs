@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use prometheus::{
@@ -9,7 +9,6 @@ use prometheus::{
     IntCounterVec,
     IntGauge,
     IntGaugeVec,
-    Opts,
 };
 use walrus_sui::types::{
     BlobCertified,
@@ -127,6 +126,25 @@ walrus_utils::metrics::define_metric_set! {
         #[help = "The progress of the blob metadata sync. It is represented by the first two bytes \
         of the blob ID since the sync job is sequential over blob IDs."]
         sync_blob_metadata_progress: IntGauge[],
+
+        #[help = "For checking consistency of processed events. Each bucket maps to a recent \
+        recording of event source. The event source is the combination of checkpoint sequence \
+        number and counter."]
+        periodic_event_source_for_deterministic_events: IntGaugeVec["bucket"],
+
+        #[help = "The hash of the list of certified blobs at the beginning of the epoch. Note that \
+        the label is the last two digits of the epoch number."]
+        blob_info_consistency_check: IntGaugeVec["epoch"],
+
+        #[help = "The number of errors occurred when checking the consistency of the blob info \
+        table."]
+        blob_info_consistency_check_error: IntCounter[],
+
+        #[help = "The number of certified blobs scanned during the blob info consistency check."]
+        blob_info_consistency_check_certified_scanned: IntCounterVec["epoch"],
+
+        #[help = "Status metric indicating the node's ID"]
+        node_id: IntGaugeVec["walrus_node_id"],
     }
 }
 
@@ -237,7 +255,7 @@ impl TelemetryLabel for ClientErrorKind {
             ClientErrorKind::InvalidConfig => "invalid-config",
             ClientErrorKind::BlobIdBlocked(_) => "blob-id-blocked",
             ClientErrorKind::NoCompatiblePaymentCoin => "no-compatible-payment-coin",
-            ClientErrorKind::NoCompatibleGasCoins => "no-compatible-gas-coins",
+            ClientErrorKind::NoCompatibleGasCoins(_) => "no-compatible-gas-coins",
             ClientErrorKind::AllConnectionsFailed(_) => "all-connections-failed",
             ClientErrorKind::BehindCurrentEpoch { .. } => "behind-current-epoch",
             ClientErrorKind::UnsupportedEncodingType(_) => "unsupported-encoding-type",

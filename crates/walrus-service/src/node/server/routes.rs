@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{num::NonZeroU16, sync::Arc};
@@ -261,7 +261,7 @@ pub async fn put_sliver<S: SyncServiceState>(
         .store_sliver(&blob_id, sliver_pair_index, &sliver)
         .await?;
 
-    // TODO(jsmith): Change to CREATED
+    // TODO(WAL-253): Change to CREATED.
     Ok(ApiSuccess::ok("sliver stored successfully"))
 }
 
@@ -662,7 +662,7 @@ pub async fn health_info<S: SyncServiceState>(
     Query(query): Query<HealthInfoQuery>,
     State(state): State<Arc<S>>,
 ) -> ApiSuccess<ServiceHealthInfo> {
-    ApiSuccess::ok(state.health_info(query.detailed))
+    ApiSuccess::ok(state.health_info(query.detailed).await)
 }
 
 #[tracing::instrument(skip_all)]

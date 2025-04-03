@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use alloc::{
@@ -129,9 +129,6 @@ pub enum SliverVerificationError {
     /// metadata.
     #[error("the recomputed Merkle root of the provided sliver does not match the metadata")]
     MerkleRootMismatch,
-    /// Error resulting from the Merkle tree computation. The Merkle root could not be computed.
-    #[error(transparent)]
-    RecoveryFailed(#[from] RecoverySymbolError),
 }
 
 /// Error returned when verification of a recovery symbol fails.

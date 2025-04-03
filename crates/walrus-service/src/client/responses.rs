@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Structures of client results returned by the daemon or through the JSON API.
@@ -770,7 +770,7 @@ pub(crate) struct NodeHealthOutput {
     pub node_id: ObjectID,
     pub node_url: String,
     pub node_name: String,
-    /// The health information of the service.
+    pub network_public_key: NetworkPublicKey,
     pub health_info: Result<ServiceHealthInfo, String>,
 }
 
@@ -793,6 +793,7 @@ impl NodeHealthOutput {
             node_id: node.node_id,
             node_url: node.network_address.0.clone(),
             node_name: node.name,
+            network_public_key: node.network_public_key,
             health_info,
         }
     }
@@ -803,6 +804,7 @@ impl NodeHealthOutput {
 /// The output of the `walrus health` command.
 pub(crate) struct ServiceHealthInfoOutput {
     pub health_info: Vec<NodeHealthOutput>,
+    pub latest_seq: Option<u64>,
 }
 
 impl ServiceHealthInfoOutput {
@@ -810,6 +812,7 @@ impl ServiceHealthInfoOutput {
     pub async fn new_for_nodes(
         nodes: impl IntoIterator<Item = StorageNode>,
         communication_factory: &NodeCommunicationFactory,
+        latest_seq: Option<u64>,
         detail: bool,
         sort: SortBy<HealthSortBy>,
     ) -> anyhow::Result<Self> {
@@ -832,7 +835,10 @@ impl ServiceHealthInfoOutput {
             health_info.reverse();
         }
 
-        Ok(Self { health_info })
+        Ok(Self {
+            health_info,
+            latest_seq,
+        })
     }
 }
 

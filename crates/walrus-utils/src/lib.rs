@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 #[cfg(feature = "backoff")]
@@ -9,10 +9,6 @@ pub mod config;
 
 #[cfg(feature = "metrics")]
 pub mod metrics;
-
-// TODO(jsmith): Move this out of walrus-utils, as it's an entire service as opposed to a util
-#[cfg(feature = "checkpoints")]
-pub mod checkpoint_downloader;
 
 #[cfg(feature = "http")]
 pub mod http;

@@ -50,6 +50,7 @@ rest_server:
   http2_max_concurrent_streams: 1000
   http2_initial_stream_window_size: null
   http2_initial_connection_window_size: null
+  http2_max_pending_accept_reset_streams: 100
   http2_adaptive_window: true
 rest_graceful_shutdown_period_secs: 60
 sui:
@@ -62,6 +63,8 @@ sui:
     min_backoff_millis: 1000
     max_backoff_millis: 30000
     max_retries: 5
+  gas_budget: null
+  rpc_fallback_config: null
 blob_recovery:
   max_concurrent_blob_syncs: 100
   max_concurrent_sliver_syncs: 2000
@@ -88,6 +91,7 @@ shard_sync_config:
   shard_sync_retry_switch_to_recovery_interval_secs: 7200
 event_processor_config:
   pruning_interval_secs: 3600
+  checkpoint_request_timeout_secs: 60
   adaptive_downloader_config:
     min_workers: 1
     max_workers: 10
@@ -120,3 +124,9 @@ config_synchronizer:
   interval_secs: 900
   enabled: true
 storage_node_cap: null
+num_uncertified_blob_threshold: null
+balance_check:
+  interval_secs: 3600
+  warning_threshold_mist: 5000000000
+thread_pool:
+  max_concurrent_tasks: null

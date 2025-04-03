@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{
@@ -476,7 +476,6 @@ where
                 SliverVerificationError::MerkleRootMismatch => {
                     panic!("should have been converted to an inconsistency proof")
                 }
-                SliverVerificationError::RecoveryFailed(_) => todo!("what generates this?"),
             },
         }
     }
@@ -685,7 +684,6 @@ where
                 SliverVerificationError::MerkleRootMismatch => {
                     panic!("should have been converted to an inconsistency proof")
                 }
-                SliverVerificationError::RecoveryFailed(_) => todo!("what generates this?"),
             },
         }
     }

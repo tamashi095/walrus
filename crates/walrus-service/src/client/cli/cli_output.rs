@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use std::{io::stdout, num::NonZeroU16, path::PathBuf};
@@ -75,10 +75,14 @@ pub trait CliOutput: Serialize {
 }
 impl CliOutput for Vec<BlobStoreResultWithPath> {
     fn print_cli_output(&self) {
+        for result in self {
+            result.print_cli_output();
+        }
+
         let mut total_encoded_size = 0;
         let mut total_cost = 0;
         let mut reuse_and_extend_count = 0;
-        let total_count = self.len();
+        let mut newly_certified = 0;
 
         for res in self.iter() {
             if let BlobStoreResult::NewlyCreated {
@@ -89,35 +93,47 @@ impl CliOutput for Vec<BlobStoreResultWithPath> {
             {
                 total_encoded_size += resource_operation.encoded_length();
                 total_cost += cost;
-                if let RegisterBlobOp::ReuseAndExtend { .. } = resource_operation {
-                    reuse_and_extend_count += 1;
+                match resource_operation {
+                    RegisterBlobOp::ReuseAndExtend { .. } => {
+                        reuse_and_extend_count += 1;
+                    }
+                    RegisterBlobOp::RegisterFromScratch { .. }
+                    | RegisterBlobOp::ReuseAndExtendNonCertified { .. }
+                    | RegisterBlobOp::ReuseStorage { .. }
+                    | RegisterBlobOp::ReuseRegistration { .. } => {
+                        newly_certified += 1;
+                    }
                 }
             }
         }
 
         let mut parts = Vec::new();
-        if total_count - reuse_and_extend_count > 0 {
-            parts.push(format!(
-                "{} newly certified",
-                total_count - reuse_and_extend_count
-            ));
+        if newly_certified > 0 {
+            parts.push(format!("{} newly certified", newly_certified));
         }
         if reuse_and_extend_count > 0 {
             parts.push(format!("{} extended", reuse_and_extend_count));
         }
 
-        let summary = if !parts.is_empty() {
-            format!("({})", parts.join(", "))
+        if !parts.is_empty() {
+            println!(
+                "{} ({})",
+                "Summary for Modified or Created Blobs"
+                    .bold()
+                    .walrus_purple(),
+                parts.join(", ")
+            );
+            println!(
+                "Total encoded size: {}",
+                HumanReadableBytes(total_encoded_size)
+            );
+            println!("Total cost: {}", HumanReadableFrost::from(total_cost));
         } else {
-            String::new()
-        };
-
-        println!("Summary for Modified or Created Blobs {}", summary);
-        println!(
-            "Total encoded size: {}",
-            HumanReadableBytes(total_encoded_size)
-        );
-        println!("Total cost: {}", HumanReadableFrost::from(total_cost));
+            println!(
+                "{}",
+                "No blobs were modified or created".bold().walrus_purple()
+            );
+        }
     }
 }
 
@@ -140,7 +156,7 @@ impl CliOutput for BlobStoreResultWithPath {
                 println!(
                     "{} Blob was already available and certified within Walrus, \
                     for a sufficient number of epochs.\nPath: {}\n\
-                    Blob ID: {}\n{event_or_object}\nExpiry epoch (exclusive): {}",
+                    Blob ID: {}\n{event_or_object}\nExpiry epoch (exclusive): {}\n",
                     success(),
                     self.path.display(),
                     blob_id,
@@ -200,7 +216,7 @@ impl CliOutput for BlobStoreResultWithPath {
             BlobStoreResult::MarkedInvalid { blob_id, event } => {
                 println!(
                     "{} Blob was marked as invalid.\nPath: {}\nBlob ID: {}\n
-                    Invalidation event ID: {}",
+                    Invalidation event ID: {}\n",
                     error(),
                     self.path.display(),
                     blob_id,
@@ -828,18 +844,19 @@ impl CliOutput for ExtendBlobOutput {
     }
 }
 
-impl CliOutput for NodeHealthOutput {
-    fn print_cli_output(&self) {
+impl NodeHealthOutput {
+    fn print_cli_output(&self, latest_seq: Option<u64>) {
         printdoc! {"
 
-            {heading}: {node_name}
+            {heading}
             Node ID: {node_id}
             Node URL: {node_url}
+            Network public key: {network_public_key}
             ",
-            heading = "Node Information".bold().walrus_purple(),
-            node_name = self.node_name,
+            heading = self.node_name.bold().walrus_purple(),
             node_id = self.node_id,
-            node_url = self.node_url
+            node_url = self.node_url,
+            network_public_key = self.network_public_key,
         };
         match &self.health_info {
             Err(error) => {
@@ -862,6 +879,8 @@ impl CliOutput for NodeHealthOutput {
                     {event_heading}
                     Events persisted: {persisted}
                     Events pending: {pending}{highest_finished_event_index_output}
+                    Latest checkpoint sequence number: {latest_checkpoint_sequence_number_output}
+                    Estimated checkpoint lag: {checkpoint_lag}
 
                     {shard_heading}
                     Owned shards: {owned}
@@ -885,6 +904,18 @@ impl CliOutput for NodeHealthOutput {
                         .map_or("".to_string(), |index| format!(
                             "\nHighest finished event index: {index}"
                         )),
+                    latest_checkpoint_sequence_number_output = health_info
+                        .latest_checkpoint_sequence_number
+                        .map_or("n/a".to_string(), |seq_num|
+                            format!("{seq_num}")
+                        ),
+                    checkpoint_lag =
+                        match (latest_seq, health_info.latest_checkpoint_sequence_number) {
+                            (Some(latest_seq), Some(checkpoint_seq)) => {
+                                format!("{}", std::cmp::max(latest_seq - checkpoint_seq, 0))
+                            }
+                            _ => "n/a".to_string(),
+                        },
                     shard_heading = "Shard Summary".bold().walrus_teal(),
                     owned = health_info.shard_summary.owned,
                     read_only = health_info.shard_summary.read_only,
@@ -939,7 +970,7 @@ impl CliOutput for ServiceHealthInfoOutput {
                         .or_insert(0) += 1;
                 }
             }
-            node.print_cli_output();
+            node.print_cli_output(self.latest_seq);
             add_node_health_to_table(&mut table, node, idx);
         }
         if table.len() > 3 {
@@ -1017,7 +1048,7 @@ fn create_node_health_table() -> Table {
         b->"Name",
         b->"Node ID",
         b->"Address",
-        b->"# Owned Shards",
+        bc->"# Shards\n(Ready / Owned)",
         b->"Status",
     ]);
     table
@@ -1026,12 +1057,16 @@ fn create_node_health_table() -> Table {
 fn add_node_health_to_table(table: &mut Table, node: &NodeHealthOutput, node_idx: usize) {
     match &node.health_info {
         Ok(health_info) => {
+            let shards_str = format!(
+                "{} / {}",
+                health_info.shard_summary.owned_shard_status.ready, health_info.shard_summary.owned
+            );
             table.add_row(row![
-                node_idx,
+                r->node_idx,
                 node.node_name,
                 node.node_id,
                 node.node_url,
-                r->health_info.shard_summary.owned,
+                c->shards_str,
                 health_info.node_status,
             ]);
         }
@@ -1045,11 +1080,11 @@ fn add_node_health_to_table(table: &mut Table, node: &NodeHealthOutput, node_idx
             };
 
             table.add_row(row![
-                node_idx,
+                r->node_idx,
                 node.node_name,
                 node.node_id,
                 node.node_url,
-                r->"N/A",
+                c->"N/A",
                 Fr->truncated_error,
             ]);
         }

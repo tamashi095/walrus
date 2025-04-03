@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Core functionality for Walrus.
@@ -47,7 +47,7 @@ use inconsistency::{
     SecondaryInconsistencyProof,
 };
 use merkle::{MerkleAuth, MerkleProof, Node};
-use metadata::BlobMetadata;
+pub use metadata::BlobMetadata;
 use serde::{Deserialize, Serialize};
 use serde_with::{DeserializeAs, DisplayFromStr, SerializeAs};
 #[cfg(feature = "sui-types")]

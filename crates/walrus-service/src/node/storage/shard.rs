@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 //! Walrus shard storage.
@@ -9,19 +9,15 @@ use std::{
     ops::Bound::{Excluded, Unbounded},
     path::Path,
     sync::{Arc, OnceLock},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-#[cfg(msim)]
-use anyhow::anyhow;
 use fastcrypto::traits::KeyPair;
 use futures::{stream::FuturesUnordered, StreamExt};
+use prometheus::Registry;
 use regex::Regex;
 use rocksdb::{Options, DB};
 use serde::{Deserialize, Serialize};
-#[cfg(msim)]
-use sui_macros::{fail_point, fail_point_arg};
-use sui_macros::{fail_point_if, nondeterministic};
 use typed_store::{
     rocks::{
         be_fix_int_ser as to_rocks_db_key,
@@ -35,6 +31,7 @@ use typed_store::{
     TypedStoreError,
 };
 use walrus_core::{
+    by_axis::ByAxis,
     encoding::{EncodingAxis, Primary, PrimarySliver, Secondary, SecondarySliver},
     BlobId,
     Epoch,
@@ -46,6 +43,8 @@ use walrus_core::{
 
 use super::{
     blob_info::{BlobInfo, BlobInfoIterator},
+    constants,
+    metrics::{CommonDatabaseMetrics, Labels, OperationType},
     DatabaseConfig,
 };
 use crate::node::{
@@ -54,6 +53,41 @@ use crate::node::{
     errors::SyncShardClientError,
     StorageNodeInner,
 };
+
+type ShardMetrics = CommonDatabaseMetrics;
+
+/// A cache of the family names created for an instance of a shard, to avoid recomputing them for
+/// metrics.
+#[derive(Debug)]
+struct ShardColumnFamilyNames {
+    pending_recover_slivers: String,
+    primary_slivers: String,
+    secondary_slivers: String,
+    shard_status: String,
+    shard_sync_progress: String,
+}
+
+impl ShardColumnFamilyNames {
+    fn slivers(&self, axis: SliverType) -> &str {
+        if axis.is_primary() {
+            &self.primary_slivers
+        } else {
+            &self.secondary_slivers
+        }
+    }
+}
+
+impl ShardColumnFamilyNames {
+    fn new(id: ShardIndex) -> Self {
+        Self {
+            pending_recover_slivers: constants::pending_recover_slivers_column_family_name(id),
+            primary_slivers: constants::primary_slivers_column_family_name(id),
+            secondary_slivers: constants::secondary_slivers_column_family_name(id),
+            shard_status: constants::shard_status_column_family_name(id),
+            shard_sync_progress: constants::shard_sync_progress_column_family_name(id),
+        }
+    }
+}
 
 // Important: this enum is committed to database. Do not modify the existing fields. Only add new
 // fields at the end.
@@ -184,6 +218,8 @@ pub struct ShardStorage {
     secondary_slivers: DBMap<BlobId, SecondarySliverData>,
     shard_sync_progress: DBMap<(), ShardSyncProgress>,
     pending_recover_slivers: DBMap<(SliverType, BlobId), ()>,
+    metrics: ShardMetrics,
+    cf_names: Arc<ShardColumnFamilyNames>,
 }
 
 macro_rules! reopen_cf {
@@ -191,7 +227,7 @@ macro_rules! reopen_cf {
         let (cf_name, cf_db_option) = $cf_options;
         if $db.cf_handle(&cf_name).is_none() {
             #[cfg(msim)]
-            fail_point!("create-cf-before");
+            sui_macros::fail_point!("create-cf-before");
             $db.create_cf(&cf_name, &cf_db_option)
                 .map_err(typed_store_err_from_rocks_err)?;
         }
@@ -207,21 +243,66 @@ impl ShardStorage {
         database: &Arc<RocksDB>,
         db_config: &DatabaseConfig,
         initial_shard_status: Option<ShardStatus>,
+        registry: &Registry,
     ) -> Result<Self, TypedStoreError> {
+        let start = Instant::now();
+
+        let collection_name = constants::base_column_family_name(id);
+        let labels = Labels {
+            collection_name: &collection_name,
+            operation_name: OperationType::Create,
+            query_summary: "CREATE shard tables",
+            ..Labels::default()
+        };
+
+        let metrics = ShardMetrics::new_with_id(registry, collection_name.clone());
+        let response = Self::create_or_reopen_inner(
+            id,
+            database,
+            db_config,
+            initial_shard_status,
+            metrics.clone(),
+        );
+
+        metrics.observe_operation_duration(
+            labels.with_response_as_unit(response.as_ref()),
+            start.elapsed(),
+        );
+
+        response
+    }
+
+    fn create_or_reopen_inner(
+        id: ShardIndex,
+        database: &Arc<RocksDB>,
+        db_config: &DatabaseConfig,
+        initial_shard_status: Option<ShardStatus>,
+        metrics: ShardMetrics,
+    ) -> Result<Self, TypedStoreError> {
+        let cf_names = ShardColumnFamilyNames::new(id);
         let rw_options = ReadWriteOptions::default();
 
         let shard_status = reopen_cf!(
-            Self::shard_status_column_family_options(id, db_config),
+            (
+                &cf_names.shard_status,
+                shard_status_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
         let shard_sync_progress = reopen_cf!(
-            Self::shard_sync_progress_column_family_options(id, db_config),
+            (
+                &cf_names.shard_sync_progress,
+                shard_sync_progress_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
         let pending_recover_slivers = reopen_cf!(
-            Self::pending_recover_slivers_column_family_options(id, db_config),
+            (
+                &cf_names.pending_recover_slivers,
+                pending_recover_slivers_column_family_options(db_config),
+            ),
             database,
             rw_options
         );
@@ -229,12 +310,18 @@ impl ShardStorage {
         // Make sure that sliver column families are created last. They are used to identify
         // whether the shard storage is initialized in `existing_cf_shards_ids`.
         let primary_slivers = reopen_cf!(
-            Self::primary_slivers_column_family_options(id, db_config),
+            (
+                &cf_names.primary_slivers,
+                primary_slivers_column_family_options(db_config)
+            ),
             database,
             rw_options
         );
         let secondary_slivers = reopen_cf!(
-            Self::secondary_slivers_column_family_options(id, db_config),
+            (
+                &cf_names.secondary_slivers,
+                secondary_slivers_column_family_options(db_config)
+            ),
             database,
             rw_options
         );
@@ -250,6 +337,8 @@ impl ShardStorage {
             secondary_slivers,
             shard_sync_progress,
             pending_recover_slivers,
+            metrics,
+            cf_names: Arc::new(cf_names),
         })
     }
 
@@ -260,14 +349,27 @@ impl ShardStorage {
         blob_id: &BlobId,
         sliver: &Sliver,
     ) -> Result<(), TypedStoreError> {
-        match sliver {
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: self.cf_names.slivers(sliver.r#type()),
+            operation_name: OperationType::Insert,
+            query_summary: "INSERT (blob_id, sliver)",
+            ..Default::default()
+        };
+
+        let response = match sliver {
             Sliver::Primary(primary) => self
                 .primary_slivers
                 .insert(blob_id, &PrimarySliverData::from(primary.clone())),
             Sliver::Secondary(secondary) => self
                 .secondary_slivers
                 .insert(blob_id, &SecondarySliverData::from(secondary.clone())),
-        }
+        };
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+
+        response
     }
 
     pub(crate) fn id(&self) -> ShardIndex {
@@ -297,9 +399,23 @@ impl ShardStorage {
         &self,
         blob_id: &BlobId,
     ) -> Result<Option<PrimarySliver>, TypedStoreError> {
-        self.primary_slivers
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: &self.cf_names.primary_slivers,
+            operation_name: OperationType::Get,
+            query_summary: "GET primary_sliver BY blob_id",
+            ..Labels::default()
+        };
+
+        let response = self
+            .primary_slivers
             .get(blob_id)
-            .map(|s| s.map(|s| s.into()))
+            .map(|s| s.map(|s| s.into()));
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+
+        response
     }
 
     /// Retrieves the stored secondary sliver for the given blob ID.
@@ -308,9 +424,23 @@ impl ShardStorage {
         &self,
         blob_id: &BlobId,
     ) -> Result<Option<SecondarySliver>, TypedStoreError> {
-        self.secondary_slivers
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: &self.cf_names.secondary_slivers,
+            operation_name: OperationType::Get,
+            query_summary: "GET secondary_sliver BY blob_id",
+            ..Labels::default()
+        };
+
+        let response = self
+            .secondary_slivers
             .get(blob_id)
-            .map(|s| s.map(|s| s.into()))
+            .map(|s| s.map(|s| s.into()));
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+
+        response
     }
 
     /// Returns true iff the sliver-pair for the given blob ID is stored by the shard.
@@ -318,18 +448,6 @@ impl ShardStorage {
     pub(crate) fn is_sliver_pair_stored(&self, blob_id: &BlobId) -> Result<bool, TypedStoreError> {
         Ok(self.is_sliver_stored::<Primary>(blob_id)?
             && self.is_sliver_stored::<Secondary>(blob_id)?)
-    }
-
-    /// Deletes the sliver pair for the given [`BlobId`].
-    #[tracing::instrument(skip_all, fields(walrus.shard_index = %self.id), err)]
-    pub(crate) fn delete_sliver_pair(
-        &self,
-        batch: &mut DBBatch,
-        blob_id: &BlobId,
-    ) -> Result<(), TypedStoreError> {
-        batch.delete_batch(&self.primary_slivers, std::iter::once(blob_id))?;
-        batch.delete_batch(&self.secondary_slivers, std::iter::once(blob_id))?;
-        Ok(())
     }
 
     #[tracing::instrument(skip_all, fields(walrus.shard_index = %self.id), err)]
@@ -346,70 +464,35 @@ impl ShardStorage {
         blob_id: &BlobId,
         type_: SliverType,
     ) -> Result<bool, TypedStoreError> {
-        match type_ {
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: self.cf_names.slivers(type_),
+            operation_name: OperationType::ContainsKey,
+            query_summary: "CONTAINS_KEY blob_id",
+            ..Labels::default()
+        };
+
+        let response = match type_ {
             SliverType::Primary => self.primary_slivers.contains_key(blob_id),
             SliverType::Secondary => self.secondary_slivers.contains_key(blob_id),
-        }
+        };
+
+        self.metrics
+            .observe_operation_duration(labels.with_response(response.as_ref()), start.elapsed());
+
+        response
     }
 
-    /// Returns the name and options for the column families for a shard's primary
-    /// sliver with the specified index.
-    pub(crate) fn primary_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            primary_slivers_column_family_name(id),
-            db_config.shard().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's secondary
-    /// sliver with the specified index.
-    pub(crate) fn secondary_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            secondary_slivers_column_family_name(id),
-            db_config.shard().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's operating status
-    /// with the specified index.
-    pub(crate) fn shard_status_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            shard_status_column_family_name(id),
-            db_config.shard_status().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's sync progress
-    /// with the specified index.
-    pub(crate) fn shard_sync_progress_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            shard_sync_progress_column_family_name(id),
-            db_config.shard_sync_progress().to_options(),
-        )
-    }
-
-    /// Returns the name and options for the column families for a shard's pending recover slivers
-    /// with the specified index.
-    pub(crate) fn pending_recover_slivers_column_family_options(
-        id: ShardIndex,
-        db_config: &DatabaseConfig,
-    ) -> (String, Options) {
-        (
-            pending_recover_slivers_column_family_name(id),
-            db_config.pending_recover_slivers().to_options(),
-        )
+    /// Deletes the sliver pair for the given [`BlobId`].
+    #[tracing::instrument(skip_all, fields(walrus.shard_index = %self.id), err)]
+    pub(crate) fn delete_sliver_pair(
+        &self,
+        batch: &mut DBBatch,
+        blob_id: &BlobId,
+    ) -> Result<(), TypedStoreError> {
+        batch.delete_batch(&self.primary_slivers, std::iter::once(blob_id))?;
+        batch.delete_batch(&self.secondary_slivers, std::iter::once(blob_id))?;
+        Ok(())
     }
 
     /// Returns the ids of existing shards that are fully initialized in the database at the
@@ -417,7 +500,7 @@ impl ShardStorage {
     pub(crate) fn existing_cf_shards_ids(path: &Path, options: &Options) -> HashSet<ShardIndex> {
         // RocksDb internal uses real clock to start and initialize the database. Wrap this call
         // in a nondeterministic block to make the test deterministic.
-        nondeterministic!(DB::list_cf(options, path)
+        sui_macros::nondeterministic!(DB::list_cf(options, path)
             .unwrap_or_default()
             .into_iter()
             .filter_map(|cf_name| match id_from_column_family_name(&cf_name) {
@@ -456,40 +539,57 @@ impl ShardStorage {
         sliver_type: SliverType,
         slivers_to_fetch: &[BlobId],
     ) -> Result<Vec<(BlobId, Sliver)>, TypedStoreError> {
+        let start = Instant::now();
+        let labels = Labels {
+            collection_name: self.cf_names.slivers(sliver_type),
+            operation_name: OperationType::MultiGet,
+            query_summary: "MULTI_GET sliver BY blob_id_list",
+            ..Labels::default()
+        };
+
         #[cfg(msim)]
         {
             let mut return_empty = false;
-            fail_point_if!("fail_point_sync_shard_return_empty", || return_empty = true);
+            sui_macros::fail_point_if!("fail_point_sync_shard_return_empty", || return_empty =
+                true);
             if return_empty {
                 return Ok(Vec::new());
             }
         }
 
-        Ok(match sliver_type {
-            SliverType::Primary => self
-                .primary_slivers
+        let response = ByAxis::from(sliver_type)
+            .map(
                 // TODO(#648): compare multi_get with scan for large value size.
-                .multi_get(slivers_to_fetch)?
+                |_| self.primary_slivers.multi_get(slivers_to_fetch),
+                |_| self.secondary_slivers.multi_get(slivers_to_fetch),
+            )
+            .transpose();
+
+        self.metrics.observe_operation_duration(
+            labels.with_response(response.as_ref().map(|_| &())),
+            start.elapsed(),
+        );
+
+        let output = match response? {
+            ByAxis::Primary(slivers) => slivers_to_fetch
                 .iter()
-                .zip(slivers_to_fetch)
-                .filter_map(|(sliver, blob_id)| {
-                    sliver
-                        .as_ref()
-                        .map(|s| (*blob_id, Sliver::Primary(s.clone().into())))
+                .zip(slivers)
+                .filter_map(|(&blob_id, sliver)| {
+                    let PrimarySliverData::V1(sliver) = sliver?;
+                    Some((blob_id, Sliver::Primary(sliver)))
                 })
                 .collect(),
-            SliverType::Secondary => self
-                .secondary_slivers
-                .multi_get(slivers_to_fetch)?
+            ByAxis::Secondary(slivers) => slivers_to_fetch
                 .iter()
-                .zip(slivers_to_fetch)
-                .filter_map(|(sliver, blob_id)| {
-                    sliver
-                        .as_ref()
-                        .map(|s| (*blob_id, Sliver::Secondary(s.clone().into())))
+                .zip(slivers)
+                .filter_map(|(&blob_id, sliver)| {
+                    let SecondarySliverData::V1(sliver) = sliver?;
+                    Some((blob_id, Sliver::Secondary(sliver)))
                 })
                 .collect(),
-        })
+        };
+
+        Ok(output)
     }
 
     /// Syncs the shard to the current epoch from the previous shard owner.
@@ -514,7 +614,7 @@ impl ShardStorage {
         {
             // This fail point is used to signal that direct shard sync recovery is triggered.
             if directly_recover_shard {
-                fail_point!("fail_point_direct_shard_sync_recovery");
+                sui_macros::fail_point!("fail_point_direct_shard_sync_recovery");
             }
         }
 
@@ -848,7 +948,7 @@ impl ShardStorage {
         }
 
         #[cfg(msim)]
-        fail_point!("fail_point_shard_sync_recovery");
+        sui_macros::fail_point!("fail_point_shard_sync_recovery");
 
         tracing::info!("shard sync is done; still has missing blobs; shard enters recovery mode");
         self.shard_status.insert(&(), &ShardStatus::ActiveRecover)?;
@@ -856,9 +956,9 @@ impl ShardStorage {
         #[cfg(msim)]
         {
             let mut inject_error = false;
-            fail_point_if!("fail_point_after_start_recovery", || inject_error = true);
+            sui_macros::fail_point_if!("fail_point_after_start_recovery", || inject_error = true);
             if inject_error {
-                return Err(SyncShardClientError::Internal(anyhow!(
+                return Err(SyncShardClientError::Internal(anyhow::anyhow!(
                     "sync shard simulated sync failure after start recovery"
                 )));
             }
@@ -898,7 +998,7 @@ impl ShardStorage {
 
             #[allow(unused_mut)]
             let mut skip_certified_check_in_test = false;
-            fail_point_if!(
+            sui_macros::fail_point_if!(
                 "shard_recovery_skip_initial_blob_certification_check",
                 || { skip_certified_check_in_test = true }
             );
@@ -1109,19 +1209,19 @@ impl ShardStorage {
 
         // Drop column families in reverse order of creation in ShardStorage::create_or_reopen.
         rocksdb
-            .drop_cf(&secondary_slivers_column_family_name(self.id()))
+            .drop_cf(&self.cf_names.secondary_slivers)
             .map_err(typed_store_err_from_rocks_err)?;
         rocksdb
-            .drop_cf(&primary_slivers_column_family_name(self.id()))
+            .drop_cf(&self.cf_names.primary_slivers)
             .map_err(typed_store_err_from_rocks_err)?;
         rocksdb
-            .drop_cf(&pending_recover_slivers_column_family_name(self.id()))
+            .drop_cf(&self.cf_names.pending_recover_slivers)
             .map_err(typed_store_err_from_rocks_err)?;
         rocksdb
-            .drop_cf(&shard_sync_progress_column_family_name(self.id()))
+            .drop_cf(&self.cf_names.shard_sync_progress)
             .map_err(typed_store_err_from_rocks_err)?;
         rocksdb
-            .drop_cf(&shard_status_column_family_name(self.id()))
+            .drop_cf(&self.cf_names.shard_status)
             .map_err(typed_store_err_from_rocks_err)?;
         Ok(())
     }
@@ -1201,43 +1301,42 @@ fn id_from_column_family_name(name: &str) -> Option<(ShardIndex, SliverType)> {
     })
 }
 
-#[inline]
-fn base_column_family_name(id: ShardIndex) -> String {
-    format!("shard-{}", id.0)
+/// Returns the name and options for the column families for a shard's primary
+/// sliver with the specified index.
+pub fn primary_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard().to_options()
 }
 
-#[inline]
-pub fn primary_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/primary-slivers"
+/// Returns the name and options for the column families for a shard's secondary
+/// sliver with the specified index.
+pub fn secondary_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard().to_options()
 }
 
-#[inline]
-pub fn secondary_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/secondary-slivers"
+/// Returns the name and options for the column families for a shard's operating status
+/// with the specified index.
+pub fn shard_status_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard_status().to_options()
 }
 
-#[inline]
-pub fn shard_status_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/status"
+/// Returns the name and options for the column families for a shard's sync progress
+/// with the specified index.
+pub fn shard_sync_progress_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.shard_sync_progress().to_options()
 }
 
-#[inline]
-pub fn shard_sync_progress_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/sync-progress"
-}
-
-#[inline]
-pub fn pending_recover_slivers_column_family_name(id: ShardIndex) -> String {
-    base_column_family_name(id) + "/pending-recover-slivers"
+/// Returns the name and options for the column families for a shard's pending recover slivers
+/// with the specified index.
+pub fn pending_recover_slivers_column_family_options(db_config: &DatabaseConfig) -> Options {
+    db_config.pending_recover_slivers().to_options()
 }
 
 #[cfg(msim)]
 fn inject_failure(scan_count: u64, sliver_type: SliverType) -> Result<(), anyhow::Error> {
     // Inject a failure point to simulate a sync failure.
 
-    use sui_macros::fail_point_arg;
     let mut injected_status = Ok(());
-    fail_point_arg!("fail_point_fetch_sliver", |(
+    sui_macros::fail_point_arg!("fail_point_fetch_sliver", |(
         trigger_sliver_type,
         trigger_at,
     ): (SliverType, u64)| {
@@ -1248,7 +1347,7 @@ fn inject_failure(scan_count: u64, sliver_type: SliverType) -> Result<(), anyhow
             fail_point = "fail_point_fetch_sliver",
         );
         if trigger_sliver_type == sliver_type && trigger_at <= scan_count {
-            injected_status = Err(anyhow!("fetch_sliver simulated sync failure"));
+            injected_status = Err(anyhow::anyhow!("fetch_sliver simulated sync failure"));
         }
     });
     injected_status

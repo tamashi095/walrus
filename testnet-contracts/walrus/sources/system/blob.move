@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 module walrus::blob;
@@ -85,6 +85,10 @@ public fun certified_epoch(self: &Blob): &Option<u32> {
 
 public fun storage(self: &Blob): &Storage {
     &self.storage
+}
+
+public fun is_deletable(self: &Blob): bool {
+    self.deletable
 }
 
 public fun encoded_size(self: &Blob, n_shards: u16): u64 {
