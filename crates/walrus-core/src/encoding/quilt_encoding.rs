@@ -1,4 +1,4 @@
-// Copyright (c) Mysten Labs, Inc.
+// Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
 use alloc::{
@@ -29,15 +29,16 @@ use crate::{
     SliverIndex,
 };
 
+/// The number of bytes to store the size of the quilt index.
 const QUILT_INDEX_SIZE_PREFIX_SIZE: usize = 8;
 
 /// A quilt is a collection of encoded blobs stored together in a unified structure.
 ///
 /// The data is organized as a 2D matrix where:
 /// - Each blob occupies a continuous range of columns (secondary slivers).
-/// - The first column's initial [`QUILT_INDEX_SIZE_PREFIX_SIZE`] bytes contain the unencoded
+/// - The first column's initial `QUILT_INDEX_SIZE_PREFIX_SIZE` bytes contain the unencoded
 ///   length of the [`QuiltIndex`]. It is guaranteed the column size is more than
-///   [`QUILT_INDEX_SIZE_PREFIX_SIZE`].
+///   `QUILT_INDEX_SIZE_PREFIX_SIZE`.
 /// - The [`QuiltIndex`] is stored in the first one or multiple columns.
 /// - The blob layout is defined by the [`QuiltIndex`].
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -205,9 +206,9 @@ impl Quilt {
     }
 
     /// Gets the blob by description.
-    pub fn get_blob_by_desc(&self, desc: &str) -> Result<Vec<u8>, QuiltError> {
+    pub fn get_blob_by_identifier(&self, identifier: &str) -> Result<Vec<u8>, QuiltError> {
         self.quilt_index
-            .get_quilt_block_by_desc(desc)
+            .get_quilt_block_by_identifier(identifier)
             .and_then(|quilt_block| self.get_blob(quilt_block))
     }
 
@@ -315,11 +316,11 @@ impl fmt::Debug for DebugQuiltIndex<'_> {
         for block in self.0.quilt_blocks.iter() {
             list.entry(&format_args!(
                 "\nQuiltBlock {{\n    blob_id: {:x?},\n    unencoded_length: {},\
-                \n    end_index: {}\n    desc: {:?}\n}}",
+                \n    end_index: {}\n    identifier: {:?}\n}}",
                 block.blob_id(),
                 block.unencoded_length(),
                 block.end_index(),
-                block.desc()
+                block.identifier()
             ));
         }
         list.finish()?;
@@ -329,20 +330,23 @@ impl fmt::Debug for DebugQuiltIndex<'_> {
 
 /// A wrapper around a blob and its description.
 #[derive(Debug)]
-pub struct BlobWithDesc<'a> {
+pub struct BlobWithIdentifier<'a> {
     blob: &'a [u8],
-    desc: &'a str,
+    identifier: &'a str,
 }
 
-impl<'a> BlobWithDesc<'a> {
-    /// Creates a new `BlobWithDesc` from a blob and a description.
-    pub fn new(blob: &'a [u8], desc: &'a str) -> Self {
-        Self { blob, desc }
+impl<'a> BlobWithIdentifier<'a> {
+    /// Creates a new `BlobWithIdentifier` from a blob and a description.
+    pub fn new(blob: &'a [u8], identifier: &'a str) -> Self {
+        Self { blob, identifier }
     }
 
-    /// Creates a new `BlobWithDesc` from a blob.
+    /// Creates a new `BlobWithIdentifier` from a blob.
     pub fn new_from_blob(blob: &'a [u8]) -> Self {
-        Self { blob, desc: "" }
+        Self {
+            blob,
+            identifier: "",
+        }
     }
 
     /// Returns the length of the blob.
@@ -352,10 +356,14 @@ impl<'a> BlobWithDesc<'a> {
 }
 
 /// Encodes a set of blobs into a single quilt blob.
+///
+/// The blobs are first quilted into a 2D matrix, then the matrix is encoded into a single
+/// quilt blob.
+/// The quilt blob can be decoded into the original blobs by using the [`QuiltDecoder`].
 #[derive(Debug)]
 pub struct QuiltEncoder<'a> {
     /// The blobs to encode.
-    blobs: &'a [BlobWithDesc<'a>],
+    blobs: &'a [BlobWithIdentifier<'a>],
     /// The encoding configuration.
     config: EncodingConfigEnum<'a>,
     /// A tracing span associated with this quilt encoder.
@@ -363,8 +371,8 @@ pub struct QuiltEncoder<'a> {
 }
 
 impl<'a> QuiltEncoder<'a> {
-    /// Creates a new `QuiltEncoder` from a encoding config and a set of blobs.
-    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [BlobWithDesc<'a>]) -> Self {
+    /// Creates a new [`QuiltEncoder`] from a encoding config and a set of blobs.
+    pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [BlobWithIdentifier<'a>]) -> Self {
         Self {
             blobs,
             config,
@@ -378,7 +386,7 @@ impl<'a> QuiltEncoder<'a> {
 
         let n_rows = self.config.n_source_symbols::<Primary>().get().into();
         let n_columns = self.config.n_source_symbols::<Secondary>().get().into();
-        tracing::debug!(
+        tracing::trace!(
             "Constructing quilt with n_columns: {}, n_rows: {}",
             n_columns,
             n_rows
@@ -386,11 +394,11 @@ impl<'a> QuiltEncoder<'a> {
 
         // Compute blob_ids and create mapping.
         let mut blob_with_ids = Vec::new();
-        for blob_with_desc in self.blobs.iter() {
-            let encoder = BlobEncoder::new(self.config.clone(), blob_with_desc.blob)
-                .map_err(|_| QuiltError::too_large_quilt(blob_with_desc.blob.len()))?;
+        for blob_with_identifier in self.blobs.iter() {
+            let encoder = BlobEncoder::new(self.config.clone(), blob_with_identifier.blob)
+                .map_err(|_| QuiltError::too_large_quilt(blob_with_identifier.blob.len()))?;
             let metadata = encoder.compute_metadata();
-            blob_with_ids.push((blob_with_desc, *metadata.blob_id()));
+            blob_with_ids.push((blob_with_identifier, *metadata.blob_id()));
         }
 
         // Sort blobs based on their blob_ids.
@@ -399,11 +407,11 @@ impl<'a> QuiltEncoder<'a> {
         // Create initial QuiltBlocks.
         let quilt_blocks: Vec<QuiltBlock> = blob_with_ids
             .iter()
-            .map(|(blob_with_desc, blob_id)| {
+            .map(|(blob_with_identifier, blob_id)| {
                 QuiltBlock::new(
                     *blob_id,
-                    blob_with_desc.blob.len() as u64,
-                    blob_with_desc.desc.to_string(),
+                    blob_with_identifier.blob.len() as u64,
+                    blob_with_identifier.identifier.to_string(),
                 )
             })
             .collect();
@@ -416,7 +424,7 @@ impl<'a> QuiltEncoder<'a> {
         })? as u64;
 
         // Calculate total size including the 8-byte size prefix.
-        let index_data_size = QUILT_INDEX_SIZE_PREFIX_SIZE + serialized_index_size as usize;
+        let index_total_size = QUILT_INDEX_SIZE_PREFIX_SIZE + serialized_index_size as usize;
 
         // Calculate blob sizes for symbol size computation.
         let blob_sizes: Vec<usize> = blob_with_ids
@@ -424,27 +432,26 @@ impl<'a> QuiltEncoder<'a> {
             .map(|(bwd, _)| bwd.blob.len())
             .collect();
         let total_blob_size = blob_sizes.iter().sum::<usize>();
-        let mut all_sizes = vec![index_data_size];
+        let mut all_sizes = vec![index_total_size];
         all_sizes.extend(blob_sizes);
 
-        let symbol_size = compute_symbol_size(&all_sizes, n_columns, n_rows)
-            .map_err(|_| QuiltError::too_large_quilt(total_blob_size))?;
-
+        // TODO(heliu): We need to consider the quilt size instead of the total blob size.
         let required_alignment = self.config.encoding_type().required_alignment() as usize;
-        let symbol_size = symbol_size.div_ceil(required_alignment) * required_alignment;
+        let symbol_size = compute_symbol_size(&all_sizes, n_columns, n_rows, required_alignment)
+            .map_err(|_| QuiltError::too_large_quilt(total_blob_size))?;
 
         let row_size = symbol_size * n_columns;
         let column_size = symbol_size * n_rows;
         let mut data = vec![0u8; row_size * n_rows];
 
         // Calculate columns needed for the index.
-        let index_cols_needed = index_data_size.div_ceil(symbol_size * n_rows);
+        let index_cols_needed = index_total_size.div_ceil(symbol_size * n_rows);
         let mut current_col = index_cols_needed;
 
         // First pass: Fill data with actual blobs and collect quilt blocks.
-        for (i, (blob_with_desc, blob_id)) in blob_with_ids.iter().enumerate() {
+        for (i, (blob_with_identifier, blob_id)) in blob_with_ids.iter().enumerate() {
             let mut cur = current_col;
-            let cols_needed = blob_with_desc.blob.len().div_ceil(column_size);
+            let cols_needed = blob_with_identifier.blob.len().div_ceil(column_size);
             tracing::debug!(
                 "Blob: {:?} needs {} columns, current_col: {}",
                 blob_id,
@@ -458,9 +465,9 @@ impl<'a> QuiltEncoder<'a> {
             // Copy blob data into columns.
             let mut row = 0;
             let mut offset = 0;
-            while offset < blob_with_desc.blob.len() {
-                let end = cmp::min(offset + symbol_size, blob_with_desc.blob.len());
-                let chunk = &blob_with_desc.blob[offset..end];
+            while offset < blob_with_identifier.blob.len() {
+                let end = cmp::min(offset + symbol_size, blob_with_identifier.blob.len());
+                let chunk = &blob_with_identifier.blob[offset..end];
                 let dest_idx = row * row_size + cur * symbol_size;
 
                 data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
@@ -480,7 +487,7 @@ impl<'a> QuiltEncoder<'a> {
 
         // Create the final index data with size prefix.
         let mut final_index_data = Vec::new();
-        final_index_data.extend_from_slice(&index_data_size.to_le_bytes());
+        final_index_data.extend_from_slice(&index_total_size.to_le_bytes());
         final_index_data
             .extend_from_slice(&bcs::to_bytes(&quilt_index).expect("Serialization should succeed"));
 
@@ -488,8 +495,8 @@ impl<'a> QuiltEncoder<'a> {
         let mut offset = 0;
         let mut cur = 0;
 
-        while offset < index_data_size {
-            let end = cmp::min(offset + symbol_size, index_data_size);
+        while offset < index_total_size {
+            let end = cmp::min(offset + symbol_size, index_total_size);
             let chunk = &final_index_data[offset..end];
             let dest_idx = row * row_size + cur * symbol_size;
 
@@ -546,14 +553,20 @@ impl<'a> QuiltEncoder<'a> {
 /// Each blob must be stored in consecutive columns exclusively.
 ///
 /// # Arguments
-/// * `blobs` - Slice of blob lengths.
+/// * `blobs_sizes` - Slice of blob lengths.
 /// * `nc` - Number of columns available.
-/// * `base` - Base of the encoding, the column size must be a multiple of this.
+/// * `nr` - Number of rows available.
 ///
 /// # Returns
-/// * `Result<usize, QuiltError>` - The minimum length needed, or an error if impossible.
-fn compute_symbol_size(blobs_sizes: &[usize], nc: usize, nr: usize) -> Result<usize, QuiltError> {
+/// * `Result<usize, QuiltError>` - The minimum symbol size needed, or an error if impossible.
+fn compute_symbol_size(
+    blobs_sizes: &[usize],
+    nc: usize,
+    nr: usize,
+    required_alignment: usize,
+) -> Result<usize, QuiltError> {
     if blobs_sizes.len() > nc {
+        // The first column is not user data.
         return Err(QuiltError::too_many_blobs(blobs_sizes.len(), nc - 1));
     }
 
@@ -572,7 +585,8 @@ fn compute_symbol_size(blobs_sizes: &[usize], nc: usize, nr: usize) -> Result<us
     // Ensure the quilt index prefix can fit in the first column.
     min_val = cmp::max(min_val, QUILT_INDEX_SIZE_PREFIX_SIZE.div_ceil(nr));
 
-    Ok(min_val)
+    let symbol_size = min_val.div_ceil(required_alignment) * required_alignment;
+    Ok(symbol_size)
 }
 
 /// Checks if the blobs can fit in the given number of columns.
@@ -710,11 +724,11 @@ impl<'a> QuiltDecoder<'a> {
     }
 
     /// Get the blob by description.
-    pub fn get_blob_by_desc(&self, desc: &str) -> Result<Vec<u8>, QuiltError> {
+    pub fn get_blob_by_identifier(&self, identifier: &str) -> Result<Vec<u8>, QuiltError> {
         self.quilt_index
             .as_ref()
             .ok_or(QuiltError::missing_quilt_index())
-            .and_then(|quilt_index| quilt_index.get_quilt_block_by_desc(desc))
+            .and_then(|quilt_index| quilt_index.get_quilt_block_by_identifier(identifier))
             .and_then(|quilt_block| self.get_blob_by_quilt_block(quilt_block))
     }
 
@@ -793,25 +807,26 @@ mod tests {
 
     param_test! {
         test_find_min_length: [
-            case_1: (&[2, 1, 2, 1], 3, 3, Err(QuiltError::too_many_blobs(4, 2))),
-            case_2: (&[1000, 1, 1], 4, 7, Ok(72)),
-            case_3: (&[], 3, 1, Ok(8)),
-            case_4: (&[1], 3, 2, Ok(4)),
-            case_5: (&[115, 80, 4], 17, 9, Ok(2)),
-            case_6: (&[20, 20, 20], 3, 5, Ok(4)),
-            case_7: (&[5, 5, 5], 5, 1, Ok(8)),
-            case_8: (&[25, 35, 45], 200, 1, Ok(8))
+            case_1: (&[2, 1, 2, 1], 3, 3, 1, Err(QuiltError::too_many_blobs(4, 2))),
+            case_2: (&[1000, 1, 1], 4, 7, 1, Ok(72)),
+            case_3: (&[], 3, 1, 1, Ok(8)),
+            case_4: (&[1], 3, 2, 1, Ok(4)),
+            case_5: (&[115, 80, 4], 17, 9, 1, Ok(2)),
+            case_6: (&[20, 20, 20], 3, 5, 1, Ok(4)),
+            case_7: (&[5, 5, 5], 5, 1, 1, Ok(8)),
+            case_8: (&[25, 35, 45], 200, 1, 1, Ok(8))
         ]
     }
     fn test_find_min_length(
         blobs: &[usize],
         nc: usize,
         nr: usize,
+        required_alignment: usize,
         expected: Result<usize, QuiltError>,
     ) {
         // Initialize tracing subscriber for this test
         let _guard = tracing_subscriber::fmt().try_init();
-        let res = compute_symbol_size(blobs, nc, nr);
+        let res = compute_symbol_size(blobs, nc, nr, required_alignment);
         assert_eq!(res, expected);
         if let Ok(min_size) = res {
             assert!(min_required_columns(blobs, min_size * nr) <= nc);
@@ -822,90 +837,102 @@ mod tests {
         test_construct_quilt: [
             case_0: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_0_random_order: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_1: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_1_random_order: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_2: (
                 &[
-                    BlobWithDesc { blob: &[1, 3][..], desc: "test blob 0" },
-                    BlobWithDesc { blob: &[255u8; 1024][..], desc: "test blob 1" },
-                    BlobWithDesc { blob: &[1, 2, 3][..], desc: "test blob 2" },
+                    BlobWithIdentifier {
+                        blob: &[1, 3][..],
+                        identifier: "test blob 0",
+                    },
+                    BlobWithIdentifier {
+                        blob: &[255u8; 1024][..],
+                        identifier: "test blob 1",
+                    },
+                    BlobWithIdentifier {
+                        blob: &[1, 2, 3][..],
+                        identifier: "test blob 2",
+                    },
                 ],
                 4, 8, 12
             ),
             case_3: (
                 &[
-                    BlobWithDesc { blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..], desc: "test blob 0" },
+                    BlobWithIdentifier {
+                        blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
+                        identifier: "test blob 0",
+                    },
                 ],
                 3, 5, 7
             ),
         ]
     }
     fn test_construct_quilt(
-        blobs_with_desc: &[BlobWithDesc<'_>],
+        blobs_with_identifiers: &[BlobWithIdentifier<'_>],
         source_symbols_primary: u16,
         source_symbols_secondary: u16,
         n_shards: u16,
@@ -922,40 +949,43 @@ mod tests {
         );
 
         construct_quilt(
-            blobs_with_desc,
+            blobs_with_identifiers,
             EncodingConfigEnum::RaptorQ(&raptorq_config),
         );
         construct_quilt(
-            blobs_with_desc,
+            blobs_with_identifiers,
             EncodingConfigEnum::ReedSolomon(&reed_solomon_config),
         );
     }
 
-    fn construct_quilt(blobs_with_desc: &[BlobWithDesc<'_>], config: EncodingConfigEnum) {
+    fn construct_quilt(
+        blobs_with_identifiers: &[BlobWithIdentifier<'_>],
+        config: EncodingConfigEnum,
+    ) {
         let _guard = tracing_subscriber::fmt().try_init();
 
-        // Calculate blob IDs directly from blobs_with_desc.
-        let blob_ids: Vec<BlobId> = blobs_with_desc
+        // Calculate blob IDs directly from blobs_with_identifiers.
+        let blob_ids: Vec<BlobId> = blobs_with_identifiers
             .iter()
-            .map(|blob_with_desc| {
-                let encoder = BlobEncoder::new(config.clone(), blob_with_desc.blob)
+            .map(|blob_with_identifier| {
+                let encoder = BlobEncoder::new(config.clone(), blob_with_identifier.blob)
                     .expect("Should create encoder");
                 *encoder.compute_metadata().blob_id()
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config, blobs_with_desc);
+        let encoder = QuiltEncoder::new(config, blobs_with_identifiers);
         let quilt = encoder.construct_quilt().expect("Should construct quilt");
         tracing::debug!("Quilt: {:?}", quilt);
 
         // Verify each blob and its description.
-        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
+        for (blob_with_identifier, blob_id) in blobs_with_identifiers.iter().zip(blob_ids.iter()) {
             // Verify blob data matches.
             assert_eq!(
                 quilt
                     .get_blob_by_id(blob_id)
                     .expect("Block should exist for this blob ID"),
-                blob_with_desc.blob,
+                blob_with_identifier.blob,
                 "Mismatch in encoded blob"
             );
 
@@ -964,16 +994,16 @@ mod tests {
                     .quilt_index()
                     .get_quilt_block_by_id(blob_id)
                     .expect("Block should exist for this blob ID")
-                    .desc(),
-                blob_with_desc.desc,
+                    .identifier(),
+                blob_with_identifier.identifier,
                 "Mismatch in blob description"
             );
 
             assert_eq!(
                 quilt
-                    .get_blob_by_desc(blob_with_desc.desc)
+                    .get_blob_by_identifier(blob_with_identifier.identifier)
                     .expect("Block should exist for this blob ID"),
-                blob_with_desc.blob,
+                blob_with_identifier.blob,
                 "Mismatch in encoded blob"
             );
         }
@@ -985,90 +1015,102 @@ mod tests {
         test_quilt_encoder_and_decoder: [
             case_0: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_0_random_order: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_1: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_1_random_order: (
                 &[
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        desc: "test blob 0",
+                        identifier: "test blob 0",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        desc: "test blob 1",
+                        identifier: "test blob 1",
                     },
-                    BlobWithDesc {
+                    BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        desc: "test blob 2",
+                        identifier: "test blob 2",
                     },
                 ],
                 3, 5, 7
             ),
             case_2: (
                 &[
-                    BlobWithDesc { blob: &[1, 3][..], desc: "test blob 0" },
-                    BlobWithDesc { blob: &[255u8; 1024][..], desc: "test blob 1" },
-                    BlobWithDesc { blob: &[1, 2, 3][..], desc: "test blob 2" },
+                    BlobWithIdentifier {
+                        blob: &[1, 3][..],
+                        identifier: "test blob 0",
+                    },
+                    BlobWithIdentifier {
+                        blob: &[255u8; 1024][..],
+                        identifier: "test blob 1",
+                    },
+                    BlobWithIdentifier {
+                        blob: &[1, 2, 3][..],
+                        identifier: "test blob 2",
+                    },
                 ],
                 5, 9, 13
             ),
             case_3: (
                 &[
-                    BlobWithDesc { blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..], desc: "test blob 0" },
+                    BlobWithIdentifier {
+                        blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
+                        identifier: "test blob 0",
+                    },
                 ],
                 3, 5, 7
             ),
         ]
     }
     fn test_quilt_encoder_and_decoder(
-        blobs_with_desc: &[BlobWithDesc<'_>],
+        blobs_with_identifiers: &[BlobWithIdentifier<'_>],
         source_symbols_primary: u16,
         source_symbols_secondary: u16,
         n_shards: u16,
@@ -1085,29 +1127,32 @@ mod tests {
         );
 
         encode_decode_quilt(
-            blobs_with_desc,
+            blobs_with_identifiers,
             EncodingConfigEnum::RaptorQ(&raptorq_config),
         );
         encode_decode_quilt(
-            blobs_with_desc,
+            blobs_with_identifiers,
             EncodingConfigEnum::ReedSolomon(&reed_solomon_config),
         );
     }
 
-    fn encode_decode_quilt(blobs_with_desc: &[BlobWithDesc<'_>], config: EncodingConfigEnum) {
+    fn encode_decode_quilt(
+        blobs_with_identifiers: &[BlobWithIdentifier<'_>],
+        config: EncodingConfigEnum,
+    ) {
         let _guard = tracing_subscriber::fmt().try_init();
 
-        // Calculate blob IDs directly from blobs_with_desc.
-        let blob_ids: Vec<BlobId> = blobs_with_desc
+        // Calculate blob IDs directly from blobs_with_identifiers.
+        let blob_ids: Vec<BlobId> = blobs_with_identifiers
             .iter()
-            .map(|blob_with_desc| {
-                let encoder = BlobEncoder::new(config.clone(), blob_with_desc.blob)
+            .map(|blob_with_identifier| {
+                let encoder = BlobEncoder::new(config.clone(), blob_with_identifier.blob)
                     .expect("Should create encoder");
                 *encoder.compute_metadata().blob_id()
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config.clone(), blobs_with_desc);
+        let encoder = QuiltEncoder::new(config.clone(), blobs_with_identifiers);
 
         let (sliver_pairs, quilt_metadata) = encoder
             .encode_with_metadata()
@@ -1132,11 +1177,12 @@ mod tests {
         decoder = decoder.add_slivers(&slivers);
         assert_eq!(decoder.decode_quilt_index(), Ok(&quilt_metadata.index));
 
-        for (blob_with_desc, blob_id) in blobs_with_desc.iter().zip(blob_ids.iter()) {
+        for (blob_with_identifier, blob_id) in blobs_with_identifiers.iter().zip(blob_ids.iter()) {
             let blob = decoder.get_blob_by_id(blob_id);
-            assert_eq!(blob, Ok(blob_with_desc.blob.to_vec()));
-            let blob = decoder.get_blob_by_desc(blob_with_desc.desc);
-            assert_eq!(blob, Ok(blob_with_desc.blob.to_vec()));
+            assert_eq!(blob, Ok(blob_with_identifier.blob.to_vec()));
+
+            let blob = decoder.get_blob_by_identifier(blob_with_identifier.identifier);
+            assert_eq!(blob, Ok(blob_with_identifier.blob.to_vec()));
         }
 
         let mut decoder = config

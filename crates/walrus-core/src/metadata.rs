@@ -58,19 +58,19 @@ pub struct QuiltBlock {
     start_index: u16,
     /// The end sliver index of the block.
     end_index: u16,
-    /// The description of the block, it can be used to locate the blob in the quilt.
-    desc: String,
+    /// The identifier of the block, it can be used to locate the blob in the quilt.
+    identifier: String,
 }
 
 impl QuiltBlock {
     /// Returns a new [`QuiltBlock`].
-    pub fn new(blob_id: BlobId, unencoded_length: u64, desc: String) -> Self {
+    pub fn new(blob_id: BlobId, unencoded_length: u64, identifier: String) -> Self {
         Self {
             blob_id,
             unencoded_length,
             start_index: 0,
             end_index: 0,
-            desc,
+            identifier,
         }
     }
 
@@ -95,8 +95,8 @@ impl QuiltBlock {
     }
 
     /// Returns the description of the block.
-    pub fn desc(&self) -> &str {
-        &self.desc
+    pub fn identifier(&self) -> &str {
+        &self.identifier
     }
 
     /// Returns the blob_id of the block.
@@ -129,19 +129,22 @@ impl QuiltIndex {
             .ok_or(QuiltError::blob_not_found_in_quilt(id))
     }
 
-    /// Returns the quilt block with the given blob description.
-    pub fn get_quilt_block_by_desc(&self, desc: &str) -> Result<&QuiltBlock, QuiltError> {
+    /// Returns the quilt block with the given blob identifier.
+    pub fn get_quilt_block_by_identifier(
+        &self,
+        identifier: &str,
+    ) -> Result<&QuiltBlock, QuiltError> {
         self.quilt_blocks
             .iter()
-            .find(|block| block.desc == desc)
-            .ok_or(QuiltError::blob_not_found_in_quilt(&desc))
+            .find(|block| block.identifier == identifier)
+            .ok_or(QuiltError::blob_not_found_in_quilt(&identifier))
     }
 
-    /// Returns an iterator over (blob_id, blob_desc) pairs in the quilt.
+    /// Returns an iterator over (blob_id, blob_identifier) pairs in the quilt.
     pub fn iter(&self) -> impl Iterator<Item = (&BlobId, &str)> {
         self.quilt_blocks
             .iter()
-            .map(|block| (&block.blob_id, block.desc.as_str()))
+            .map(|block| (&block.blob_id, block.identifier.as_str()))
     }
 
     /// Returns the number of blocks in the quilt.
