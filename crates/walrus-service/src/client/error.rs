@@ -3,6 +3,7 @@
 
 //! The errors for the storage client and the communication with storage nodes.
 
+use sui_types::base_types::SuiAddress;
 use walrus_core::{BlobId, EncodingType, Epoch, SliverPairIndex, SliverType};
 use walrus_sdk::error::{ClientBuildError, NodeError};
 use walrus_sui::client::{SuiClientError, MIN_STAKING_THRESHOLD};
@@ -64,7 +65,8 @@ impl ClientError {
     pub fn is_out_of_coin_error(&self) -> bool {
         matches!(
             &self.kind,
-            ClientErrorKind::NoCompatiblePaymentCoin | ClientErrorKind::NoCompatibleGasCoins(_, _)
+            ClientErrorKind::NoCompatiblePaymentCoin
+                | ClientErrorKind::NoCompatibleGasCoins(_, _, _)
         )
     }
 
@@ -92,8 +94,8 @@ impl From<SuiClientError> for ClientError {
     fn from(value: SuiClientError) -> Self {
         let kind = match value {
             SuiClientError::NoCompatibleWalCoins => ClientErrorKind::NoCompatiblePaymentCoin,
-            SuiClientError::NoCompatibleGasCoins(desired_amount, actual_balance) => {
-                ClientErrorKind::NoCompatibleGasCoins(desired_amount, actual_balance)
+            SuiClientError::NoCompatibleGasCoins(address, desired_amount, actual_balance) => {
+                ClientErrorKind::NoCompatibleGasCoins(address, desired_amount, actual_balance)
             }
             SuiClientError::StakeBelowThreshold(amount) => {
                 ClientErrorKind::StakeBelowThreshold(amount)
@@ -145,10 +147,10 @@ pub enum ClientErrorKind {
     NoCompatiblePaymentCoin,
     /// No gas coins with sufficient balance found for the transaction.
     #[error(
-        "no compatible gas coins with sufficient total balance found [requested_amount={0:?}, \
-        actual_balance={1:?}]"
+        "no compatible gas coins with sufficient total balance found [address={0}, \
+        requested_amount={1:?}, actual_balance={2:?}]"
     )]
-    NoCompatibleGasCoins(Option<u128>, Option<u128>),
+    NoCompatibleGasCoins(SuiAddress, Option<u128>, Option<u128>),
     /// The client was unable to open connections to any storage node.
     #[error("connecting to all storage nodes failed: {0}")]
     AllConnectionsFailed(ClientBuildError),

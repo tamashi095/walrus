@@ -33,5 +33,7 @@ echo "Generating dry run configs"
 
 /opt/walrus/bin/walrus-deploy generate-dry-run-configs \
   --working-dir /opt/walrus/outputs \
+  --sui-amount 1000000000000 \
+  --admin-wallet-path /opt/walrus/outputs/sui_admin.yaml \
   --extra-client-wallets stress,staking \
   || die "Failed to generate dry-run configs"

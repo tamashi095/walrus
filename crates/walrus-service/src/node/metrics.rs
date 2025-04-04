@@ -255,7 +255,7 @@ impl TelemetryLabel for ClientErrorKind {
             ClientErrorKind::InvalidConfig => "invalid-config",
             ClientErrorKind::BlobIdBlocked(_) => "blob-id-blocked",
             ClientErrorKind::NoCompatiblePaymentCoin => "no-compatible-payment-coin",
-            ClientErrorKind::NoCompatibleGasCoins(_, _) => "no-compatible-gas-coins",
+            ClientErrorKind::NoCompatibleGasCoins(_, _, _) => "no-compatible-gas-coins",
             ClientErrorKind::AllConnectionsFailed(_) => "all-connections-failed",
             ClientErrorKind::BehindCurrentEpoch { .. } => "behind-current-epoch",
             ClientErrorKind::UnsupportedEncodingType(_) => "unsupported-encoding-type",

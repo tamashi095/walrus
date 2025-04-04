@@ -11,30 +11,37 @@
 FROM rust:1.86-bookworm AS builder
 ARG GIT_REVISION
 ENV GIT_REVISION=$GIT_REVISION
-WORKDIR "$WORKDIR/walrus"
+WORKDIR "/walrus"
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y cmake clang
-
-# Copy project files
-COPY Cargo.toml Cargo.lock ./
-COPY crates crates
-COPY contracts ./contracts
-# Note: Duplicate contracts copy can be removed
-COPY contracts /contracts
-COPY docker/walrus-antithesis/build-walrus-image-for-antithesis/update_move_toml.sh /tmp/
 
 COPY docker/walrus-antithesis/sui_version.toml .
 RUN export SUI_VERSION=$(grep SUI_VERSION sui_version.toml | cut -d'"' -f2) && \
     echo "SUI_VERSION: $SUI_VERSION" && \
     git clone --depth 1 --branch $SUI_VERSION https://github.com/MystenLabs/sui /sui
 
+# Add Antithesis instrumentation
+RUN wget -O /usr/lib/libvoidstar.so https://antithesis.com/assets/instrumentation/libvoidstar.so
+
+# Copy project files
+COPY Cargo.toml Cargo.lock ./
+
+# Fetch all dependencies
+ARG LD_LIBRARY_PATH="/usr/lib/libvoidstar.so"
+ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
+COPY crates crates
+RUN LD_LIBRARY_PATH=$LD_LIBRARY_PATH \
+    cargo fetch \
+    --locked
+COPY contracts ./contracts
+# Note: Duplicate contracts copy can be removed
+COPY contracts /contracts
+COPY docker/walrus-antithesis/build-walrus-image-for-antithesis/update_move_toml.sh /tmp/
+
 # Update Move.toml to use local Sui repository
 RUN chmod +x /tmp/update_move_toml.sh
 RUN /tmp/update_move_toml.sh
-
-# Add Antithesis instrumentation
-RUN wget -O /usr/lib/libvoidstar.so https://antithesis.com/assets/instrumentation/libvoidstar.so
 
 # Configure Rust flags for Antithesis instrumentation and coverage
 ARG RUSTFLAGS="-C target-feature=-crt-static -C codegen-units=1 -C passes=sancov-module \
@@ -45,10 +52,9 @@ ARG RUSTFLAGS="-C target-feature=-crt-static -C codegen-units=1 -C passes=sancov
 ENV RUSTFLAGS="$RUSTFLAGS"
 
 # Build all binaries with Antithesis instrumentation
-ARG LD_LIBRARY_PATH="/usr/lib/libvoidstar.so"
-ENV LD_LIBRARY_PATH="$LD_LIBRARY_PATH"
 RUN LD_LIBRARY_PATH=$LD_LIBRARY_PATH \
     cargo build \
+    --offline \
     --profile release-antithesis \
     --target-dir=/walrus/target \
     --bin walrus \
@@ -59,7 +65,7 @@ RUN find /walrus/target
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates curl git
-WORKDIR "$WORKDIR/walrus"
+WORKDIR "/walrus"
 COPY --from=builder /walrus/target/release-antithesis/walrus /opt/walrus/bin/walrus
 COPY --from=builder /walrus/target/release-antithesis/walrus-node /opt/walrus/bin/walrus-node
 COPY --from=builder /walrus/target/release-antithesis/walrus-deploy /opt/walrus/bin/walrus-deploy

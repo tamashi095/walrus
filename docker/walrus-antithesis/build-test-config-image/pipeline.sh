@@ -34,7 +34,7 @@ run-pipeline() {
   sui_image_name=mysten/sui-tools:"$sui_version"
   export SUI_IMAGE_NAME="$sui_image_name"
 
-  build_sui_image=true
+  build_sui_image=false
   if $build_sui_image; then
     (
       # Assume SUI is in ../sui.

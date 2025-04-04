@@ -579,6 +579,7 @@ impl SuiReadClient {
                     CoinType::Sui => {
                         let actual_balance = self.balance(owner_address, coin_type).await? as u128;
                         Err(SuiClientError::NoCompatibleGasCoins(
+                            owner_address,
                             Some(amount),
                             Some(actual_balance),
                         ))
