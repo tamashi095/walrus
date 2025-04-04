@@ -34,7 +34,7 @@ run-pipeline() {
   sui_image_name=mysten/sui-tools:"$sui_version"
   export SUI_IMAGE_NAME="$sui_image_name"
 
-  build_sui_image=false
+  build_sui_image=true
   if $build_sui_image; then
     (
       # Assume SUI is in ../sui.
@@ -55,7 +55,7 @@ run-pipeline() {
   export WALRUS_PLATFORM=linux/amd64
 
   # Build walrus-antithesis image.
-  build_walrus_image=false
+  build_walrus_image=true
   if $build_walrus_image; then
     msg "Running walrus-antithesis build"
     docker/walrus-antithesis/build-walrus-image-for-antithesis/build.sh \
