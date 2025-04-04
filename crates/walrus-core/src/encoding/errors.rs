@@ -170,6 +170,9 @@ pub enum QuiltError {
     /// Missing sliver.
     #[error("missing sliver: {0}")]
     MissingSliver(SliverIndex),
+    /// Missing sliver range.
+    #[error("missing sliver range: {0}..{1}")]
+    MissingSliverRange(SliverIndex, SliverIndex),
     /// [`QuiltIndex`][crate::metadata::QuiltIndex] is missing.
     #[error("quilt index is missing")]
     MissingQuiltIndex,
@@ -208,6 +211,10 @@ impl QuiltError {
     /// Missing sliver.
     pub fn missing_sliver(sliver_index: SliverIndex) -> Self {
         Self::MissingSliver(sliver_index)
+    }
+    /// Missing sliver range.
+    pub fn missing_sliver_range(begin: SliverIndex, end: SliverIndex) -> Self {
+        Self::MissingSliverRange(begin, end)
     }
     /// Too many blobs to fit in the quilt.
     pub fn too_many_blobs(num_blobs: usize, max_blobs: usize) -> Self {
