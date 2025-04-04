@@ -567,16 +567,26 @@ impl SuiReadClient {
             CoinType::Wal => Some(self.wal_coin_type().to_owned()),
             CoinType::Sui => None,
         };
-        self.sui_client
+        let response: std::result::Result<Vec<Coin>, sui_sdk::error::Error> = self
+            .sui_client
             .select_coins(owner_address, coin_type_option, min_balance.into(), exclude)
-            .await
-            .map_err(|err| match err {
+            .await;
+        match response {
+            Ok(coins) => Ok(coins),
+            Err(error) => match error {
                 sui_sdk::error::Error::InsufficientFund { address: _, amount } => match coin_type {
-                    CoinType::Wal => SuiClientError::NoCompatibleWalCoins,
-                    CoinType::Sui => SuiClientError::NoCompatibleGasCoins(Some(amount)),
+                    CoinType::Wal => Err(SuiClientError::NoCompatibleWalCoins),
+                    CoinType::Sui => {
+                        let actual_balance = self.balance(owner_address, coin_type).await? as u128;
+                        Err(SuiClientError::NoCompatibleGasCoins(
+                            Some(amount),
+                            Some(actual_balance),
+                        ))
+                    }
                 },
-                err => SuiClientError::from(err),
-            })
+                err => Err(SuiClientError::from(err)),
+            },
+        }
     }
 
     /// Get the [`StorageNodeCap`] object associated with the address.

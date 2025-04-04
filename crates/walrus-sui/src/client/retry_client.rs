@@ -1144,10 +1144,20 @@ impl FallbackClient {
     ) -> Result<CheckpointData, FallbackError> {
         let url = self.base_url.join(&format!("{}.chk", sequence_number))?;
         tracing::debug!(%url, "downloading checkpoint from fallback bucket");
-        let response = self.client.get(url).send().await?.error_for_status()?;
+        let response = self
+            .client
+            .get(url.clone())
+            .send()
+            .await
+            .inspect_err(|err| {
+                tracing::warn!(?err, ?url, "[get_full_checkpoint] client get");
+            })?
+            .error_for_status()?;
         let bytes = response.bytes().await?;
-        let checkpoint = Blob::from_bytes::<CheckpointData>(&bytes)
-            .map_err(|e| FallbackError::DeserializationError(e.to_string()))?;
+        let checkpoint = Blob::from_bytes::<CheckpointData>(&bytes).map_err(|err| {
+            tracing::warn!(?err, "[get_full_checkpoint] Blob::from_bytes failed");
+            FallbackError::DeserializationError(err.to_string())
+        })?;
         tracing::debug!(sequence_number, "checkpoint download successful");
         Ok(checkpoint)
     }

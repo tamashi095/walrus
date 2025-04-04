@@ -24,5 +24,4 @@ docker build \
   -f "$DOCKERFILE" "$REPO_ROOT" \
   --build-arg GIT_REVISION="$GIT_REVISION" \
   --build-arg BUILD_DATE="$BUILD_DATE" \
-  --platform linux/"$(uname -m)" \
   "$@"

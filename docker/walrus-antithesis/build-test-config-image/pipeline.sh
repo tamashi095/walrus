@@ -1,7 +1,8 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) Walrus Foundation
 # SPDX-License-Identifier: Apache-2.0
 # shellcheck disable=SC2155
+export DOCKER_DEFAULT_PLATFORM=linux/amd64
 
 msg() {
   echo "$0: note: $*" >&2
@@ -30,33 +31,38 @@ run-pipeline() {
   # docker run -d -p 5000:5000 --restart always --name registry registry:2
   # TODO: check that local registry is running.
 
-  local_sui_image_name=sui-tools:"$sui_version"
+  sui_image_name=mysten/sui-tools:"$sui_version"
+  export SUI_IMAGE_NAME="$sui_image_name"
 
-  (
-    # Assume SUI is in ../sui.
-    cd ../sui || die "no sui dir?"
-    git fetch origin || die "Failed to fetch SUI"
-    git checkout "$sui_version" || die "Failed to checkout SUI version '$sui_version'"
-    cd docker/sui-tools
-    ./build.sh -t "$local_sui_image_name" || die "Failed to build SUI image"
-    # Get SUI image and push to local registry.
-  ) || die "failed to build SUI image"
-
+  build_sui_image=false
+  if $build_sui_image; then
+    (
+      # Assume SUI is in ../sui.
+      cd ../sui || die "no sui dir?"
+      git fetch origin || die "Failed to fetch SUI"
+      git checkout "$sui_version" || die "Failed to checkout SUI version '$sui_version'"
+      cd docker/sui-tools
+      ./build.sh -t "$sui_image_name" || die "Failed to build SUI image"
+      # Get SUI image and push to local registry.
+    ) || die "failed to build SUI image"
+  else
+    docker pull "$sui_image_name" || die "Failed to pull SUI image"
+  fi
   local_walrus_image="walrus-antithesis:$sui_version"
 
   export WALRUS_IMAGE_NAME="$local_walrus_image"
-  export SUI_IMAGE_NAME="mysten/sui-tools:$sui_version"
-
-  export SUI_PLATFORM=linux/"$(uname -m)"
-  export WALRUS_PLATFORM=linux/"$(uname -m)"
+  export SUI_PLATFORM=linux/amd64
+  export WALRUS_PLATFORM=linux/amd64
 
   # Build walrus-antithesis image.
-  msg "Running walrus-antithesis build"
-  docker/walrus-antithesis/build-walrus-image-for-antithesis/build.sh \
-    --build-arg RUSTFLAGS= \
-    --build-arg LD_LIBRARY_PATH= \
-    -t "$local_walrus_image" || die "Failed to build walrus-antithesis image"
-
+  build_walrus_image=false
+  if $build_walrus_image; then
+    msg "Running walrus-antithesis build"
+    docker/walrus-antithesis/build-walrus-image-for-antithesis/build.sh \
+      --build-arg RUSTFLAGS= \
+      --build-arg LD_LIBRARY_PATH= \
+      -t "$local_walrus_image" || die "Failed to build walrus-antithesis image"
+  fi
   # Kill docker compose on exit.
   trap 'cleanup-docker-compose '"$build_dir" EXIT
 

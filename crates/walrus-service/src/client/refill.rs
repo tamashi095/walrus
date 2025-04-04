@@ -5,7 +5,7 @@
 
 use std::{sync::Arc, time::Duration};
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use futures::future::try_join_all;
 use sui_sdk::types::base_types::SuiAddress;
 use tokio::{task::JoinHandle, time::MissedTickBehavior};
@@ -150,7 +150,9 @@ impl Refiller {
                         )
                         .await
                         {
-                            inner_fut.await
+                            inner_fut.await.with_context(|| {
+                                format!("failed in periodic_refill of address [addres={}]", address)
+                            })
                         } else {
                             Ok(())
                         }

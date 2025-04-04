@@ -1,8 +1,6 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Copyright (c) Walrus Foundation
 # SPDX-License-Identifier: Apache-2.0
-
-set -euo pipefail
 
 trap ctrl_c INT
 
@@ -19,7 +17,7 @@ join_by() {
 }
 
 kill_tmux_sessions() {
-  { tmux ls || true; } | { grep -o "dryrun-node-\d*" || true; } | xargs -n1 tmux kill-session -t
+  { tmux ls || true; } | { grep -Eo "stress|staking|dryrun-node-\d*" || true; } | xargs -n1 tmux kill-session -t
 }
 
 ctrl_c() {
@@ -44,12 +42,40 @@ usage() {
 }
 
 run_node() {
-  cmd="./target/release/walrus-node run --config-path $working_dir/$1.yaml ${2:-} \
-    |& tee $working_dir/$1.log"
-  echo "Running within tmux: '$cmd'..."
-  tmux new -d -s "$1" "$cmd"
+  cmd="RUST_LOG=$RUST_LOG ./target/release/walrus-node run --config-path $working_dir/$1.yaml ${2:-} \
+    |& tee $working_dir/$1.log | tee -a $testbed_log"
+  echo "Running within tmux: ($cmd)..." ||:
+  tmux new -d -s "$1" "$cmd" || die "failed to invoke tmux with ($cmd)"
 }
 
+run_staking() {
+  echo "$(date) Running staking client..." > $working_dir/staking.log
+  cmd="RUST_BACKTRACE=full RUST_LOG=$RUST_LOG \
+    cargo run --release --bin walrus-stress -- \
+      --config-path $working_dir/client_config_staking.yaml \
+      --sui-network 'http://127.0.0.1:9000;http://127.0.0.1:9123/gas' \
+      --metrics-port 9125 \
+      staking \
+      |& tee -a $working_dir/staking.log | tee -a $testbed_log"
+  echo "$(date) Running within tmux: '$cmd'..."
+  tmux new -d -s staking "$cmd" || die "failed to invoke tmux with ($cmd)"
+}
+
+run_stress() {
+  echo "$(date) Running stress client..." > $working_dir/stress.log
+  cmd="RUST_BACKTRACE=full RUST_LOG=$RUST_LOG \
+    cargo run --release --bin walrus-stress -- \
+      --config-path $working_dir/client_config_stress.yaml \
+      --sui-network 'http://127.0.0.1:9000;http://127.0.0.1:9123/gas' \
+      --metrics-port 9126 \
+      stress \
+      --write-load 10 \
+      --read-load 10 \
+      --n-clients 1 \
+      --gas-refill-period-millis 60000 |& tee -a $working_dir/stress.log | tee -a $testbed_log"
+  echo "Running within tmux: '$cmd'..."
+  tmux new -d -s stress "$cmd" || die "failed to invoke tmux with ($cmd)"
+}
 
 backup_database_url=
 committee_size=4 # Default value of 4 if no argument is provided
@@ -108,6 +134,12 @@ if ! [ "$shards" -ge "$committee_size" ] 2>/dev/null; then
   exit 1
 fi
 
+# Set working directory
+working_dir="./working_dir"
+
+mkdir -p working_dir
+testbed_log="$working_dir"/testbed.log
+
 echo "$0: Using network: $network"
 echo "$0: Using committee_size: $committee_size"
 echo "$0: Using shards: $shards"
@@ -118,7 +150,7 @@ echo "$0: Using backup_database_url: $backup_database_url"
 if ! $use_existing_config; then
   if [[ -n "$backup_database_url" ]]; then
     echo "Reverting database migrations to ensure walrus-backup is starting fresh... [backup_database_url=$backup_database_url]"
-    diesel migration --database-url "$backup_database_url" revert --all ||:
+    diesel migration --database-url "$backup_database_url" revert --all ||: |&
     diesel migration --database-url "$backup_database_url" run
 
     # shellcheck disable=SC2207
@@ -145,9 +177,6 @@ cargo build \
   $(printf -- "--bin %s " "${binaries[@]}") \
   --features "$(join_by , "${features[@]}")"
 
-# Set working directory
-working_dir="./working_dir"
-
 # Derive the ip addresses for the storage nodes
 ips=( )
 for node_count in $(seq 1 "$committee_size"); do
@@ -157,32 +186,46 @@ done
 # Initialize cleanup to be empty
 cleanup=
 
+# Clean up old processes.
+pkill -f target/release/walrus ||:
+export RUST_LOG=debug,h2=warn,hyper_util=warn,walrus_utils::config=info
+
 if ! $use_existing_config; then
   # Cleanup
   rm -f $working_dir/dryrun-node-*.yaml
+  rm -f $working_dir/stress.yaml
+  rm -f $working_dir/staking.yaml
   cleanup="--cleanup-storage"
 
   # Deploy system contract
   echo Deploying system contract...
-  ./target/release/walrus-deploy deploy-system-contract \
-    --working-dir $working_dir \
-    --sui-network "$network" \
-    --n-shards "$shards" \
-    --host-addresses "${ips[@]}" \
-    --storage-price 5 \
-    --write-price 1 \
-    --epoch-duration "$epoch_duration" \
-    --contract-dir "$contract_dir" \
-    --with-wal-exchange \
-    --with-subsidies
+    ./target/release/walrus-deploy deploy-system-contract \
+      --working-dir $working_dir \
+      --sui-network "$network" \
+      --n-shards "$shards" \
+      --host-addresses "${ips[@]}" \
+      --storage-price 5 \
+      --write-price 1 \
+      --epoch-duration "$epoch_duration" \
+      --contract-dir "$contract_dir" \
+      --with-wal-exchange \
+      --with-subsidies \
+      |& tee -a "$testbed_log"
 
   # Generate configs
-  generate_dry_run_args=( --working-dir "$working_dir" )
+  generate_dry_run_args=(
+    --working-dir "$working_dir"
+    --admin-wallet-path "$working_dir"/sui_admin.yaml
+    --sui-amount 1000000000
+    --extra-client-wallets 'stress,staking'
+  )
   if [[ -n "$backup_database_url" ]]; then
     generate_dry_run_args+=( --backup-database-url "$backup_database_url" )
   fi
   echo "Generating configuration [${generate_dry_run_args[*]}]..."
-  ./target/release/walrus-deploy generate-dry-run-configs "${generate_dry_run_args[@]}"
+  ./target/release/walrus-deploy generate-dry-run-configs "${generate_dry_run_args[@]}" \
+    |& tee -a "$testbed_log"
+
 
   echo "
 event_processor_config:
@@ -198,9 +241,12 @@ node_count=0
 for config in $( ls $working_dir/dryrun-node-*[0-9].yaml ); do
   node_name=$(basename -- "$config")
   node_name="${node_name%.*}"
-  run_node "$node_name" "$cleanup"
+  run_node "$node_name" "$cleanup" || die "failed to launch node $node_name"
   ((node_count++))
 done
+
+run_staking
+run_stress
 
 echo "
 Spawned $node_count nodes in separate tmux sessions. (See \`tmux ls\` for the list of tmux sessions.)
@@ -209,7 +255,7 @@ Client configuration stored at '$working_dir/client_config.yaml'.
 See README.md for further information on the Walrus client."
 
 if $tail_logs; then
-  tail -F "$working_dir"/dryrun-node-*.log | grep --line-buffered --color -Ei "ERROR|CRITICAL|^"
+  tail -F "$testbed_log" | grep --line-buffered --color -Ei "ERROR|CRITICAL|^"
 else
   echo "Press Ctrl+C to stop the nodes."
   while (( 1 )); do

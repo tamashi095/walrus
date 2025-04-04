@@ -514,6 +514,8 @@ pub async fn create_client_config(
     sui_amount: u64,
     wallet_name: &str,
 ) -> anyhow::Result<client::Config> {
+    tracing::info!(?sui_network, sui_amount, wallet_name, "create_client_config called");
+
     // Create the working directory if it does not exist
     fs::create_dir_all(working_dir).expect("Failed to create working directory");
 

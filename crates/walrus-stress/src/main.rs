@@ -153,6 +153,7 @@ async fn run_stress(
     sui_network: SuiNetwork,
     args: StressArgs,
 ) -> anyhow::Result<()> {
+    tracing::info!(?config, ?args, "starting the stress runner");
     let n_clients = args.n_clients.get();
 
     // Start the write transaction generator.
