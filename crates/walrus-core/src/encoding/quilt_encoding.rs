@@ -393,7 +393,7 @@ impl<'a> QuiltEncoder<'a> {
         );
 
         // Compute blob_ids and create mapping.
-        let mut blob_with_ids = Vec::new();
+        let mut blobs_with_ids = Vec::new();
         for blob_with_identifier in self.blobs.iter() {
             let encoder = BlobEncoder::new(self.config.clone(), blob_with_identifier.blob)
                 .map_err(|_| {
@@ -403,14 +403,14 @@ impl<'a> QuiltEncoder<'a> {
                     ))
                 })?;
             let metadata = encoder.compute_metadata();
-            blob_with_ids.push((blob_with_identifier, *metadata.blob_id()));
+            blobs_with_ids.push((blob_with_identifier, *metadata.blob_id()));
         }
 
         // Sort blobs based on their blob_ids.
-        blob_with_ids.sort_by_key(|(_, id)| *id);
+        blobs_with_ids.sort_by_key(|(_, id)| *id);
 
         // Create initial QuiltBlocks.
-        let quilt_blocks: Vec<QuiltBlock> = blob_with_ids
+        let quilt_blocks: Vec<QuiltBlock> = blobs_with_ids
             .iter()
             .map(|(blob_with_identifier, blob_id)| {
                 QuiltBlock::new(
@@ -433,7 +433,7 @@ impl<'a> QuiltEncoder<'a> {
 
         // Collect blob sizes for symbol size computation.
         let all_sizes: Vec<usize> = core::iter::once(index_total_size)
-            .chain(blob_with_ids.iter().map(|(bwd, _)| bwd.blob.len()))
+            .chain(blobs_with_ids.iter().map(|(bwd, _)| bwd.blob.len()))
             .collect();
 
         let required_alignment = self.config.encoding_type().required_alignment() as usize;
@@ -447,35 +447,36 @@ impl<'a> QuiltEncoder<'a> {
         let index_cols_needed = index_total_size.div_ceil(column_size);
         let mut current_col = index_cols_needed;
 
+        // Adds a blob to the data as consecutive columns, starting at the given column.
+        let mut add_blob_to_data = |blob: &[u8], current_col: usize| {
+            let mut offset = 0;
+            let mut row = 0;
+            let mut col = current_col;
+            while offset < blob.len() {
+                let end = cmp::min(offset + symbol_size, blob.len());
+                let chunk = &blob[offset..end];
+                let dest_idx = row * row_size + col * symbol_size;
+                data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
+                row = (row + 1) % n_rows;
+                if row == 0 {
+                    col += 1;
+                }
+                offset += chunk.len();
+            }
+        };
+
         // First pass: Fill data with actual blobs and populate quilt blocks.
-        for (i, (blob_with_identifier, blob_id)) in blob_with_ids.iter().enumerate() {
-            let mut cur = current_col;
+        for (i, (blob_with_identifier, blob_id)) in blobs_with_ids.iter().enumerate() {
             let cols_needed = blob_with_identifier.blob.len().div_ceil(column_size);
             tracing::debug!(
                 "Blob: {:?} needs {} columns, current_col: {}",
                 blob_id,
                 cols_needed,
-                cur
+                current_col
             );
+            assert!(current_col + cols_needed <= n_columns);
 
-            assert!(cur + cols_needed <= n_columns);
-
-            // Copy blob data into columns.
-            let mut row = 0;
-            let mut offset = 0;
-            while offset < blob_with_identifier.blob.len() {
-                let end = cmp::min(offset + symbol_size, blob_with_identifier.blob.len());
-                let chunk = &blob_with_identifier.blob[offset..end];
-                let dest_idx = row * row_size + cur * symbol_size;
-
-                data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
-
-                row = (row + 1) % n_rows;
-                if row == 0 {
-                    cur += 1;
-                }
-                offset += symbol_size;
-            }
+            add_blob_to_data(blob_with_identifier.blob, current_col);
 
             assert_eq!(blob_id, quilt_index.quilt_blocks[i].blob_id());
             quilt_index.quilt_blocks[i].set_start_index(current_col as u16);
@@ -483,29 +484,14 @@ impl<'a> QuiltEncoder<'a> {
             quilt_index.quilt_blocks[i].set_end_index(current_col as u16);
         }
 
-        // Create the final index data with size prefix.
-        let mut final_index_data = Vec::new();
-        final_index_data.extend_from_slice(&index_total_size.to_le_bytes());
+        let mut final_index_data = Vec::with_capacity(index_total_size);
+        let index_size_u64 = index_total_size as u64;
+        final_index_data.extend_from_slice(&index_size_u64.to_le_bytes());
         final_index_data
             .extend_from_slice(&bcs::to_bytes(&quilt_index).expect("Serialization should succeed"));
 
-        let mut row = 0;
-        let mut offset = 0;
-        let mut cur = 0;
-
-        while offset < index_total_size {
-            let end = cmp::min(offset + symbol_size, index_total_size);
-            let chunk = &final_index_data[offset..end];
-            let dest_idx = row * row_size + cur * symbol_size;
-
-            data[dest_idx..dest_idx + chunk.len()].copy_from_slice(chunk);
-
-            row = (row + 1) % n_rows;
-            if row == 0 {
-                cur += 1;
-            }
-            offset += symbol_size;
-        }
+        // Add the index data to the data.
+        add_blob_to_data(&final_index_data, 0);
 
         Ok(Quilt {
             data,
