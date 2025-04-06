@@ -110,12 +110,23 @@ impl QuiltBlock {
     }
 }
 
+/// Represents the version of the quilt index format.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[repr(u8)]
+pub enum QuiltVersion {
+    /// Version 1 of the quilt index format.
+    #[default]
+    V1 = 0,
+}
+
 /// A index over the blobs in a quilt.
 ///
 /// Each [QuiltBlock] represents a blob stored in the quilt. And each blob is
 /// mapped to a continuous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndex {
+    /// The version of the quilt index.
+    pub version: QuiltVersion,
     /// Location/identity index of the blob in the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }

@@ -16,7 +16,7 @@ use tracing::{Level, Span};
 use super::{EncodingConfig, EncodingConfigEnum, Primary, Secondary, SliverData, SliverPair};
 use crate::{
     encoding::{blob_encoding::BlobEncoder, config::EncodingConfigTrait as _, QuiltError},
-    metadata::{QuiltBlock, QuiltIndex, QuiltMetadata},
+    metadata::{QuiltBlock, QuiltIndex, QuiltMetadata, QuiltVersion},
     BlobId,
     SliverIndex,
 };
@@ -331,7 +331,10 @@ impl<'a> QuiltEncoder<'a> {
             })
             .collect();
 
-        let mut quilt_index = QuiltIndex { quilt_blocks };
+        let mut quilt_index = QuiltIndex {
+            version: QuiltVersion::V1,
+            quilt_blocks,
+        };
 
         // Get the serialized quilt index size.
         let serialized_index_size = bcs::serialized_size(&quilt_index).map_err(|e| {
