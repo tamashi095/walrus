@@ -242,20 +242,23 @@ impl fmt::Debug for DebugQuiltIndex<'_> {
 #[derive(Debug)]
 pub struct BlobWithIdentifier<'a> {
     blob: &'a [u8],
-    identifier: &'a str,
+    identifier: String,
 }
 
 impl<'a> BlobWithIdentifier<'a> {
     /// Creates a new `BlobWithIdentifier` from a blob and a description.
-    pub fn new(blob: &'a [u8], identifier: &'a str) -> Self {
-        Self { blob, identifier }
+    pub fn new(blob: &'a [u8], identifier: impl Into<String>) -> Self {
+        Self {
+            blob,
+            identifier: identifier.into(),
+        }
     }
 
     /// Creates a new `BlobWithIdentifier` from a blob.
     pub fn new_from_blob(blob: &'a [u8]) -> Self {
         Self {
             blob,
-            identifier: "",
+            identifier: String::new(),
         }
     }
 
@@ -326,7 +329,7 @@ impl<'a> QuiltEncoder<'a> {
                 QuiltBlock::new(
                     *blob_id,
                     blob_with_identifier.blob.len() as u64,
-                    blob_with_identifier.identifier.to_string(),
+                    blob_with_identifier.identifier.clone(),
                 )
             })
             .collect();
@@ -859,15 +862,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -876,15 +879,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -893,15 +896,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -910,15 +913,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -927,15 +930,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 3][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[255u8; 1024][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 4, 8, 12
@@ -944,7 +947,7 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1015,13 +1018,13 @@ mod tests {
                     .get_quilt_block_by_id(blob_id)
                     .expect("Block should exist for this blob ID")
                     .identifier(),
-                blob_with_identifier.identifier,
+                &blob_with_identifier.identifier,
                 "Mismatch in blob description"
             );
 
             assert_eq!(
                 quilt
-                    .get_blob_by_identifier(blob_with_identifier.identifier)
+                    .get_blob_by_identifier(blob_with_identifier.identifier.as_str())
                     .expect("Block should exist for this blob ID"),
                 blob_with_identifier.blob,
                 "Mismatch in encoded blob"
@@ -1037,15 +1040,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1054,15 +1057,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1071,15 +1074,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1088,15 +1091,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[5, 68, 3, 2, 5, 6, 78, 8][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1105,15 +1108,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[1, 3][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[255u8; 1024][..],
-                        identifier: "test blob 1",
+                        identifier: "test blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[1, 2, 3][..],
-                        identifier: "test blob 2",
+                        identifier: "test blob 2".to_string(),
                     },
                 ],
                 5, 9, 13
@@ -1122,7 +1125,7 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[9, 8, 7, 6, 5, 4, 3, 2, 1][..],
-                        identifier: "test blob 0",
+                        identifier: "test blob 0".to_string(),
                     },
                 ],
                 3, 5, 7
@@ -1131,15 +1134,15 @@ mod tests {
                 &[
                     BlobWithIdentifier {
                         blob: &[][..],
-                        identifier: "empty blob 0",
+                        identifier: "empty blob 0".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[][..],
-                        identifier: "empty blob 1",
+                        identifier: "empty blob 1".to_string(),
                     },
                     BlobWithIdentifier {
                         blob: &[][..],
-                        identifier: "empty blob 2",
+                        identifier: "empty blob 2".to_string(),
                     }
                 ],
                 5, 9, 13
@@ -1218,7 +1221,7 @@ mod tests {
             let blob = decoder.get_blob_by_id(blob_id);
             assert_eq!(blob, Ok(blob_with_identifier.blob.to_vec()));
 
-            let blob = decoder.get_blob_by_identifier(blob_with_identifier.identifier);
+            let blob = decoder.get_blob_by_identifier(blob_with_identifier.identifier.as_str());
             assert_eq!(blob, Ok(blob_with_identifier.blob.to_vec()));
         }
 
