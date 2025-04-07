@@ -238,7 +238,7 @@ impl fmt::Debug for DebugQuiltIndex<'_> {
     }
 }
 
-/// A wrapper around a blob and its description.
+/// A wrapper around a blob and its identifier.
 #[derive(Debug)]
 pub struct BlobWithIdentifier<'a> {
     blob: &'a [u8],
@@ -246,19 +246,11 @@ pub struct BlobWithIdentifier<'a> {
 }
 
 impl<'a> BlobWithIdentifier<'a> {
-    /// Creates a new `BlobWithIdentifier` from a blob and a description.
+    /// Creates a new `BlobWithIdentifier` from a blob and an identifier.
     pub fn new(blob: &'a [u8], identifier: impl Into<String>) -> Self {
         Self {
             blob,
             identifier: identifier.into(),
-        }
-    }
-
-    /// Creates a new `BlobWithIdentifier` from a blob.
-    pub fn new_from_blob(blob: &'a [u8]) -> Self {
-        Self {
-            blob,
-            identifier: String::new(),
         }
     }
 
