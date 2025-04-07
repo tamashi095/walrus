@@ -16,7 +16,7 @@ use tracing::{Level, Span};
 use super::{EncodingConfig, EncodingConfigEnum, Primary, Secondary, SliverData, SliverPair};
 use crate::{
     encoding::{blob_encoding::BlobEncoder, config::EncodingConfigTrait as _, QuiltError},
-    metadata::{QuiltBlock, QuiltIndex, QuiltMetadata, QuiltVersion},
+    metadata::{QuiltBlock, QuiltIndexV1, QuiltMetadata, QuiltVersion},
     BlobId,
     SliverIndex,
 };
@@ -29,10 +29,10 @@ const QUILT_INDEX_SIZE_PREFIX_SIZE: usize = 8;
 /// The data is organized as a 2D matrix where:
 /// - Each blob occupies a continuous range of columns (secondary slivers).
 /// - The first column's initial `QUILT_INDEX_SIZE_PREFIX_SIZE` bytes contain the unencoded
-///   length of the [`QuiltIndex`]. It is guaranteed the column size is more than
+///   length of the [`QuiltIndexV1`]. It is guaranteed the column size is more than
 ///   `QUILT_INDEX_SIZE_PREFIX_SIZE`.
-/// - The [`QuiltIndex`] is stored in the first one or multiple columns.
-/// - The blob layout is defined by the [`QuiltIndex`].
+/// - The [`QuiltIndexV1`] is stored in the first one or multiple columns.
+/// - The blob layout is defined by the [`QuiltIndexV1`].
 #[derive(Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Quilt {
     /// The data of the quilt.
@@ -42,7 +42,7 @@ pub struct Quilt {
     /// The size of each symbol in bytes.
     symbol_size: usize,
     /// The internal structure of the quilt.
-    quilt_index: QuiltIndex,
+    quilt_index: QuiltIndexV1,
 }
 
 impl Quilt {
@@ -123,7 +123,7 @@ impl Quilt {
     }
 
     /// Returns the quilt index.
-    pub fn quilt_index(&self) -> &QuiltIndex {
+    pub fn quilt_index(&self) -> &QuiltIndexV1 {
         &self.quilt_index
     }
 
@@ -218,7 +218,7 @@ impl fmt::Debug for DebugRow<'_> {
     }
 }
 
-struct DebugQuiltIndex<'a>(&'a QuiltIndex);
+struct DebugQuiltIndex<'a>(&'a QuiltIndexV1);
 
 impl fmt::Debug for DebugQuiltIndex<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -266,7 +266,7 @@ impl<'a> BlobWithIdentifier<'a> {
 /// quilt blob.
 /// The quilt blob can be decoded into the original blobs by using the [`QuiltDecoder`].
 #[derive(Debug)]
-pub struct QuiltEncoder<'a> {
+pub struct QuiltEncoderV1<'a> {
     /// The blobs to encode.
     blobs: &'a [BlobWithIdentifier<'a>],
     /// The encoding configuration.
@@ -275,13 +275,13 @@ pub struct QuiltEncoder<'a> {
     span: Span,
 }
 
-impl<'a> QuiltEncoder<'a> {
-    /// Creates a new [`QuiltEncoder`] from a encoding config and a set of blobs.
+impl<'a> QuiltEncoderV1<'a> {
+    /// Creates a new [`QuiltEncoderV1`] from a encoding config and a set of blobs.
     pub fn new(config: EncodingConfigEnum<'a>, blobs: &'a [BlobWithIdentifier<'a>]) -> Self {
         Self {
             blobs,
             config,
-            span: tracing::span!(Level::ERROR, "QuiltEncoder"),
+            span: tracing::span!(Level::ERROR, "QuiltEncoderV1"),
         }
     }
 
@@ -326,7 +326,7 @@ impl<'a> QuiltEncoder<'a> {
             })
             .collect();
 
-        let mut quilt_index = QuiltIndex {
+        let mut quilt_index = QuiltIndexV1 {
             version: QuiltVersion::V1,
             quilt_blocks,
         };
@@ -519,7 +519,7 @@ fn can_blobs_fit_into_matrix(blobs_sizes: &[usize], nc: usize, column_size: usiz
 #[derive(Debug)]
 pub struct QuiltDecoder<'a> {
     slivers: Vec<&'a SliverData<Secondary>>,
-    quilt_index: Option<QuiltIndex>,
+    quilt_index: Option<QuiltIndexV1>,
 }
 
 impl<'a> QuiltDecoder<'a> {
@@ -544,7 +544,7 @@ impl<'a> QuiltDecoder<'a> {
     /// Creates a new QuiltDecoder with the given slivers, and a quilt index.
     pub fn new_with_quilt_index(
         slivers: &'a [&'a SliverData<Secondary>],
-        quilt_index: QuiltIndex,
+        quilt_index: QuiltIndexV1,
     ) -> Self {
         Self {
             slivers: slivers.to_vec(),
@@ -554,10 +554,10 @@ impl<'a> QuiltDecoder<'a> {
 
     /// Decodes the quilt index from received slivers.
     ///
-    /// The decoded [`QuiltIndex`] is stored in the decoder and can be retrieved
+    /// The decoded [`QuiltIndexV1`] is stored in the decoder and can be retrieved
     /// using the [`QuiltDecoder::get_quilt_index`] method after the method returns.
     /// Returns
-    pub fn decode_quilt_index(&mut self) -> Result<&QuiltIndex, QuiltError> {
+    pub fn decode_quilt_index(&mut self) -> Result<&QuiltIndexV1, QuiltError> {
         let index = SliverIndex(0);
 
         let first_sliver = self
@@ -603,7 +603,7 @@ impl<'a> QuiltDecoder<'a> {
 
         debug_assert_eq!(combined_data.len(), index_size);
 
-        // Decode the QuiltIndex from the collected data.
+        // Decode the QuiltIndexV1 from the collected data.
         self.quilt_index = Some(
             bcs::from_bytes(&combined_data)
                 .map_err(|e| QuiltError::quilt_index_der_ser_error(e.to_string()))?,
@@ -628,7 +628,7 @@ impl<'a> QuiltDecoder<'a> {
     }
 
     /// Get the quilt index.
-    pub fn get_quilt_index(&self) -> Option<&QuiltIndex> {
+    pub fn get_quilt_index(&self) -> Option<&QuiltIndexV1> {
         self.quilt_index.as_ref()
     }
 
@@ -716,7 +716,7 @@ mod utils {
         data: &[u8],
         row_size: usize,
         symbol_size: usize,
-    ) -> Result<QuiltIndex, QuiltError> {
+    ) -> Result<QuiltIndexV1, QuiltError> {
         // Get the first column and extract the size prefix.
         let first_column = get_column(0, data, row_size, symbol_size)
             .map_err(|_| QuiltError::failed_to_extract_quilt_index_size())?;
@@ -739,8 +739,8 @@ mod utils {
         // Truncate to exact size needed
         collected_data.truncate(quilt_index_size);
 
-        // Decode the QuiltIndex
-        let mut quilt_index: QuiltIndex = bcs::from_bytes(&collected_data)
+        // Decode the QuiltIndexV1
+        let mut quilt_index: QuiltIndexV1 = bcs::from_bytes(&collected_data)
             .map_err(|e| QuiltError::quilt_index_der_ser_error(e.to_string()))?;
         quilt_index.populate_start_indices(current_column as u16);
         Ok(quilt_index)
@@ -989,7 +989,7 @@ mod tests {
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config, blobs_with_identifiers);
+        let encoder = QuiltEncoderV1::new(config, blobs_with_identifiers);
         let quilt = encoder.construct_quilt().expect("Should construct quilt");
         tracing::debug!("Quilt: {:?}", quilt);
 
@@ -1184,7 +1184,7 @@ mod tests {
             })
             .collect();
 
-        let encoder = QuiltEncoder::new(config.clone(), blobs_with_identifiers);
+        let encoder = QuiltEncoderV1::new(config.clone(), blobs_with_identifiers);
 
         let (sliver_pairs, quilt_metadata) = encoder
             .encode_with_metadata()

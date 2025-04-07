@@ -119,19 +119,32 @@ pub enum QuiltVersion {
     V1 = 0,
 }
 
+/// An index over the blobs in a quilt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum QuiltIndex {
+    /// Version 1 of the quilt index format.
+    V1(QuiltIndexV1),
+}
+
+impl Default for QuiltIndex {
+    fn default() -> Self {
+        QuiltIndex::V1(QuiltIndexV1::default())
+    }
+}
+
 /// A index over the blobs in a quilt.
 ///
 /// Each [QuiltBlock] represents a blob stored in the quilt. And each blob is
 /// mapped to a continuous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QuiltIndex {
+pub struct QuiltIndexV1 {
     /// The version of the quilt index.
     pub version: QuiltVersion,
     /// Location/identity index of the blob in the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
 
-impl QuiltIndex {
+impl QuiltIndexV1 {
     /// Returns the quilt block with the given blob ID.
     pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Result<&QuiltBlock, QuiltError> {
         self.quilt_blocks
@@ -189,12 +202,12 @@ pub struct QuiltMetadata {
     /// The blob metadata of the quilt blob.
     pub metadata: BlobMetadata,
     /// The index of the quilt.
-    pub index: QuiltIndex,
+    pub index: QuiltIndexV1,
 }
 
 impl QuiltMetadata {
-    /// Returns the quilt index [`QuiltIndex`].
-    pub fn index(&self) -> &QuiltIndex {
+    /// Returns the quilt index [`QuiltIndexV1`].
+    pub fn index(&self) -> &QuiltIndexV1 {
         &self.index
     }
 
