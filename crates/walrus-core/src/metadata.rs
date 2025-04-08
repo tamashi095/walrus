@@ -124,36 +124,12 @@ pub enum QuiltVersion {
     V1 = 0,
 }
 
-/// An index over the blobs in a quilt.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub enum QuiltIndex {
-    /// Version 1 of the quilt index format.
-    V1(QuiltIndexV1),
-}
-
-impl QuiltIndex {
-    /// Returns the version of the quilt index.
-    pub fn version(&self) -> QuiltVersion {
-        match self {
-            QuiltIndex::V1(_) => QuiltVersion::V1,
-        }
-    }
-}
-
-impl Default for QuiltIndex {
-    fn default() -> Self {
-        QuiltIndex::V1(QuiltIndexV1::default())
-    }
-}
-
 /// A index over the blobs in a quilt.
 ///
 /// Each [QuiltBlock] represents a blob stored in the quilt. And each blob is
 /// mapped to a continuous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndexV1 {
-    /// The version of the quilt index.
-    pub version: QuiltVersion,
     /// Location/identity index of the blob in the quilt.
     pub quilt_blocks: Vec<QuiltBlock>,
 }
@@ -196,32 +172,6 @@ impl QuiltIndexV1 {
         for i in 1..self.quilt_blocks.len() {
             let prev_end_index = self.quilt_blocks[i - 1].end_index;
             self.quilt_blocks[i].start_index = prev_end_index;
-        }
-    }
-}
-
-impl QuiltIndex {
-    /// Returns the quilt block with the given blob identifier.
-    pub fn get_quilt_block_by_identifier(
-        &self,
-        identifier: &str,
-    ) -> Result<&QuiltBlock, QuiltError> {
-        match self {
-            QuiltIndex::V1(v1) => v1.get_quilt_block_by_identifier(identifier),
-        }
-    }
-
-    /// Returns the number of blocks in the quilt.
-    pub fn len(&self) -> usize {
-        match self {
-            QuiltIndex::V1(v1) => v1.len(),
-        }
-    }
-
-    /// Returns true if the quilt index is empty.
-    pub fn is_empty(&self) -> bool {
-        match self {
-            QuiltIndex::V1(v1) => v1.is_empty(),
         }
     }
 }
