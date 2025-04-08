@@ -10,7 +10,6 @@ use cli::{styled_progress_bar, styled_spinner};
 use communication::NodeCommunicationFactory;
 use futures::{Future, FutureExt};
 use indicatif::{HumanDuration, MultiProgress};
-use prometheus::Registry;
 use rand::{rngs::ThreadRng, RngCore as _};
 use rayon::{
     iter::{IndexedParallelIterator, IntoParallelRefIterator},
@@ -43,7 +42,7 @@ use walrus_core::{
     ShardIndex,
     Sliver,
 };
-use walrus_sdk::{api::BlobStatus, error::NodeError};
+use walrus_rest_client::{api::BlobStatus, error::NodeError};
 use walrus_sui::{
     client::{
         BlobPersistence,
@@ -55,7 +54,7 @@ use walrus_sui::{
     },
     types::{move_structs::BlobWithAttribute, Blob, BlobEvent, StakedWal},
 };
-use walrus_utils::backoff::BackoffStrategy;
+use walrus_utils::{backoff::BackoffStrategy, metrics::Registry};
 
 use self::{
     communication::NodeResult,
