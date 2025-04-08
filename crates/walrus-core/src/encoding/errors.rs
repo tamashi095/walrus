@@ -188,6 +188,9 @@ pub enum QuiltError {
     /// Index is out of bounds.
     #[error("index is out of bounds: {0} > max index: {1}")]
     IndexOutOfBounds(usize, usize),
+    /// Other error.
+    #[error("other error: {0}")]
+    Other(String),
 }
 
 impl QuiltError {
@@ -230,5 +233,9 @@ impl QuiltError {
     /// Index is out of bounds.
     pub fn index_out_of_bounds(index: usize, max_index: usize) -> Self {
         Self::IndexOutOfBounds(index, max_index)
+    }
+    /// Other error.
+    pub fn other(reason: String) -> Self {
+        Self::Other(reason)
     }
 }

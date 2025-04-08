@@ -49,8 +49,6 @@ pub enum VerificationError {
 /// Represents a blob quilted into a single quilt blob.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltBlock {
-    /// The blob_id of the quilted blob, it is calculated from the blob independent of the quilt.
-    blob_id: BlobId,
     /// The unencoded length of the blob.
     unencoded_length: u64,
     /// The start sliver index of the block.
@@ -60,17 +58,19 @@ pub struct QuiltBlock {
     end_index: u16,
     /// The identifier of the block, it can be used to locate the blob in the quilt.
     identifier: String,
+    /// A CRC8 checksum of the block.
+    crc8: u8,
 }
 
 impl QuiltBlock {
     /// Returns a new [`QuiltBlock`].
-    pub fn new(blob_id: BlobId, unencoded_length: u64, identifier: String) -> Self {
+    pub fn new(unencoded_length: u64, identifier: String, crc8: u8) -> Self {
         Self {
-            blob_id,
             unencoded_length,
             start_index: 0,
             end_index: 0,
             identifier,
+            crc8,
         }
     }
 
@@ -99,9 +99,14 @@ impl QuiltBlock {
         &self.identifier
     }
 
-    /// Returns the blob_id of the block.
-    pub fn blob_id(&self) -> &BlobId {
-        &self.blob_id
+    /// Returns the CRC8 checksum of the block.
+    pub fn crc8(&self) -> u8 {
+        self.crc8
+    }
+
+    /// Sets the CRC8 checksum of the block.
+    pub fn set_crc8(&mut self, crc8: u8) {
+        self.crc8 = crc8;
     }
 
     /// Returns the unencoded length of the block.
@@ -154,14 +159,6 @@ pub struct QuiltIndexV1 {
 }
 
 impl QuiltIndexV1 {
-    /// Returns the quilt block with the given blob ID.
-    pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Result<&QuiltBlock, QuiltError> {
-        self.quilt_blocks
-            .iter()
-            .find(|block| &block.blob_id == id)
-            .ok_or(QuiltError::blob_not_found_in_quilt(id))
-    }
-
     /// Returns the quilt block with the given blob identifier.
     pub fn get_quilt_block_by_identifier(
         &self,
@@ -174,10 +171,10 @@ impl QuiltIndexV1 {
     }
 
     /// Returns an iterator over (blob_id, blob_identifier) pairs in the quilt.
-    pub fn iter(&self) -> impl Iterator<Item = (&BlobId, &str)> {
+    pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.quilt_blocks
             .iter()
-            .map(|block| (&block.blob_id, block.identifier.as_str()))
+            .map(|block| block.identifier.as_str())
     }
 
     /// Returns the number of blocks in the quilt.
@@ -204,13 +201,6 @@ impl QuiltIndexV1 {
 }
 
 impl QuiltIndex {
-    /// Returns the quilt block with the given blob ID.
-    pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Result<&QuiltBlock, QuiltError> {
-        match self {
-            QuiltIndex::V1(v1) => v1.get_quilt_block_by_id(id),
-        }
-    }
-
     /// Returns the quilt block with the given blob identifier.
     pub fn get_quilt_block_by_identifier(
         &self,
