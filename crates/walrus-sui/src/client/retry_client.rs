@@ -29,7 +29,7 @@ use reqwest::Url;
 use serde::{de::DeserializeOwned, Serialize};
 #[cfg(msim)]
 use sui_macros::fail_point_if;
-use sui_rpc_api::Client as RpcClient;
+use sui_rpc_api::{client::ResponseExt, Client as RpcClient};
 use sui_sdk::{
     apis::{EventApi, GovernanceApi},
     error::SuiRpcResult,
@@ -1202,6 +1202,20 @@ impl From<tonic::Status> for RetriableClientError {
     }
 }
 
+impl RetriableClientError {
+    fn is_eligible_for_fallback(&self, next_checkpoint: u64) -> bool {
+        match self {
+            Self::RpcError(rpc_error) if rpc_error.status.code() == tonic::Code::NotFound => {
+                rpc_error
+                    .status
+                    .checkpoint_height()
+                    .is_some_and(|height| next_checkpoint < height)
+            }
+            _ => true,
+        }
+    }
+}
+
 /// Error type for RPC operations
 #[derive(Error, Debug)]
 pub struct CheckpointRpcError {
@@ -1451,6 +1465,21 @@ impl RetriableRpcClient {
             });
             return Err(error);
         };
+
+        if !error.is_eligible_for_fallback(sequence_number) {
+            tracing::debug!(
+                "primary client error while fetching checkpoint is not eligible for fallback"
+            );
+            self.metrics.as_ref().inspect(|metrics| {
+                metrics.record_rpc_latency(
+                    "get_full_checkpoint",
+                    self.client.get_current_client_name(),
+                    "failure",
+                    start_time.elapsed(),
+                )
+            });
+            return Err(error);
+        }
 
         let fallback_start_time = Instant::now();
         let result = self
