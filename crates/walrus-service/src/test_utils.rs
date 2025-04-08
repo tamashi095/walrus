@@ -153,7 +153,11 @@ impl EventRetentionManager for DefaultSystemEventManager {
 }
 
 #[async_trait]
-impl EventManager for DefaultSystemEventManager {}
+impl EventManager for DefaultSystemEventManager {
+    fn latest_checkpoint_sequence_number(&self) -> Option<u64> {
+        None
+    }
+}
 
 /// Trait representing a storage node handle.
 /// The trait is used to abstract over the different types of storage node handles.
