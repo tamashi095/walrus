@@ -71,7 +71,7 @@ jobs:
     name: Lint Rust code
     needs: diff
     if: ${{ needs.diff.outputs.isRust == 'true' }}
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # pin@v2.7.7
@@ -93,7 +93,7 @@ jobs:
     name: Build Rust code
     needs: diff
     if: ${{ needs.diff.outputs.isRust == 'true' }}
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # pin@v4
       - uses: Swatinem/rust-cache@f0deed1e0edfc6a9be95417288c0e1099b1eeec3 # pin@v2.7.7
@@ -106,7 +106,7 @@ jobs:
     name: Test Rust code
     needs: diff
     if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     env:
       RUST_LOG: walrus=info,error,sui_=off,consensus_core=off
     steps:
@@ -124,7 +124,7 @@ jobs:
   test-coverage:
     name: Run all Rust tests and report coverage
     if: contains(github.event.pull_request.labels.*.name, 'report_coverage')
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     permissions:
       contents: read
       pull-requests: write
@@ -143,7 +143,7 @@ jobs:
     name: Run all simtests
     needs: diff
     if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     env:
       MSIM_TEST_NUM: 5
       # Turn off Sui logging since it can be very distractive in CI
@@ -162,7 +162,7 @@ jobs:
     needs: diff
     # if: ${{ needs.diff.outputs.isRelevantForRustTests == 'true' }}
     if: false
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     steps:
       - uses: taiki-e/install-action@970d55e3ce02a46d60ffae7b4fab3dedace6e769 # pin@v2.49.13
         with:
@@ -176,7 +176,7 @@ jobs:
     name: Test Move code
     needs: diff
     if: ${{ needs.diff.outputs.isMove == 'true' }}
-    runs-on: ubuntu-ghcloud
+    runs-on: ubuntu-ghcloud-2
     env:
       SUI_BIN: "/home/runner/.cargo/bin/sui"
     steps:
