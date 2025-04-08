@@ -126,6 +126,15 @@ pub enum QuiltIndex {
     V1(QuiltIndexV1),
 }
 
+impl QuiltIndex {
+    /// Returns the version of the quilt index.
+    pub fn version(&self) -> QuiltVersion {
+        match self {
+            QuiltIndex::V1(_) => QuiltVersion::V1,
+        }
+    }
+}
+
 impl Default for QuiltIndex {
     fn default() -> Self {
         QuiltIndex::V1(QuiltIndexV1::default())
@@ -194,10 +203,43 @@ impl QuiltIndexV1 {
     }
 }
 
+impl QuiltIndex {
+    /// Returns the quilt block with the given blob ID.
+    pub fn get_quilt_block_by_id(&self, id: &BlobId) -> Result<&QuiltBlock, QuiltError> {
+        match self {
+            QuiltIndex::V1(v1) => v1.get_quilt_block_by_id(id),
+        }
+    }
+
+    /// Returns the quilt block with the given blob identifier.
+    pub fn get_quilt_block_by_identifier(
+        &self,
+        identifier: &str,
+    ) -> Result<&QuiltBlock, QuiltError> {
+        match self {
+            QuiltIndex::V1(v1) => v1.get_quilt_block_by_identifier(identifier),
+        }
+    }
+
+    /// Returns the number of blocks in the quilt.
+    pub fn len(&self) -> usize {
+        match self {
+            QuiltIndex::V1(v1) => v1.len(),
+        }
+    }
+
+    /// Returns true if the quilt index is empty.
+    pub fn is_empty(&self) -> bool {
+        match self {
+            QuiltIndex::V1(v1) => v1.is_empty(),
+        }
+    }
+}
+
 /// Metadata associated with a quilt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltMetadata {
-    /// The BlobId of the quilt blob ([`crate::encoding::Quilt::data()`]).
+    /// The BlobId of the quilt blob.
     pub quilt_id: BlobId,
     /// The blob metadata of the quilt blob.
     pub metadata: BlobMetadata,
