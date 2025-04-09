@@ -21,7 +21,7 @@ use walrus_utils::backoff::ExponentialBackoffConfig;
 use crate::NetworkPublicKey;
 
 /// NodeInfo represents a node we discovered that is a member of the staking
-/// committee
+/// committee.
 #[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NodeInfo {
     /// name of the node, can be anything
