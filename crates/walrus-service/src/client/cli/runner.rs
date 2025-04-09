@@ -570,15 +570,17 @@ impl ClientCommandRunner {
             .await?;
         let blobs_len = blobs.len();
         if results.len() != blobs_len {
-            let original_paths: Vec<_> = blobs.into_iter().map(|(path, _)| path).collect();
             let not_stored = results
                 .iter()
-                .filter(|blob| !original_paths.contains(&blob.path))
-                .map(|blob| blob.blob_store_result.blob_id())
+                .filter(|blob| blob.blob_store_result.is_not_stored())
+                .map(|blob| blob.path.clone())
                 .collect::<Vec<_>>();
             tracing::warn!(
                 "some blobs ({}) are not stored",
-                not_stored.into_iter().join(", ")
+                not_stored
+                    .into_iter()
+                    .map(|path| path.display().to_string())
+                    .join(", ")
             );
         }
         tracing::info!(

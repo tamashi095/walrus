@@ -229,6 +229,28 @@ pub struct CertifyAndExtendBlobParams<'a> {
     pub epochs_extended: Option<EpochCount>,
 }
 
+/// Result of certifying and extending a blob.
+#[derive(Debug, Clone)]
+pub struct CertifyAndExtendBlobResult {
+    /// The blob.
+    pub blob_object_id: ObjectID,
+    /// The result of the post store action.
+    pub post_store_action_result: PostStoreActionResult,
+}
+
+impl CertifyAndExtendBlobResult {
+    /// Returns the shared blob object ID if the post store action is [`PostStoreAction::Share`].
+    pub fn shared_blob_object(&self) -> Option<ObjectID> {
+        if let PostStoreActionResult::Shared(GetSharedBlobResult::Success(id)) =
+            &self.post_store_action_result
+        {
+            Some(*id)
+        } else {
+            None
+        }
+    }
+}
+
 /// Metadata for a blob object on Sui.
 #[derive(Debug, Clone)]
 pub struct BlobObjectMetadata {
@@ -343,6 +365,46 @@ impl PostStoreAction {
             Self::Share
         } else {
             Self::Keep
+        }
+    }
+}
+
+/// Result of getting the shared blob object ID.
+#[derive(Debug, Clone)]
+pub enum GetSharedBlobResult {
+    /// The blob was found.
+    Success(ObjectID),
+    /// The blob was not found.
+    Failed(String),
+}
+
+/// Result of the post store action.
+#[derive(Debug, Clone)]
+pub enum PostStoreActionResult {
+    /// The blob was burned.
+    Burned,
+    /// The blob was transferred to the given address.
+    TransferredTo(SuiAddress),
+    /// The blob was kept in the wallet that created it.
+    Kept,
+    /// The blob was put into a shared blob object.
+    Shared(GetSharedBlobResult),
+}
+
+impl PostStoreActionResult {
+    /// Constructs a new [`PostStoreActionResult`] from the given [`PostStoreAction`] and
+    /// optional shared blob object ID.
+    pub fn new(
+        action: &PostStoreAction,
+        shared_blob_object_id: Option<GetSharedBlobResult>,
+    ) -> Self {
+        match action {
+            PostStoreAction::Burn => Self::Burned,
+            PostStoreAction::TransferTo(address) => Self::TransferredTo(*address),
+            PostStoreAction::Keep => Self::Kept,
+            PostStoreAction::Share => {
+                Self::Shared(shared_blob_object_id.expect("result should be present"))
+            }
         }
     }
 }
@@ -1176,7 +1238,7 @@ impl SuiContractClient {
         &self,
         blobs_with_certificates: &[CertifyAndExtendBlobParams<'_>],
         post_store: PostStoreAction,
-    ) -> SuiClientResult<HashMap<BlobId, ObjectID>> {
+    ) -> SuiClientResult<Vec<CertifyAndExtendBlobResult>> {
         self.retry_on_wrong_version(|| async {
             self.inner
                 .lock()
@@ -2455,7 +2517,7 @@ impl SuiContractClientInner {
                     .extend_blob_with_subsidies(blob_obj_id, epochs_extended, pkg_id)
                     .await
                 {
-                    Ok(arg) => Ok(arg),
+                    Ok(_) => Ok(()),
                     Err(SuiClientError::TransactionExecutionError(MoveExecutionError::System(
                         SystemError::EWrongVersion(_),
                     ))) => {
@@ -2464,14 +2526,16 @@ impl SuiContractClientInner {
                         call, falling back to direct contract call"
                         );
                         self.extend_blob_without_subsidies(blob_obj_id, epochs_extended)
-                            .await
+                            .await?;
+                        Ok(())
                     }
                     Err(e) => Err(e),
                 }
             }
             None => {
                 self.extend_blob_without_subsidies(blob_obj_id, epochs_extended)
-                    .await
+                    .await?;
+                Ok(())
             }
         }
     }
@@ -2553,7 +2617,7 @@ impl SuiContractClientInner {
         &mut self,
         blobs_with_certificates: &[CertifyAndExtendBlobParams<'_>],
         post_store: PostStoreAction,
-    ) -> SuiClientResult<HashMap<BlobId, ObjectID>> {
+    ) -> SuiClientResult<Vec<CertifyAndExtendBlobResult>> {
         let subsidies_package_id = self.read_client.get_subsidies_package_id();
         match subsidies_package_id {
             Some(pkg_id) => {
@@ -2595,7 +2659,7 @@ impl SuiContractClientInner {
         blobs_with_certificates: &[CertifyAndExtendBlobParams<'_>],
         post_store: PostStoreAction,
         subsidies_package_id: ObjectID,
-    ) -> SuiClientResult<HashMap<BlobId, ObjectID>> {
+    ) -> SuiClientResult<Vec<CertifyAndExtendBlobResult>> {
         self.certify_and_extend_blobs_impl(
             blobs_with_certificates,
             post_store,
@@ -2619,7 +2683,7 @@ impl SuiContractClientInner {
         &mut self,
         blobs_with_certificates: &[CertifyAndExtendBlobParams<'_>],
         post_store: PostStoreAction,
-    ) -> SuiClientResult<HashMap<BlobId, ObjectID>> {
+    ) -> SuiClientResult<Vec<CertifyAndExtendBlobResult>> {
         self.certify_and_extend_blobs_impl(
             blobs_with_certificates,
             post_store,
@@ -2639,12 +2703,12 @@ impl SuiContractClientInner {
     }
 
     /// Common implementation for certifying and extending blobs with different extension strategies
-    async fn certify_and_extend_blobs_impl<F>(
+    async fn certify_and_extend_blobs_impl<'b, F>(
         &mut self,
-        blobs_with_certificates: &[CertifyAndExtendBlobParams<'_>],
+        blobs_with_certificates: &[CertifyAndExtendBlobParams<'b>],
         post_store: PostStoreAction,
         extend_blob_fn: F,
-    ) -> SuiClientResult<HashMap<BlobId, ObjectID>>
+    ) -> SuiClientResult<Vec<CertifyAndExtendBlobResult>>
     where
         F: for<'a> Fn(
                 &'a mut WalrusPtbBuilder,
@@ -2690,20 +2754,113 @@ impl SuiContractClientInner {
             return Err(anyhow!("could not certify/extend blob: {:?}", res.errors).into());
         }
 
-        if post_store != PostStoreAction::Share {
-            return Ok(HashMap::new());
-        }
+        let post_store_action_results = self
+            .get_post_store_action_results(&res, blobs_with_certificates, &post_store)
+            .await
+            .map_err(|e| {
+                tracing::warn!(error = ?e, "failed to get post store action results");
+                anyhow!(
+                    "Blobs have been stored, but could not get post store action results: {:?}",
+                    e
+                )
+            })?;
 
-        // If the blobs are shared, create a mapping blob ID -> shared_blob_object_id.
-        self.create_blob_id_to_shared_mapping(
-            &res,
-            blobs_with_certificates
+        let results = blobs_with_certificates
+            .iter()
+            .zip(post_store_action_results.into_iter())
+            .map(|(blob_params, r)| CertifyAndExtendBlobResult {
+                blob_object_id: blob_params.blob.id,
+                post_store_action_result: r,
+            })
+            .collect();
+
+        Ok(results)
+    }
+
+    /// Helper function to create a mapping from blob IDs to shared blob object IDs.
+    async fn get_post_store_action_results(
+        &self,
+        res: &SuiTransactionBlockResponse,
+        cert_and_extend_params: &[CertifyAndExtendBlobParams<'_>],
+        post_store: &PostStoreAction,
+    ) -> SuiClientResult<Vec<PostStoreActionResult>> {
+        if *post_store == PostStoreAction::Share {
+            self.get_share_blob_result(cert_and_extend_params, res)
+                .await
+        } else {
+            Ok(cert_and_extend_params
                 .iter()
-                .map(|blob_params| blob_params.blob.blob_id)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        )
-        .await
+                .map(|_| PostStoreActionResult::new(post_store, None))
+                .collect())
+        }
+    }
+
+    async fn get_share_blob_result(
+        &self,
+        cert_and_extend_params: &[CertifyAndExtendBlobParams<'_>],
+        res: &SuiTransactionBlockResponse,
+    ) -> SuiClientResult<Vec<PostStoreActionResult>> {
+        // Try to get the shared blob mapping
+        match self
+            .get_shared_blob_mapping(cert_and_extend_params, res)
+            .await
+        {
+            Ok(shared_mapping) => {
+                // Create results with successful ID mappings
+                let results = cert_and_extend_params
+                    .iter()
+                    .map(|param| {
+                        let shared_result = match shared_mapping.get(&param.blob.id) {
+                            Some(object_id) => GetSharedBlobResult::Success(*object_id),
+                            None => GetSharedBlobResult::Failed(
+                                "Object ID not found in mapping".to_string(),
+                            ),
+                        };
+                        PostStoreActionResult::Shared(shared_result)
+                    })
+                    .collect();
+                Ok(results)
+            }
+            Err(err) => {
+                // Create results with error for all params
+                let results = cert_and_extend_params
+                    .iter()
+                    .map(|_| {
+                        PostStoreActionResult::Shared(GetSharedBlobResult::Failed(err.to_string()))
+                    })
+                    .collect();
+                Ok(results)
+            }
+        }
+    }
+
+    async fn get_shared_blob_mapping(
+        &self,
+        params: &[CertifyAndExtendBlobParams<'_>],
+        res: &SuiTransactionBlockResponse,
+    ) -> SuiClientResult<HashMap<ObjectID, ObjectID>> {
+        let object_ids = get_created_sui_object_ids_by_type(
+            res,
+            &contracts::shared_blob::SharedBlob
+                .to_move_struct_tag_with_type_map(&self.read_client.type_origin_map(), &[])?,
+        )?;
+
+        ensure!(
+            object_ids.len() == params.len(),
+            "unexpected number of shared blob objects created: {} (expected {})",
+            object_ids.len(),
+            params.len()
+        );
+
+        let shared_blobs = self
+            .sui_client()
+            .get_sui_objects::<SharedBlob>(&object_ids)
+            .await?;
+
+        Ok(shared_blobs
+            .into_iter()
+            .map(|shared_blob| (shared_blob.blob.id, shared_blob.id))
+            .collect())
     }
 
     /// Helper function to create a mapping from blob IDs to shared blob object IDs.
@@ -2728,8 +2885,8 @@ impl SuiContractClientInner {
         if object_ids.len() == 1 {
             Ok(HashMap::from([(blobs_ids[0], object_ids[0])]))
         } else {
-            // Fetch all SharedBlob objects and collect them as a mapping blob id
-            // to shared blob object id
+            // Fetch all SharedBlob objects and collect them as a mapping from blob object ID
+            // to shared blob object ID.
             let shared_blobs = self
                 .sui_client()
                 .get_sui_objects::<SharedBlob>(&object_ids)

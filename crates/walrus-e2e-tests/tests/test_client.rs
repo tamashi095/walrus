@@ -26,7 +26,7 @@ use walrus_core::{
     encoding::{EncodingConfigTrait as _, Primary},
     merkle::Node,
     messages::BlobPersistenceType,
-    metadata::{BlobMetadataApi as _, VerifiedBlobMetadataWithId},
+    metadata::VerifiedBlobMetadataWithId,
     BlobId,
     EncodingType,
     EpochCount,
@@ -38,6 +38,7 @@ use walrus_proc_macros::walrus_simtest;
 use walrus_rest_client::api::BlobStatus;
 use walrus_service::{
     client::{
+        client_types::WalrusStoreBlobApi as _,
         responses::BlobStoreResult,
         Blocklist,
         Client,
@@ -51,6 +52,7 @@ use walrus_service::{
             NotEnoughSlivers,
         },
         StoreWhen,
+        WalrusStoreBlob,
     },
     test_utils::{
         test_cluster::{self, FROST_PER_NODE_WEIGHT},
@@ -90,6 +92,7 @@ async_param_test! {
     ]
 }
 async fn test_store_and_read_blob_without_failures(blob_size: usize) {
+    telemetry_subscribers::init_for_testing();
     assert!(matches!(
         run_store_and_read_with_crash_failures(&[], &[], blob_size).await,
         Ok(()),
@@ -545,7 +548,69 @@ async fn store_blob(
         .next()
         .expect("should have one blob store result")
         .blob_id()
-        .to_owned())
+        .expect("blob id should be present"))
+}
+
+/// Tests that the client can store and read duplicate blobs.
+#[ignore = "ignore E2E tests by default"]
+#[walrus_simtest]
+pub async fn test_store_and_read_duplicate_blobs() -> TestResult {
+    telemetry_subscribers::init_for_testing();
+
+    let (_sui_cluster_handle, _cluster, client) = test_cluster::default_setup().await?;
+    let client = client.as_ref();
+
+    // Generate random blobs.
+    let mut blob_data = walrus_test_utils::random_data_list(31415, 3);
+    blob_data.push(blob_data[0].clone());
+    blob_data.push(blob_data[1].clone());
+    blob_data.push(blob_data[0].clone());
+    let mut blobs_with_paths: Vec<(PathBuf, Vec<u8>)> = vec![];
+
+    // Create paths for each blob.
+    for (i, data) in blob_data.iter().enumerate() {
+        let path = PathBuf::from(format!("blob_{}", i));
+        blobs_with_paths.push((path, data.to_vec()));
+    }
+
+    let store_result_with_path = client
+        .reserve_and_store_blobs_retry_committees_with_path(
+            &blobs_with_paths,
+            DEFAULT_ENCODING,
+            1,
+            StoreWhen::Always,
+            BlobPersistence::Permanent,
+            PostStoreAction::Keep,
+        )
+        .await?;
+
+    let read_result =
+        futures::future::join_all(store_result_with_path.iter().map(|result| async {
+            let blob = client
+                .read_blob::<Primary>(
+                    &result
+                        .blob_store_result
+                        .blob_id()
+                        .expect("blob id should be present"),
+                )
+                .await
+                .expect("should be able to read blob");
+            (result.blob_store_result.blob_id(), blob)
+        }))
+        .await;
+
+    assert_eq!(store_result_with_path.len(), blob_data.len());
+    store_result_with_path
+        .iter()
+        .zip(blobs_with_paths.iter())
+        .zip(read_result.iter())
+        .for_each(|((result, (path, data)), (blob_id, blob))| {
+            assert_eq!(&result.path, path);
+            assert_eq!(blob, data);
+            assert_eq!(blob_id, &result.blob_store_result.blob_id());
+        });
+
+    Ok(())
 }
 
 /// Tests that blobs can be extended when possible.
@@ -581,7 +646,7 @@ async fn test_store_with_existing_blobs() -> TestResult {
         )
         .await?;
     for result in store_results {
-        if result.blob_id() == &reuse_blob {
+        if result.blob_id() == Some(reuse_blob) {
             assert!(matches!(
                 &result,
                 BlobStoreResult::NewlyCreated{blob_object:_, resource_operation, ..
@@ -595,7 +660,7 @@ async fn test_store_with_existing_blobs() -> TestResult {
                 epochs_ahead,
                 result.end_epoch().unwrap_or(0)
             );
-        } else if result.blob_id() == &certify_and_extend_blob {
+        } else if result.blob_id() == Some(certify_and_extend_blob) {
             assert!(matches!(
                 &result,
                 BlobStoreResult::NewlyCreated {
@@ -609,7 +674,7 @@ async fn test_store_with_existing_blobs() -> TestResult {
                     .is_some_and(|end| end == epoch + epochs_ahead),
                 "end_epoch should exist and be equal to epoch + epochs_ahead"
             );
-        } else if result.blob_id() == &already_certified_blob {
+        } else if result.blob_id() == Some(already_certified_blob) {
             assert!(matches!(&result, BlobStoreResult::AlreadyCertified { .. }));
             assert!(
                 result
@@ -617,7 +682,7 @@ async fn test_store_with_existing_blobs() -> TestResult {
                     .is_some_and(|end| end >= epoch + epochs_ahead),
                 "end_epoch should exist and be at least epoch + epochs_ahead"
             );
-        } else if result.blob_id() == &extended_blob {
+        } else if result.blob_id() == Some(extended_blob) {
             assert!(matches!(
                 &result,
                 BlobStoreResult::NewlyCreated {
@@ -677,14 +742,18 @@ async fn test_store_with_existing_storage_resource(
     let (_sui_cluster_handle, _cluster, client) = test_cluster::default_setup().await?;
 
     let blob_data = walrus_test_utils::random_data_list(31415, 4);
-    let blobs: Vec<&[u8]> = blob_data.iter().map(AsRef::as_ref).collect();
-    let encoding_type = DEFAULT_ENCODING;
-    let pairs_and_metadata = client
-        .as_ref()
-        .encode_blobs_to_pairs_and_metadata(&blobs, encoding_type)?;
-    let encoded_sizes = pairs_and_metadata
+    let unencoded_blobs = blob_data
         .iter()
-        .map(|(_, metadata)| metadata.metadata().encoded_size().unwrap())
+        .enumerate()
+        .map(|(i, data)| WalrusStoreBlob::new_unencoded(data, format!("test-{:02}", i)))
+        .collect();
+    let encoding_type = DEFAULT_ENCODING;
+    let encoded_blobs = client
+        .as_ref()
+        .encode_blobs(unencoded_blobs, encoding_type)?;
+    let encoded_sizes = encoded_blobs
+        .iter()
+        .map(|blob| blob.encoded_size().expect("encoded size should be present"))
         .collect::<Vec<_>>();
 
     // Reserve space for the blobs. Collect all original storage resource objects ids.
@@ -702,6 +771,10 @@ async fn test_store_with_existing_storage_resource(
         .into_iter()
         .collect::<HashSet<_>>();
 
+    let blobs = encoded_blobs
+        .iter()
+        .map(|blob| blob.get_blob())
+        .collect::<Vec<_>>();
     // Now ask the client to store again.
     // Collect all object ids of the newly created blob object.
     let blob_store = client
@@ -782,7 +855,10 @@ async fn test_delete_blob(blobs_to_create: u32) -> TestResult {
     assert_eq!(blobs.len(), blobs_to_create as usize + 1);
 
     // Delete the blobs
-    let deleted = client.as_ref().delete_owned_blob(blob_id).await?;
+    let deleted = client
+        .as_ref()
+        .delete_owned_blob(&blob_id.expect("blob id should be present"))
+        .await?;
     assert_eq!(deleted, blobs_to_create as usize);
 
     // Only one blob should remain: The non-deletable one.
@@ -819,21 +895,30 @@ async fn test_storage_nodes_delete_data_for_deleted_blobs() -> TestResult {
     let blob_id = store_result.blob_id();
     assert!(matches!(store_result, BlobStoreResult::NewlyCreated { .. }));
 
-    assert_eq!(client.read_blob::<Primary>(blob_id).await?, blob);
+    assert_eq!(
+        client
+            .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+            .await?,
+        blob
+    );
 
-    client.delete_owned_blob(blob_id).await?;
+    client
+        .delete_owned_blob(&blob_id.expect("blob id should be present"))
+        .await?;
     tokio::time::sleep(Duration::from_millis(50)).await;
 
     let status_result = client
         .get_verified_blob_status(
-            blob_id,
+            &blob_id.expect("blob id should be present"),
             client.sui_client().read_client(),
             Duration::from_secs(1),
         )
         .await?;
     assert!(matches!(status_result, BlobStatus::Nonexistent));
 
-    let read_result = client.read_blob::<Primary>(blob_id).await;
+    let read_result = client
+        .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+        .await;
     assert!(matches!(
         read_result.unwrap_err().kind(),
         ClientErrorKind::BlobIdDoesNotExist,
@@ -880,7 +965,12 @@ async fn test_blocklist() -> TestResult {
     let blob_id = store_result.blob_id();
     assert!(matches!(store_result, BlobStoreResult::NewlyCreated { .. }));
 
-    assert_eq!(client.read_blob::<Primary>(blob_id).await?, blob);
+    assert_eq!(
+        client
+            .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+            .await?,
+        blob
+    );
 
     let mut blocklists = vec![];
 
@@ -894,13 +984,17 @@ async fn test_blocklist() -> TestResult {
     tracing::info!("Adding blob to blocklist");
 
     for blocklist in blocklists.iter_mut() {
-        blocklist.insert(*blob_id)?;
+        blocklist.insert(blob_id.expect("blob id should be present"))?;
     }
 
     // Read the blob using the client until it fails with forbidden
-    let mut blob_read_result = client.read_blob::<Primary>(blob_id).await;
+    let mut blob_read_result = client
+        .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+        .await;
     while let Ok(_blob) = blob_read_result {
-        blob_read_result = client.read_blob::<Primary>(blob_id).await;
+        blob_read_result = client
+            .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+            .await;
         // sleep for a bit to allow the nodes to sync
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
@@ -915,15 +1009,19 @@ async fn test_blocklist() -> TestResult {
 
     // Remove the blob from the blocklist
     for blocklist in blocklists.iter_mut() {
-        blocklist.remove(blob_id)?;
+        blocklist.remove(&blob_id.expect("blob id should be present"))?;
     }
 
     tracing::info!("Removing blob from blocklist");
 
     // Read the blob again until it succeeds
-    let mut blob_read_result = client.read_blob::<Primary>(blob_id).await;
+    let mut blob_read_result = client
+        .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+        .await;
     while blob_read_result.is_err() {
-        blob_read_result = client.read_blob::<Primary>(blob_id).await;
+        blob_read_result = client
+            .read_blob::<Primary>(&blob_id.expect("blob id should be present"))
+            .await;
         // sleep for a bit to allow the nodes to sync
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
@@ -1406,6 +1504,7 @@ async fn test_post_store_action(
             StoreWhen::Always,
             BlobPersistence::Permanent,
             post_store,
+            None,
         )
         .await?;
 
@@ -1556,6 +1655,7 @@ async fn test_quorum_contract_upgrade() -> TestResult {
             StoreWhen::Always,
             BlobPersistence::Permanent,
             PostStoreAction::Keep,
+            None,
         )
         .await?;
 
