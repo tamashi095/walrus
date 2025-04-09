@@ -3,7 +3,7 @@
 
 //! Walrus committee service and associated types.
 
-use std::{num::NonZeroU16, sync::Arc, time::Duration};
+use std::{num::NonZeroU16, sync::Arc};
 
 use async_trait::async_trait;
 use walrus_core::{
@@ -230,7 +230,4 @@ pub(crate) trait NodeServiceFactory: Send {
         info: &StorageNode,
         encoding_config: &Arc<EncodingConfig>,
     ) -> Result<Self::Service, ClientBuildError>;
-
-    /// Set the timeout for any new connections to the storage node.
-    fn connect_timeout(&mut self, timeout: Duration);
 }

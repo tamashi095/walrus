@@ -302,59 +302,58 @@ impl Service<Request> for RemoteStorageNode {
 // pub(crate) type LocalStorageNode = Weak<StorageNodeInner>;
 
 /// A [`NodeServiceFactory`] creating [`RemoteStorageNode`] services.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct DefaultNodeServiceFactory {
-    /// If true, disables the use of proxies.
-    ///
-    /// This speeds up the construction of new instances.
-    pub disable_use_proxy: bool,
+    disable_use_proxy: bool,
+    disable_loading_native_certs: bool,
+    connect_timeout: Option<Duration>,
+    registry: Option<Registry>,
+}
 
-    /// If true, disables the loading of native certificates.
-    ///
-    /// This speeds up the construction of new instances.
-    pub disable_loading_native_certs: bool,
-
-    /// The timeout to configure when connecting to remote nodes.
-    pub connect_timeout: Option<Duration>,
-
-    /// The registry to use for registering node metrics.
-    pub registry: Option<Registry>,
+impl Default for DefaultNodeServiceFactory {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl DefaultNodeServiceFactory {
-    /// Creates a new instance with metrics written to the provided registry.
-    pub fn new_with_metrics(registry: Registry) -> Self {
+    /// Returns a new default instance of the factory.
+    pub fn new() -> Self {
         Self {
-            registry: Some(registry),
-            ..Self::default()
+            disable_use_proxy: false,
+            disable_loading_native_certs: false,
+            connect_timeout: None,
+            registry: None,
         }
+    }
+
+    /// Creates services with metrics written to the provided registry.
+    pub fn metrics_registry(&mut self, registry: Registry) -> &mut Self {
+        self.registry = Some(registry);
+        self
     }
 
     /// Sets the timeout for connecting to nodes, for all subsequently created nodes.
-    pub fn connect_timeout(&mut self, timeout: Duration) {
+    pub fn connect_timeout(&mut self, timeout: Duration) -> &mut Self {
         self.connect_timeout = Some(timeout);
+        self
     }
 
-    /// Skips the use of proxies or the loading of native certificates, as these require interacting
-    /// with the operating system and can significantly slow down the construction of new instances.
-    pub fn avoid_system_services() -> Self {
-        Self {
-            disable_use_proxy: true,
-            disable_loading_native_certs: true,
-            ..Self::default()
-        }
+    /// Skips the use of proxies and the loading of native certificates, as these require
+    /// interacting with the operating system and can significantly slow down the construction of
+    /// new instances.
+    pub fn avoid_system_services(&mut self) -> &mut Self {
+        self.disable_use_proxy = true;
+        self.disable_loading_native_certs = true;
+        self
     }
-}
 
-#[async_trait::async_trait]
-impl NodeServiceFactory for DefaultNodeServiceFactory {
-    type Service = RemoteStorageNode;
-
-    async fn make_service(
+    /// Creates a new client for the specified storage node.
+    pub fn build(
         &mut self,
         member: &SuiStorageNode,
         encoding_config: &Arc<EncodingConfig>,
-    ) -> Result<Self::Service, ClientBuildError> {
+    ) -> Result<RemoteStorageNode, ClientBuildError> {
         let mut builder = walrus_rest_client::client::Client::builder()
             .authenticate_with_public_key(member.network_public_key.clone());
 
@@ -378,8 +377,17 @@ impl NodeServiceFactory for DefaultNodeServiceFactory {
                 encoding_config: encoding_config.clone(),
             })
     }
+}
 
-    fn connect_timeout(&mut self, timeout: Duration) {
-        self.connect_timeout(timeout);
+#[async_trait::async_trait]
+impl NodeServiceFactory for DefaultNodeServiceFactory {
+    type Service = RemoteStorageNode;
+
+    async fn make_service(
+        &mut self,
+        member: &SuiStorageNode,
+        encoding_config: &Arc<EncodingConfig>,
+    ) -> Result<Self::Service, ClientBuildError> {
+        self.build(member, encoding_config)
     }
 }

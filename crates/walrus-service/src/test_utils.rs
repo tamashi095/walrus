@@ -1921,7 +1921,9 @@ impl TestClusterBuilder {
                     .local_identity(local_identity)
                     .build_with_factory(
                         lookup_service.clone(),
-                        DefaultNodeServiceFactory::avoid_system_services(),
+                        DefaultNodeServiceFactory::default()
+                            .avoid_system_services()
+                            .to_owned(),
                     )
                     .await?;
                 builder.with_committee_service(Arc::new(service))
@@ -2485,7 +2487,9 @@ pub mod test_cluster {
                 NodeCommitteeService::builder()
                     .build_with_factory(
                         sui_read_client.clone(),
-                        DefaultNodeServiceFactory::avoid_system_services(),
+                        DefaultNodeServiceFactory::default()
+                            .avoid_system_services()
+                            .to_owned(),
                     )
                     .await
                     .expect("service construction must succeed in tests"),

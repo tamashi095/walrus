@@ -109,11 +109,12 @@ impl NodeCommitteeServiceBuilder {
     where
         S: CommitteeLookupService + std::fmt::Debug + 'static,
     {
-        let service_factory = if let Some(registry) = self.registry.as_ref() {
-            DefaultNodeServiceFactory::new_with_metrics(registry.clone())
-        } else {
-            DefaultNodeServiceFactory::default()
-        };
+        let mut service_factory = DefaultNodeServiceFactory::default();
+
+        if let Some(registry) = self.registry.as_ref() {
+            service_factory.metrics_registry(registry.clone());
+        }
+        service_factory.connect_timeout(self.config.node_connect_timeout);
 
         self.build_with_factory(lookup_service, service_factory)
             .await
@@ -122,7 +123,7 @@ impl NodeCommitteeServiceBuilder {
     pub async fn build_with_factory<T, S, F>(
         self,
         lookup_service: S,
-        mut service_factory: F,
+        service_factory: F,
     ) -> Result<NodeCommitteeService<T>, anyhow::Error>
     where
         T: NodeService,
@@ -138,8 +139,6 @@ impl NodeCommitteeServiceBuilder {
                 .current_committee()
                 .n_shards(),
         ));
-
-        service_factory.connect_timeout(self.config.node_connect_timeout);
 
         let inner = NodeCommitteeServiceInner::new(
             committee_tracker,
