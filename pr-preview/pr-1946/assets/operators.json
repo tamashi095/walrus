@@ -103,6 +103,7 @@
       "https://walrus-testnet-aggregator.rubynodes.io": {"operator": "Ruby Nodes"},
       "https://walrus-testnet-aggregator.stakecraft.com": {"operator": "StakeCraft"},
       "https://walrus-testnet-aggregator.stakeengine.co.uk": {"operator": "Stake Engine"},
+      "https://walrus-testnet-aggregator.stakely.io": {"operator": "Stakely"},
       "https://walrus-testnet-aggregator.stakeme.pro": {"operator": "STAKEME"},
       "https://walrus-testnet-aggregator.stakin-nodes.com": {"operator": "Stakin"},
       "https://walrus-testnet-aggregator.starduststaking.com": {"operator": "Stardust Staking"},
@@ -145,8 +146,10 @@
       "https://walrus-testnet-publisher.natsai.xyz": {"operator": "Natsai"},
       "https://walrus-testnet-publisher.nodeinfra.com": {"operator": "Nodeinfra"},
       "https://walrus-testnet-publisher.nodes.guru": {"operator": "Nodes.Guru"},
+      "https://walrus-testnet-publisher.redundex.com": {"operator": "Redundex"},
       "https://walrus-testnet-publisher.rpc101.org": {"operator": "node101"},
       "https://walrus-testnet-publisher.stakecraft.com": {"operator": "StakeCraft"},
+      "https://walrus-testnet-publisher.stakely.io": {"operator": "Stakely"},
       "https://walrus-testnet-publisher.stakeme.pro": {"operator": "STAKEME"},
       "https://walrus-testnet-publisher.starduststaking.com": {"operator": "Stardust Staking"},
       "https://walrus-testnet-publisher.trusted-point.com": {"operator": "TrustedPoint"},
@@ -159,6 +162,7 @@
       "http://walrus-storage.testnet.nelrann.org:9001": {"operator": "Nelrann"},
       "http://walrus-testnet.equinoxdao.xyz:9001": {"operator": "EquinoxDao"},
       "http://walrus-testnet.suicore.com:9001": {"operator": "Suicore"},
+      "http://walrus.testnet.pops.one:9001": {"operator": "P-OPS Team"},
       "http://waltest.chainflow.io:9001": {"operator": "Chainflow"}
     }
   }
