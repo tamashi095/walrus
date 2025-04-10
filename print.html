@@ -1149,6 +1149,17 @@ refresh_config:
 <p>Walrus Mainnet operates a production-quality storage network on the Sui Mainnet. The Walrus Testnet
 operates on the Sui Testnet and is used to test new features of Walrus before they graduate to the
 Mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
+<h2 id="network-parameters"><a class="header" href="#network-parameters">Network parameters</a></h2>
+<p>Some important fixed system parameters for Mainnet and Testnet are summarized in the following table:</p>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Mainnet</th><th>Testnet</th></tr></thead><tbody>
+<tr><td>Number of shards</td><td>1000</td><td>1000</td></tr>
+<tr><td>Epoch duration</td><td>2 weeks</td><td>1 day</td></tr>
+<tr><td>Maximum number of epochs for which storage can be bought</td><td>53</td><td>53</td></tr>
+</tbody></table>
+</div>
+<p>Many other parameters, including the system capacity and prices, are dynamic. Those are stored in
+the system object (see <a href="usage/../dev-guide/sui-struct.html#system-and-staking-information">here</a>) and can be
+viewed with various tools like the <a href="https://walruscan.com/">Walruscan explorer</a>.</p>
 <h2 id="mainnet-configuration"><a class="header" href="#mainnet-configuration">Mainnet configuration</a></h2>
 <h3 id="mainnet-parameters"><a class="header" href="#mainnet-parameters">Mainnet parameters</a></h3>
 <p>The client parameters for the Walrus Mainnet are:</p>
@@ -1347,6 +1358,18 @@ Additional price for each write: 20,000 FROST
 
 ...
 </code></pre>
+<div id="admonition-epoch-duration" class="admonition admonish-tip" role="note" aria-labelledby="admonition-epoch-duration-title">
+<div class="admonition-title">
+<div id="admonition-epoch-duration-title">
+<p>Epoch duration</p>
+</div>
+<a class="admonition-anchor-link" href="usage/client-cli.html#admonition-epoch-duration"></a>
+</div>
+<div>
+<p>The epoch duration on Mainnet is 2 weeks. See <a href="usage/./networks.html#network-parameters">here</a> for other
+parameters on Mainnet and Testnet.</p>
+</div>
+</div>
 <div id="admonition-frost-and-wal" class="admonition admonish-tip" role="note" aria-labelledby="admonition-frost-and-wal-title">
 <div class="admonition-title">
 <div id="admonition-frost-and-wal-title">
@@ -3900,7 +3923,7 @@ exhaust resources of storage nodes, and so on.</p>
 of all shards. A shard at any storage epoch is associated with a storage node that actually stores
 all slivers of the shard and is ready to serve them.</p>
 <p>A Sui smart contract controls the assignment of shards to storage nodes within
-<strong>storage epochs</strong>, and Walrus assumes that more than 2/3 of the
+<strong>storage epochs</strong> (2 weeks on Mainnet), and Walrus assumes that more than 2/3 of the
 shards are managed by correct storage nodes within each storage epoch. This means that Walrus must
 tolerate up to 1/3 of the shards managed by Byzantine storage nodes (approximately 1/3 of the
 storage nodes being Byzantine) within each storage epoch and across storage epochs.</p>
@@ -4321,7 +4344,7 @@ concepts, their canonical name, and how they relate to or differ from other term
 <tr><td>inconsistency certificate</td><td>an aggregated signature from 2/3 of <em>SNs</em> (weighted by their number of <em>shards</em>) that they have seen and stored an <em>inconsistency proof</em> for a <em>blob ID</em></td></tr>
 <tr><td>storage committee</td><td>the set of <em>SNs</em> for a <em>storage epoch</em>, including metadata about the <em>shards</em> they are responsible for and other metadata</td></tr>
 <tr><td>member</td><td>an <em>SN</em> that is part of a <em>committee</em> at some <em>epoch</em></td></tr>
-<tr><td>storage epoch</td><td>the epoch for Walrus as distinct to the epoch for Sui</td></tr>
+<tr><td>storage epoch</td><td>the epoch for Walrus as distinct to the epoch for Sui; the epoch duration for Mainnet is two weeks</td></tr>
 <tr><td>availability period</td><td>the period specified in <em>storage epochs</em> for which a <em>blob</em> is certified to be available on Walrus</td></tr>
 <tr><td>expiry</td><td>the end epoch at which a blob is no longer available and can be deleted; the end epoch is always exclusive</td></tr>
 <tr><td>WAL</td><td>the native Token of Walrus</td></tr>
