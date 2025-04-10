@@ -1893,23 +1893,36 @@ periodically, but each of them may still be temporarily unavailable:</p>
 the <a href="usage/./client-cli.html">CLI</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="software-development-kits-sdks-and-other-tools"><a class="header" href="#software-development-kits-sdks-and-other-tools">Software development kits (SDKs) and other tools</a></h1>
+<h2 id="sdks-maintained-by-mysten-labs"><a class="header" href="#sdks-maintained-by-mysten-labs">SDKs maintained by Mysten Labs</a></h2>
 <p>Mysten Labs has built and published a <a href="https://sdk.mystenlabs.com/walrus">Walrus TypeScript SDK</a>,
 which supports a wide variety of operations. See also the related
 <a href="https://github.com/MystenLabs/ts-sdks/tree/main/packages/walrus/examples">examples</a>.</p>
 <p>The Walrus core team is also actively working on a Rust SDK for Walrus, which will be made available
 some time after the Mainnet launch.</p>
+<p>For data security, use the <a href="https://www.npmjs.com/package/@mysten/seal">TypeScript SDK</a> for Seal.
+It provides threshold encryption and onchain access control for decentralized data protection.
+Also, refer to <a href="usage/../dev-guide/data-security.html">Data security</a> for details.</p>
+<h2 id="community-maintained-sdks"><a class="header" href="#community-maintained-sdks">Community-maintained SDKs</a></h2>
 <p>Besides these official SDKs, there also exist a few unofficial third-party SDKs for interacting
 with the <a href="usage/./web-api.html#http-api-usage">HTTP API</a> exposed by Walrus aggregators and publishers:</p>
 <ul>
 <li><a href="https://github.com/namihq/walrus-go">Walrus Go SDK</a> (maintained by the <em>Nami Cloud</em> team)</li>
 <li><a href="https://github.com/suicore/walrus-sdk-php">Walrus PHP SDK</a> (maintained by the <em>Suicore</em> team)</li>
+<li><a href="https://github.com/standard-crypto/walrus-python">Walrus Python SDK</a> (maintained by the <em>Standard
+Crypto</em> team)</li>
 </ul>
-<p>For data security, use the <a href="https://www.npmjs.com/package/@mysten/seal">TypeScript SDK</a> for Seal.
-It provides threshold encryption and onchain access control for decentralized data protection.
-Also, refer to <a href="usage/../dev-guide/data-security.html">Data security</a> for details.</p>
 <p>Finally, there is <a href="https://docs.tusky.io/about/about-tusky">Tusky</a>, a complete data storage platform
 built on Walrus, including encryption, HTTP APIs, sharing capabilities, and more.
 Tusky maintains its own <a href="https://github.com/tusky-io/ts-sdk">TypeScript SDK</a>.</p>
+<h2 id="explorers"><a class="header" href="#explorers">Explorers</a></h2>
+<p>There is currently the <a href="https://walruscan.com/">Walruscan</a> blob explorer built and maintained by the
+<em>Staketab</em> team, which supports exploring blobs, blob events, operators, etc. It also supports
+staking operations.</p>
+<p>See the <a href="https://github.com/MystenLabs/awesome-walrus?tab=readme-ov-file#visualization"><em>Awesome Walrus</em> repository</a>
+for more visualization tools.</p>
+<h2 id="other-tools"><a class="header" href="#other-tools">Other tools</a></h2>
+<p>There are many other tools built by the community for visualization, monitoring, etc. For a full
+list, see the <a href="https://github.com/MystenLabs/awesome-walrus"><em>Awesome Walrus</em> repository</a>.</p>
 <div style="break-before: page; page-break-before: always;"></div><link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.4/dist/katex.min.css">
 <h1 id="developer-guide"><a class="header" href="#developer-guide">Developer guide</a></h1>
 <p>This guide introduces all the concepts needed to build applications that use Walrus as a storage
