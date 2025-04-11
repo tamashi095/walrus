@@ -12,7 +12,7 @@ Some important fixed system parameters for Mainnet and Testnet are summarized in
 | -------------------------------------------------------- | ------- | ------- |
 | Number of shards                                         | 1000    | 1000    |
 | Epoch duration                                           | 2 weeks | 1 day   |
-| Maximum number of epochs for which storage can be bought | 53      | 53      |
+| Maximum number of epochs for which storage can be bought | 53      | 180     |
 
 Many other parameters, including the system capacity and prices, are dynamic. Those are stored in
 the system object (see [here](../dev-guide/sui-struct.md#system-and-staking-information)) and can be
