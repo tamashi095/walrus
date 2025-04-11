@@ -1,10 +1,7 @@
 // Copyright (c) Walrus Foundation
 // SPDX-License-Identifier: Apache-2.0
 
-use alloc::{
-    fmt::Display,
-    string::{String, ToString},
-};
+use alloc::string::String;
 use core::num::NonZeroU16;
 
 use thiserror::Error;
@@ -191,51 +188,4 @@ pub enum QuiltError {
     /// Other error.
     #[error("other error: {0}")]
     Other(String),
-}
-
-impl QuiltError {
-    /// The blob is not found in the quilt.
-    pub fn blob_not_found_in_quilt<T: Display>(blob_identifier: &T) -> Self {
-        Self::BlobNotFoundInQuilt(blob_identifier.to_string())
-    }
-    /// The blob is not aligned with the quilt.
-    pub fn invalid_format_not_aligned() -> Self {
-        Self::InvalidFormatNotAligned
-    }
-    /// Failed to extract the quilt index size.
-    pub fn failed_to_extract_quilt_index_size() -> Self {
-        Self::FailedToExtractQuiltIndexSize
-    }
-    /// Failed to extract the quilt index.
-    pub fn quilt_index_der_ser_error(reason: String) -> Self {
-        Self::QuiltIndexDerSerError(reason)
-    }
-    /// [`QuiltIndexV1`][crate::metadata::QuiltIndexV1] is missing.
-    pub fn missing_quilt_index() -> Self {
-        Self::MissingQuiltIndex
-    }
-    /// Missing sliver.
-    pub fn missing_sliver(sliver_index: SliverIndex) -> Self {
-        Self::MissingSliver(sliver_index)
-    }
-    /// Missing sliver range.
-    pub fn missing_sliver_range(begin: SliverIndex, end: SliverIndex) -> Self {
-        Self::MissingSliverRange(begin, end)
-    }
-    /// Too many blobs to fit in the quilt.
-    pub fn too_many_blobs(num_blobs: usize, max_blobs: usize) -> Self {
-        Self::TooManyBlobs(num_blobs, max_blobs)
-    }
-    /// The quilt is too large.
-    pub fn quilt_oversize(reason: String) -> Self {
-        Self::QuiltOversize(reason)
-    }
-    /// Index is out of bounds.
-    pub fn index_out_of_bounds(index: usize, max_index: usize) -> Self {
-        Self::IndexOutOfBounds(index, max_index)
-    }
-    /// Other error.
-    pub fn other(reason: String) -> Self {
-        Self::Other(reason)
-    }
 }

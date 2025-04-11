@@ -203,7 +203,7 @@ impl<'a> QuiltConfigApi<'a, QuiltVersionV1> for QuiltConfigV1 {
 
         // Verify data alignment.
         if quilt_blob.len() % usize::from(n_source_symbols) != 0 {
-            return Err(QuiltError::invalid_format_not_aligned());
+            return Err(QuiltError::InvalidFormatNotAligned);
         }
 
         // Calculate matrix dimensions.
@@ -460,7 +460,7 @@ impl QuiltEncoderApi<QuiltVersionV1> for QuiltEncoderV1<'_> {
 
         // Get the serialized quilt index size.
         let serialized_index_size = bcs::serialized_size(&quilt_index).map_err(|e| {
-            QuiltError::quilt_index_der_ser_error(format!("failed to serialize quilt index: {}", e))
+            QuiltError::QuiltIndexDerSerError(format!("failed to serialize quilt index: {}", e))
         })? as u64;
 
         // Calculate total size including the 8-byte size prefix.
@@ -556,7 +556,7 @@ impl QuiltEncoderApi<QuiltVersionV1> for QuiltEncoderV1<'_> {
 
         let quilt = self.construct_quilt()?;
         let encoder = BlobEncoder::new(self.config.clone(), quilt.data()).map_err(|_| {
-            QuiltError::quilt_oversize(format!("quilt is too large: {}", quilt.data().len()))
+            QuiltError::QuiltOversize(format!("quilt is too large: {}", quilt.data().len()))
         })?;
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size());
         Ok(encoder.encode())
@@ -569,7 +569,7 @@ impl QuiltEncoderApi<QuiltVersionV1> for QuiltEncoderV1<'_> {
 
         let quilt = self.construct_quilt()?;
         let encoder = BlobEncoder::new(self.config.clone(), quilt.data()).map_err(|_| {
-            QuiltError::quilt_oversize(format!("quilt is too large: {}", quilt.data.len()))
+            QuiltError::QuiltOversize(format!("quilt is too large: {}", quilt.data.len()))
         })?;
 
         assert_eq!(encoder.symbol_usize(), quilt.symbol_size);
@@ -602,7 +602,7 @@ impl<'a> QuiltDecoderApi<'a, QuiltVersionV1> for QuiltDecoderV1<'a> {
             .slivers
             .iter()
             .find(|s| s.index == index)
-            .ok_or_else(|| QuiltError::missing_sliver(index))?;
+            .ok_or(QuiltError::MissingSliver(index))?;
 
         assert_eq!(
             QuiltVersionV1::quilt_type_bytes(),
@@ -644,7 +644,7 @@ impl<'a> QuiltDecoderApi<'a, QuiltVersionV1> for QuiltDecoderV1<'a> {
 
         // Decode the QuiltIndexV1 from the collected data.
         let mut index: QuiltIndexV1 = bcs::from_bytes(&combined_data)
-            .map_err(|e| QuiltError::quilt_index_der_ser_error(e.to_string()))?;
+            .map_err(|e| QuiltError::QuiltIndexDerSerError(e.to_string()))?;
 
         // After successful deserialization, sort the blocks by end_index.
         #[cfg(debug_assertions)]
@@ -671,7 +671,7 @@ impl<'a> QuiltDecoderApi<'a, QuiltVersionV1> for QuiltDecoderV1<'a> {
     fn get_blob_by_identifier(&self, identifier: &str) -> Result<Vec<u8>, QuiltError> {
         self.quilt_index
             .as_ref()
-            .ok_or(QuiltError::missing_quilt_index())
+            .ok_or(QuiltError::MissingQuiltIndex)
             .and_then(|quilt_index| quilt_index.get_quilt_block_by_identifier(identifier))
             .and_then(|quilt_block| self.get_blob_by_quilt_block(quilt_block))
     }
@@ -743,8 +743,8 @@ mod utils {
     /// * `blobs_sizes` - Slice of blob lengths.
     /// * `n_columns` - Number of columns available.
     /// * `n_rows` - Number of rows available.
-    /// * `max_num_columns_for_quilt_index` - The maximum number of columns that can
-    ///   be used to store the quilt index.
+    /// * `max_num_columns_for_quilt_index` - The maximum number of columns that can be used to
+    ///   store the quilt index.
     /// * `required_alignment` - The alignment of the symbol size.
     ///
     /// # Returns
@@ -758,11 +758,11 @@ mod utils {
     ) -> Result<usize, QuiltError> {
         if blobs_sizes.len() > n_columns {
             // The first column is not user data.
-            return Err(QuiltError::too_many_blobs(blobs_sizes.len(), n_columns - 1));
+            return Err(QuiltError::TooManyBlobs(blobs_sizes.len(), n_columns - 1));
         }
 
         if blobs_sizes.is_empty() {
-            return Err(QuiltError::other(
+            return Err(QuiltError::Other(
                 "failed to compute symbol size: blobs are empty".to_string(),
             ));
         }
@@ -800,7 +800,7 @@ mod utils {
 
         let symbol_size = min_val.div_ceil(required_alignment) * required_alignment;
         if symbol_size > u16::MAX as usize {
-            return Err(QuiltError::quilt_oversize(format!(
+            return Err(QuiltError::QuiltOversize(format!(
                 "the resulting symbol size {} is too large, remove some blobs",
                 symbol_size
             )));
@@ -837,22 +837,22 @@ mod utils {
     /// Returns the missing sliver error.
     pub fn missing_sliver_error(begin: SliverIndex, end: SliverIndex) -> QuiltError {
         if begin == end {
-            QuiltError::missing_sliver(begin)
+            QuiltError::MissingSliver(begin)
         } else {
-            QuiltError::missing_sliver_range(begin, end)
+            QuiltError::MissingSliverRange(begin, end)
         }
     }
 
     /// Get the data size of the quilt index.
     pub fn get_quilt_index_data_size(combined_data: &[u8]) -> Result<usize, QuiltError> {
         if combined_data.len() < QUILT_INDEX_SIZE_PREFIX_SIZE {
-            return Err(QuiltError::failed_to_extract_quilt_index_size());
+            return Err(QuiltError::FailedToExtractQuiltIndexSize);
         }
 
         let data_size = u64::from_le_bytes(
             combined_data[0..QUILT_INDEX_SIZE_PREFIX_SIZE]
                 .try_into()
-                .map_err(|_| QuiltError::failed_to_extract_quilt_index_size())?,
+                .map_err(|_| QuiltError::FailedToExtractQuiltIndexSize)?,
         );
         let data_size = usize::try_from(data_size).expect("data_size should fit in usize");
 
@@ -892,12 +892,12 @@ mod utils {
             || row_size % symbol_size != 0
             || data.len() % row_size != 0
         {
-            return Err(QuiltError::invalid_format_not_aligned());
+            return Err(QuiltError::InvalidFormatNotAligned);
         }
 
         let n_rows = data.len() / row_size;
         if i >= (row_size / symbol_size) {
-            return Err(QuiltError::index_out_of_bounds(i, row_size / symbol_size));
+            return Err(QuiltError::IndexOutOfBounds(i, row_size / symbol_size));
         }
 
         let mut column = Vec::with_capacity(n_rows * symbol_size);
@@ -951,7 +951,7 @@ mod utils {
 
         // Decode the QuiltIndexV1.
         let mut quilt_index: QuiltIndexV1 = bcs::from_bytes(&collected_data)
-            .map_err(|e| QuiltError::quilt_index_der_ser_error(e.to_string()))?;
+            .map_err(|e| QuiltError::QuiltIndexDerSerError(e.to_string()))?;
 
         quilt_index.populate_start_indices(
             u16::try_from(current_column).expect("current_column should fit in u16"),
@@ -984,7 +984,7 @@ mod tests {
 
     param_test! {
         test_quilt_find_min_length: [
-            case_1: (&[2, 1, 2, 1], 3, 3, 1, Err(QuiltError::too_many_blobs(4, 2))),
+            case_1: (&[2, 1, 2, 1], 3, 3, 1, Err(QuiltError::TooManyBlobs(4, 2))),
             case_2: (&[1000, 1, 1], 4, 7, 2, Ok(144)),
             case_3: (
                 &[],

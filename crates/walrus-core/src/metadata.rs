@@ -3,7 +3,10 @@
 
 //! Metadata associated with a Blob and stored by storage nodes.
 
-use alloc::{string::String, vec::Vec};
+use alloc::{
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::{fmt::Debug, num::NonZeroU16};
 
 use enum_dispatch::enum_dispatch;
@@ -97,7 +100,7 @@ impl QuiltIndexV1 {
         self.quilt_blocks
             .iter()
             .find(|block| block.identifier() == identifier)
-            .ok_or(QuiltError::blob_not_found_in_quilt(&identifier))
+            .ok_or(QuiltError::BlobNotFoundInQuilt(identifier.to_string()))
     }
 
     /// Returns an iterator over the identifiers of the blobs in the quilt.
