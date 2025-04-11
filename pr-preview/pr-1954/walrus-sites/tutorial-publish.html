@@ -334,8 +334,10 @@ old <code>index.html</code>, and update it with the newer one.</p>
 </div>
 <div>
 <p>To extend the expiration date of a previously-stored site, use the <code>update</code> command with the
-<code>--force</code> flag, and specify the number of additional epochs (from the current epoch) with the
-<code>--epochs</code> flag.</p>
+<code>--check-extend</code> flag. With this flag, the site-builder will force a check of the status of
+all the Walrus blobs composing the site, and will extend the ones that expire before <code>--epochs</code>
+epochs. This is useful to ensure all the resources in the site are available for the same amount
+of epochs.</p>
 </div>
 </div>
 
