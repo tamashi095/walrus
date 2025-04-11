@@ -48,6 +48,7 @@ use walrus_core::{
     SliverType,
 };
 use walrus_rest_client::client::Client;
+use walrus_sdk::active_committees::ActiveCommittees;
 use walrus_sui::{
     client::{
         retry_client::RetriableRpcClient,
@@ -74,33 +75,30 @@ use walrus_utils::{backoff::ExponentialBackoffConfig, metrics::Registry};
 use crate::common::config::SuiConfig;
 #[cfg(msim)]
 use crate::node::ConfigLoader;
-use crate::{
-    common::active_committees::ActiveCommittees,
-    node::{
-        committee::{
-            BeginCommitteeChangeError,
-            CommitteeLookupService,
-            CommitteeService,
-            DefaultNodeServiceFactory,
-            EndCommitteeChangeError,
-            NodeCommitteeService,
-        },
-        config::{self, ConfigSynchronizerConfig, ShardSyncConfig, StorageNodeConfig},
-        contract_service::SystemContractService,
-        errors::{SyncNodeConfigError, SyncShardClientError},
-        events::{
-            event_processor::EventProcessor,
-            CheckpointEventPosition,
-            EventStreamCursor,
-            InitState,
-            PositionedStreamEvent,
-        },
-        server::{RestApiConfig, RestApiServer},
-        system_events::{EventManager, EventRetentionManager, SystemEventProvider},
-        DatabaseConfig,
-        Storage,
-        StorageNode,
+use crate::node::{
+    committee::{
+        BeginCommitteeChangeError,
+        CommitteeLookupService,
+        CommitteeService,
+        DefaultNodeServiceFactory,
+        EndCommitteeChangeError,
+        NodeCommitteeService,
     },
+    config::{self, ConfigSynchronizerConfig, ShardSyncConfig, StorageNodeConfig},
+    contract_service::SystemContractService,
+    errors::{SyncNodeConfigError, SyncShardClientError},
+    events::{
+        event_processor::EventProcessor,
+        CheckpointEventPosition,
+        EventStreamCursor,
+        InitState,
+        PositionedStreamEvent,
+    },
+    server::{RestApiConfig, RestApiServer},
+    system_events::{EventManager, EventRetentionManager, SystemEventProvider},
+    DatabaseConfig,
+    Storage,
+    StorageNode,
 };
 
 /// Default buyer subsidy rate (5%)
@@ -499,6 +497,7 @@ impl SimStorageNodeHandle {
                         .path()
                         .to_path_buf()),
                     rpc_fallback_config: None,
+                    db_config: DatabaseConfig::default(),
                 };
             let system_config = crate::node::events::event_processor::SystemConfig {
                 system_object_id: sui_config.contract_config.system_object,
@@ -2208,30 +2207,30 @@ pub mod test_cluster {
 
     use futures::future;
     use tokio::sync::Mutex as TokioMutex;
-    use walrus_sui::{
-        client::{SuiContractClient, SuiReadClient},
-        test_utils::{
-            self,
-            system_setup::{
-                create_and_init_system_for_test,
-                end_epoch_zero,
-                register_committee_and_stake,
+    use walrus_sdk::{
+        client::{self, ClientCommunicationConfig, ClientConfig},
+        sui::{
+            client::{SuiContractClient, SuiReadClient},
+            test_utils::{
+                self,
+                system_setup::{
+                    create_and_init_system_for_test,
+                    end_epoch_zero,
+                    register_committee_and_stake,
+                },
+                TestClusterHandle,
             },
-            TestClusterHandle,
+            types::move_structs::Authorized,
         },
-        types::move_structs::Authorized,
     };
 
     use super::*;
-    use crate::{
-        client::{self, ClientCommunicationConfig, Config},
-        node::{
-            committee::DefaultNodeServiceFactory,
-            contract_service::SuiSystemContractService,
-            events::{
-                event_processor::{EventProcessorRuntimeConfig, SystemConfig},
-                EventProcessorConfig,
-            },
+    use crate::node::{
+        committee::DefaultNodeServiceFactory,
+        contract_service::SuiSystemContractService,
+        events::{
+            event_processor::{EventProcessorRuntimeConfig, SystemConfig},
+            EventProcessorConfig,
         },
     };
 
@@ -2550,7 +2549,7 @@ pub mod test_cluster {
         };
 
         // Create the client with the admin wallet to ensure that we have some WAL.
-        let config = Config {
+        let config = ClientConfig {
             contract_config,
             exchange_objects: vec![],
             wallet_config: None,
@@ -2585,6 +2584,7 @@ pub mod test_cluster {
                     .path()
                     .to_path_buf()),
                 rpc_fallback_config: None,
+                db_config: DatabaseConfig::default(),
             };
             let system_config = SystemConfig {
                 system_pkg_id: sui_read_client.get_system_package_id(),

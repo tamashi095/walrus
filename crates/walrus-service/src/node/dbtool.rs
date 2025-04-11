@@ -32,7 +32,8 @@ use crate::node::{
             FailedToAttestEventBlobMetadata,
             PendingEventBlobMetadata,
         },
-        event_processor::event_store_cf_name,
+        event_processor::constants::{self as event_processor_constants},
+        InitState,
         PositionedStreamEvent,
     },
     storage::{
@@ -62,70 +63,70 @@ use crate::node::{
 /// Database inspection and maintenance tools.
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[serde_as]
-#[clap(rename_all = "kebab-case")]
+#[command(rename_all = "kebab-case")]
 pub enum DbToolCommands {
     /// Repair a corrupted RocksDB database due to non-clean shutdowns.
     RepairDb {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
     },
 
     /// Scan events from the event_store table in RocksDB.
     ScanEvents {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start index of the events to scan.
-        #[clap(long)]
+        #[arg(long)]
         start_event_index: u64,
         /// Number of events to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
     },
 
     /// Read blob info from the RocksDB database.
     ReadBlobInfo {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start blob ID in URL-safe base64 format (no padding).
-        #[clap(long)]
+        #[arg(long)]
         #[serde_as(as = "Option<DisplayFromStr>")]
         start_blob_id: Option<BlobId>,
         /// Number of entries to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
     },
 
     /// Read object blob info from the RocksDB database.
     ReadObjectBlobInfo {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start object ID to read.
-        #[clap(long)]
+        #[arg(long)]
         #[serde_as(as = "Option<DisplayFromStr>")]
         start_object_id: Option<ObjectID>,
         /// Count of objects to read.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
     },
 
     /// Count the number of certified blobs in the RocksDB database.
     CountCertifiedBlobs {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Epoch the blobs are in certified status.
-        #[clap(long)]
+        #[arg(long)]
         epoch: Epoch,
     },
 
     /// Drop a column family from the RocksDB database.
     DropColumnFamily {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Column family to drop.
         column_family_name: String,
@@ -134,76 +135,86 @@ pub enum DbToolCommands {
     /// List all column families in the RocksDB database.
     ListColumnFamilies {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
     },
 
     /// Scan blob metadata from the RocksDB database.
     ReadBlobMetadata {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start blob ID in URL-safe base64 format (no padding).
-        #[clap(long)]
+        #[arg(long)]
         #[serde_as(as = "Option<DisplayFromStr>")]
         start_blob_id: Option<BlobId>,
         /// Number of entries to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
         /// Output size only.
-        #[clap(long, default_value = "false")]
+        #[arg(long, default_value = "false")]
         output_size_only: bool,
     },
 
     /// Read primary slivers from the RocksDB database.
     ReadPrimarySlivers {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start blob ID in URL-safe base64 format (no padding).
-        #[clap(long)]
+        #[arg(long)]
         #[serde_as(as = "Option<DisplayFromStr>")]
         start_blob_id: Option<BlobId>,
         /// Number of entries to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
         /// Shard index to read from.
-        #[clap(long)]
+        #[arg(long)]
         shard_index: u16,
     },
 
     /// Read secondary slivers from the RocksDB database.
     ReadSecondarySlivers {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Start blob ID in URL-safe base64 format (no padding).
-        #[clap(long)]
+        #[arg(long)]
         #[serde_as(as = "Option<DisplayFromStr>")]
         start_blob_id: Option<BlobId>,
         /// Number of entries to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
         /// Shard index to read from.
-        #[clap(long)]
+        #[arg(long)]
         shard_index: u16,
     },
 
     /// Read event blob writer metadata from the RocksDB database.
     EventBlobWriter {
         /// Path to the RocksDB database directory.
-        #[clap(long)]
+        #[arg(long)]
         db_path: PathBuf,
         /// Commands to read event blob writer metadata.
         #[command(subcommand)]
         command: EventBlobWriterCommands,
+    },
+
+    /// Read event processor metadata from the RocksDB database.
+    EventProcessor {
+        /// Path to the RocksDB database directory.
+        #[clap(long)]
+        db_path: PathBuf,
+        /// Commands to read event processor metadata.
+        #[command(subcommand)]
+        command: EventProcessorCommands,
     },
 }
 
 /// Commands for reading event blob writer metadata.
 #[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
 #[serde_as]
-#[clap(rename_all = "kebab-case")]
+#[command(rename_all = "kebab-case")]
 pub enum EventBlobWriterCommands {
     /// Read certified event blob metadata.
     ReadCertified,
@@ -214,15 +225,24 @@ pub enum EventBlobWriterCommands {
     /// Read pending event blob metadata.
     ReadPending {
         /// Start sequence number.
-        #[clap(long)]
+        #[arg(long)]
         start_seq: Option<u64>,
         /// Number of entries to scan.
-        #[clap(long, default_value = "1")]
+        #[arg(long, default_value = "1")]
         count: u64,
     },
 
     /// Read failed-to-attest event blob metadata.
     ReadFailedToAttest,
+}
+
+/// Commands for reading event processor metadata.
+#[derive(Subcommand, Debug, Clone, Serialize, Deserialize)]
+#[serde_as]
+#[clap(rename_all = "kebab-case")]
+pub enum EventProcessorCommands {
+    /// Read event processor metadata.
+    ReadInitState,
 }
 
 impl DbToolCommands {
@@ -279,6 +299,9 @@ impl DbToolCommands {
                     read_failed_to_attest_event_blobs(db_path)
                 }
             },
+            Self::EventProcessor { db_path, command } => match command {
+                EventProcessorCommands::ReadInitState => read_event_processor_init_state(db_path),
+            },
         }
     }
 }
@@ -293,9 +316,14 @@ fn repair_db(db_path: PathBuf) -> Result<()> {
 fn scan_events(db_path: PathBuf, start_event_index: u64, count: u64) -> Result<()> {
     println!("Scanning events from event index {}", start_event_index);
     let opts = RocksdbOptions::default();
-    let db = DB::open_cf_for_read_only(&opts, db_path, [event_store_cf_name()], false)?;
+    let db = DB::open_cf_for_read_only(
+        &opts,
+        db_path,
+        [event_processor_constants::EVENT_STORE],
+        false,
+    )?;
     let cf = db
-        .cf_handle(event_store_cf_name())
+        .cf_handle(event_processor_constants::EVENT_STORE)
         .expect("Event store column family should exist");
 
     let iter = db.iterator_cf(
@@ -624,6 +652,33 @@ fn read_secondary_slivers(
                 return Err(e.into());
             }
         }
+    }
+
+    Ok(())
+}
+
+fn read_event_processor_init_state(db_path: PathBuf) -> Result<()> {
+    let db = DB::open_cf_for_read_only(
+        &RocksdbOptions::default(),
+        db_path,
+        [event_processor_constants::INIT_STATE],
+        false,
+    )?;
+
+    let Some(cf) = db.cf_handle(event_processor_constants::INIT_STATE) else {
+        println!("Event processor init state column family not found");
+        return Ok(());
+    };
+
+    let iter = db.iterator_cf(&cf, rocksdb::IteratorMode::Start);
+    let config = bincode::DefaultOptions::new()
+        .with_big_endian()
+        .with_fixint_encoding();
+    for result in iter {
+        let (key, value) = result?;
+        let init_state: InitState = bcs::from_bytes(&value)?;
+        let key: u64 = config.deserialize(&key)?;
+        println!("Key: {}, Init state: {:?}", key, init_state);
     }
 
     Ok(())

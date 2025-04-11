@@ -6,6 +6,7 @@ default-members = [
   "crates/walrus-proc-macros",
   "crates/walrus-proxy",
   "crates/walrus-rest-client",
+  "crates/walrus-sdk",
   "crates/walrus-service",
   "crates/walrus-simtest",
   "crates/walrus-stress",
@@ -20,7 +21,7 @@ resolver = "2"
 authors = ["Mysten Labs <build@mystenlabs.com>"]
 edition = "2021"
 license = "Apache-2.0"
-version = "1.21.0"
+version = "1.22.0"
 
 [workspace.dependencies]
 anyhow = "1.0.97"
@@ -59,6 +60,7 @@ indoc = "2.0.6"
 integer-encoding = "4.0.2"
 itertools = "0.13.0"
 jsonrpsee = "0.24.9"
+jsonwebtoken = "9.3.1"
 md5 = "0.7.0"
 mime = "0.3.17"
 mockall = "0.12.1"
@@ -75,6 +77,7 @@ prometheus = "0.13.4"
 quote = "1.0"
 rand = "0.8.5"
 raptorq = "2.0.0"
+rayon = "1.10.0"
 rcgen = "0.13.2"
 reed-solomon-simd = "3.0.1"
 regex = "1"
@@ -113,7 +116,7 @@ tokio-stream = "0.1.17"
 tokio-util = "0.7.13"
 tonic = { version = "0.12.3", default-features = false }
 tower = "0.5"
-tower-http = { version = "0.5.2", features = ["timeout", "trace"] }
+tower-http = { version = "0.5.2", features = ["cors", "timeout", "trace"] }
 tracing = "0.1.41"
 tracing-opentelemetry = { version = "=0.28.0", default-features = false }
 tracing-subscriber = { version = "0.3.19", default-features = false, features = ["fmt"] }
@@ -126,6 +129,7 @@ uuid = { version = "1.16.0", features = ["fast-rng", "macro-diagnostics", "v7"] 
 walrus-core = { path = "crates/walrus-core" }
 walrus-proc-macros = { path = "crates/walrus-proc-macros" }
 walrus-rest-client = { path = "crates/walrus-rest-client" }
+walrus-sdk = { path = "crates/walrus-sdk" }
 walrus-service = { path = "crates/walrus-service" }
 walrus-sui = { path = "crates/walrus-sui" }
 walrus-test-utils = { path = "crates/walrus-test-utils" }

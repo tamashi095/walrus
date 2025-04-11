@@ -11,26 +11,30 @@ use prettytable::{format, row, Table};
 use serde::Serialize;
 use walrus_core::{BlobId, ShardIndex};
 use walrus_rest_client::api::{BlobStatus, DeletableCounts, EventProgress};
+use walrus_sdk::{
+    client::{
+        resource::RegisterBlobOp,
+        responses::{BlobStoreResult, BlobStoreResultWithPath},
+    },
+    format_event_id,
+};
 use walrus_sui::types::Blob;
 
-use super::warning;
 use crate::client::{
     cli::{
         error,
-        format_event_id,
         success,
         thousands_separator,
+        warning,
         HumanReadableBytes,
         HumanReadableFrost,
         HumanReadableMist,
         WalrusColors,
     },
-    resource::RegisterBlobOp,
     responses::{
         BlobIdConversionOutput,
         BlobIdOutput,
         BlobStatusOutput,
-        BlobStoreResultWithPath,
         DeleteOutput,
         DryRunOutput,
         EncodingDependentPriceInfo,
@@ -55,7 +59,6 @@ use crate::client::{
         StorageNodeInfo,
         WalletOutput,
     },
-    BlobStoreResult,
 };
 
 /// Trait to differentiate output depending on the output mode.

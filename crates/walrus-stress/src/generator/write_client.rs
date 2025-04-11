@@ -18,15 +18,12 @@ use walrus_core::{
     SliverPairIndex,
     DEFAULT_ENCODING,
 };
-use walrus_service::client::{
-    metrics::ClientMetrics,
-    Client,
-    ClientError,
-    CommitteesRefresherHandle,
-    Config,
-    Refiller,
-    StoreWhen,
+use walrus_sdk::{
+    client::{metrics::ClientMetrics, refresh::CommitteesRefresherHandle, Client},
+    error::ClientError,
+    store_when::StoreWhen,
 };
+use walrus_service::client::{ClientConfig, Refiller};
 use walrus_sui::{
     client::{
         retry_client::RetriableSuiClient,
@@ -55,7 +52,7 @@ impl WriteClient {
     #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(err, skip_all)]
     pub async fn new(
-        config: &Config,
+        config: &ClientConfig,
         network: &SuiNetwork,
         gas_budget: Option<u64>,
         blob_config: WriteBlobConfig,
@@ -240,7 +237,7 @@ impl WriteClient {
 
 /// Creates a new client with a separate wallet.
 async fn new_client(
-    config: &Config,
+    config: &ClientConfig,
     network: &SuiNetwork,
     gas_budget: Option<u64>,
     refresher_handle: CommitteesRefresherHandle,

@@ -25,6 +25,10 @@ use sha2::Digest;
 use sui_types::event::EventID;
 use tokio_util::sync::CancellationToken;
 use walrus_core::{encoding::Primary, BlobId};
+use walrus_sdk::{
+    client::Client,
+    config::{ClientCommunicationConfig, ClientConfig},
+};
 use walrus_sui::{
     client::{retry_client::RetriableSuiClient, SuiReadClient},
     types::{BlobEvent, ContractEvent, EpochChangeEvent, EpochChangeStart},
@@ -39,7 +43,6 @@ use super::{
 };
 use crate::{
     backup::metrics::{BackupDbMetricSet, BackupFetcherMetricSet, BackupOrchestratorMetricSet},
-    client::{config::Config as ClientConfig, Client, ClientCommunicationConfig},
     common::utils::{self, version, MetricsAndLoggingRuntime},
     node::{
         events::{
@@ -51,6 +54,7 @@ use crate::{
         },
         metrics::TelemetryLabel as _,
         system_events::SystemEventProvider as _,
+        DatabaseConfig,
     },
 };
 
@@ -328,6 +332,7 @@ pub async fn start_backup_orchestrator(
         &config.backup_storage_path,
         &metrics_runtime.registry,
         cancel_token.child_token(),
+        &DatabaseConfig::default(),
     )
     .await?;
 

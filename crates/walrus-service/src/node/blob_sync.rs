@@ -457,15 +457,38 @@ impl BlobSynchronizer {
         let shared_metadata = this
             .clone()
             .recover_metadata()
-            .observe(histograms.clone(), labels_from_metadata_result)
+            .observe_future(histograms.clone(), labels_from_metadata_result)
             .map_ok(|(_, metadata)| Arc::new(metadata))
             .await
             .expect("database operations should not fail");
 
-        let futures_iter = this.node.owned_shards().into_iter().map(|shard| {
-            this.clone()
-                .recover_slivers_for_shard(shared_metadata.clone(), shard)
-        });
+        // Note that we only need to recover the slivers in the shards that are assigned to the
+        // node at the time of the start of blob sync. Due to slow event processing, the contract
+        // might have entered the new epoch with new shard assignment. Upon discovery of the new
+        // shard assignment, the node only needs to recover the slivers assigned in the epoch
+        // of the current event due to that:
+        //   - The node may not have created the new shards yet.
+        //   - Since the blob is certified in an earlier epoch, it is this node's responsibility to
+        //     hold, recover, and transfer the shard to the new owner.
+        //
+        // If the node is severally lagging behind and the certified_epoch is 2 epochs older,
+        // this function panics since no shard assignment info is found. Upon restarting the node,
+        // the node will enter recovery mode until catching up with all the events and start
+        // recovering all the missing blobs.
+        let futures_iter = this
+            .node
+            .owned_shards_at_epoch(this.node.current_event_epoch())
+            .unwrap_or_else(|_| {
+                panic!(
+                    "shard assignment must be found at the certified epoch {}",
+                    this.node.current_event_epoch()
+                )
+            })
+            .into_iter()
+            .map(|shard| {
+                this.clone()
+                    .recover_slivers_for_shard(shared_metadata.clone(), shard)
+            });
 
         let mut futures_with_permits = stream::iter(futures_iter).then(move |future| {
             let permits = sliver_permits.clone();
@@ -501,7 +524,8 @@ impl BlobSynchronizer {
                             tracing::warn!("received an inconsistency proof");
                             // No need to recover other slivers, sync the proof and return
                             this.sync_inconsistency_proof(&inconsistency_proof)
-                                .observe(histograms.clone(), labels_from_inconsistency_sync_result)
+                                .observe_future(histograms.clone(),
+                                                labels_from_inconsistency_sync_result)
                                 .await;
                             break;
                         }
@@ -561,10 +585,10 @@ impl BlobSynchronizer {
         future::try_join(
             self.clone()
                 .recover_sliver::<Primary>(shard, metadata.clone())
-                .observe(histograms.clone(), labels_from_sliver_result::<Primary>),
+                .observe_future(histograms.clone(), labels_from_sliver_result::<Primary>),
             self.clone()
                 .recover_sliver::<Secondary>(shard, metadata.clone())
-                .observe(histograms.clone(), labels_from_sliver_result::<Secondary>),
+                .observe_future(histograms.clone(), labels_from_sliver_result::<Secondary>),
         )
         .await?;
 

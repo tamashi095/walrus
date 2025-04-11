@@ -4,6 +4,10 @@
 use utoipa::OpenApi;
 use walrus_core::{BlobId, EncodingType, EpochSchema};
 use walrus_rest_client::api::errors::Status;
+use walrus_sdk::client::{
+    resource::RegisterBlobOp,
+    responses::{BlobStoreResult, EventOrObjectId},
+};
 use walrus_sui::{
     types::{Blob, StorageResource},
     EventIdSchema,
@@ -12,10 +16,7 @@ use walrus_sui::{
 };
 
 use super::routes;
-use crate::{
-    client::{resource::RegisterBlobOp, responses::EventOrObjectId, BlobStoreResult},
-    common::api::Binary,
-};
+use crate::common::api::Binary;
 
 #[derive(OpenApi)]
 #[openapi(
@@ -32,7 +33,6 @@ pub(super) struct AggregatorApiDoc;
     components(schemas(
         Blob,
         BlobId,
-        BlobStoreResult,
         EncodingType,
         EpochSchema,
         EventIdSchema,

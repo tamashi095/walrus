@@ -13,7 +13,8 @@ mod tests {
         time::{Duration, Instant},
     };
 
-    use rand::Rng;
+    use rand::{thread_rng, Rng, SeedableRng};
+    use sui_macros::{clear_fail_point, register_fail_point_async};
     use sui_protocol_config::ProtocolConfig;
     use walrus_proc_macros::walrus_simtest;
     use walrus_rest_client::api::ShardStatus;
@@ -346,7 +347,7 @@ mod tests {
             test_cluster::default_setup_with_num_checkpoints_generic::<SimStorageNodeHandle>(
                 Duration::from_secs(10),
                 TestNodesConfig {
-                    node_weights: vec![1, 2, 3, 3, 4],
+                    node_weights: vec![2, 2, 3, 3, 3],
                     use_legacy_event_processor: true,
                     disable_event_blob_writer: false,
                     blocklist_dir: None,
@@ -363,6 +364,25 @@ mod tests {
             .unwrap();
 
         let blob_info_consistency_check = BlobInfoConsistencyCheck::new();
+
+        let node_index_to_crash = thread_rng().gen_range(0..walrus_cluster.nodes.len());
+        let target_fail_node_id = walrus_cluster.nodes[node_index_to_crash]
+            .node_id
+            .expect("node id should be set");
+
+        // We probabilistically cause the target shard to slow down processing events, so that
+        // certified blob events require blob recovery, and mix with epoch change.
+        let cause_target_shard_slow_processing_event = thread_rng().gen_bool(0.5);
+        if cause_target_shard_slow_processing_event {
+            register_fail_point_async("epoch_change_start_entry", move || async move {
+                if sui_simulator::current_simnode_id() == target_fail_node_id {
+                    tokio::time::sleep(Duration::from_secs(
+                        rand::rngs::StdRng::from_entropy().gen_range(2..=7),
+                    ))
+                    .await;
+                }
+            });
+        }
 
         let client_arc = Arc::new(client);
         let client_clone = client_arc.clone();
@@ -393,9 +413,6 @@ mod tests {
         }
 
         let next_fail_triggered = Arc::new(Mutex::new(Instant::now()));
-        let target_fail_node_id = walrus_cluster.nodes[0]
-            .node_id
-            .expect("node id should be set");
         let next_fail_triggered_clone = next_fail_triggered.clone();
         let crash_end_time = Instant::now() + Duration::from_secs(2 * 60);
 
@@ -421,7 +438,7 @@ mod tests {
             .as_ref()
             .as_ref()
             .stake_with_node_pool(
-                walrus_cluster.nodes[0]
+                walrus_cluster.nodes[node_index_to_crash]
                     .storage_node_capability
                     .as_ref()
                     .unwrap()
@@ -442,7 +459,8 @@ mod tests {
                 break;
             }
             let node_health_info =
-                simtest_utils::get_nodes_health_info(&[&walrus_cluster.nodes[0]]).await;
+                simtest_utils::get_nodes_health_info(&[&walrus_cluster.nodes[node_index_to_crash]])
+                    .await;
             tracing::info!(
                 "event progress: persisted {:?}, pending {:?}",
                 node_health_info[0].event_progress.persisted,
@@ -460,7 +478,7 @@ mod tests {
 
         // And finally the node should be in Active state.
         assert_eq!(
-            simtest_utils::get_nodes_health_info(&[&walrus_cluster.nodes[0]])
+            simtest_utils::get_nodes_health_info(&[&walrus_cluster.nodes[node_index_to_crash]])
                 .await
                 .get(0)
                 .unwrap()
@@ -469,5 +487,9 @@ mod tests {
         );
 
         blob_info_consistency_check.check_storage_node_consistency();
+
+        if cause_target_shard_slow_processing_event {
+            clear_fail_point("epoch_change_start_entry");
+        }
     }
 }

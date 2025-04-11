@@ -72,37 +72,44 @@ use walrus_sui::{
 use walrus_utils::{backoff::ExponentialBackoffConfig, metrics::Registry};
 
 use crate::{
-    node::events::{
-        ensure_experimental_rest_endpoint_exists,
-        event_blob::EventBlob,
-        CheckpointEventPosition,
-        EventProcessorConfig,
-        IndexedStreamEvent,
-        InitState,
-        PositionedStreamEvent,
-        StreamEventWithInitState,
+    node::{
+        events::{
+            ensure_experimental_rest_endpoint_exists,
+            event_blob::EventBlob,
+            CheckpointEventPosition,
+            EventProcessorConfig,
+            IndexedStreamEvent,
+            InitState,
+            PositionedStreamEvent,
+            StreamEventWithInitState,
+        },
+        DatabaseConfig,
     },
     utils::collect_event_blobs_for_catchup,
 };
 
-/// The name of the checkpoint store.
-const CHECKPOINT_STORE: &str = "checkpoint_store";
-/// The name of the Walrus package store.
-const WALRUS_PACKAGE_STORE: &str = "walrus_package_store";
-/// The name of the committee store.
-const COMMITTEE_STORE: &str = "committee_store";
-/// The name of the event store.
-const EVENT_STORE: &str = "event_store";
-/// Event blob state to consider before the first event is processed.
-const INIT_STATE: &str = "init_state";
-/// Max events per stream poll
-const MAX_EVENTS_PER_POLL: usize = 1000;
+/// Constants used by the event processor.
+pub(crate) mod constants {
+    /// The name of the checkpoint store.
+    pub const CHECKPOINT_STORE: &str = "checkpoint_store";
+
+    /// The name of the Walrus package store.
+    pub const WALRUS_PACKAGE_STORE: &str = "walrus_package_store";
+
+    /// The name of the committee store.
+    pub const COMMITTEE_STORE: &str = "committee_store";
+
+    /// The name of the event store.
+    pub const EVENT_STORE: &str = "event_store";
+
+    /// Event blob state to consider before the first event is processed.
+    pub const INIT_STATE: &str = "init_state";
+
+    /// Maximum number of events to poll per stream poll.
+    pub const MAX_EVENTS_PER_POLL: usize = 1000;
+}
 
 pub(crate) type PackageCache = PackageStoreWithLruCache<LocalDBPackageStore>;
-
-pub(crate) fn event_store_cf_name() -> &'static str {
-    EVENT_STORE
-}
 
 /// Store which keeps package objects in a local rocksdb store. It is expected that this store is
 /// kept updated with latest version of package objects while iterating over checkpoints. If the
@@ -231,6 +238,8 @@ pub struct EventProcessorRuntimeConfig {
     pub db_path: PathBuf,
     /// The path to the rpc fallback config.
     pub rpc_fallback_config: Option<RpcFallbackConfig>,
+    /// The database config.
+    pub db_config: DatabaseConfig,
 }
 
 /// Struct to group client-related parameters.
@@ -266,7 +275,7 @@ impl EventProcessor {
         self.stores
             .event_store
             .safe_iter_with_bounds(Some(from), None)
-            .take(MAX_EVENTS_PER_POLL)
+            .take(constants::MAX_EVENTS_PER_POLL)
             .map(|result| result.map(|(_, event)| event))
             .collect()
     }
@@ -746,8 +755,8 @@ impl EventProcessor {
     pub fn initialize_database(
         processor_config: &EventProcessorRuntimeConfig,
     ) -> Result<Arc<RocksDB>> {
-        let metric_conf = MetricConf::default();
-        let mut db_opts = Options::default();
+        let metric_conf = MetricConf::new("event_processor");
+        let mut db_opts = Options::from(&processor_config.db_config.global());
         db_opts.create_missing_column_families(true);
         db_opts.create_if_missing(true);
         let database = rocks::open_cf_opts(
@@ -755,37 +764,76 @@ impl EventProcessor {
             Some(db_opts),
             metric_conf,
             &[
-                (CHECKPOINT_STORE, Options::default()),
-                (WALRUS_PACKAGE_STORE, Options::default()),
-                (COMMITTEE_STORE, Options::default()),
-                (EVENT_STORE, Options::default()),
-                (INIT_STATE, Options::default()),
+                (
+                    constants::CHECKPOINT_STORE,
+                    processor_config.db_config.checkpoint_store().to_options(),
+                ),
+                (
+                    constants::WALRUS_PACKAGE_STORE,
+                    processor_config
+                        .db_config
+                        .walrus_package_store()
+                        .to_options(),
+                ),
+                (
+                    constants::COMMITTEE_STORE,
+                    processor_config.db_config.committee_store().to_options(),
+                ),
+                (
+                    constants::EVENT_STORE,
+                    processor_config.db_config.event_store().to_options(),
+                ),
+                (
+                    constants::INIT_STATE,
+                    processor_config.db_config.init_state().to_options(),
+                ),
             ],
         )?;
 
-        if database.cf_handle(CHECKPOINT_STORE).is_none() {
+        if database.cf_handle(constants::CHECKPOINT_STORE).is_none() {
             database
-                .create_cf(CHECKPOINT_STORE, &Options::default())
+                .create_cf(
+                    constants::CHECKPOINT_STORE,
+                    &processor_config.db_config.checkpoint_store().to_options(),
+                )
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(WALRUS_PACKAGE_STORE).is_none() {
+        if database
+            .cf_handle(constants::WALRUS_PACKAGE_STORE)
+            .is_none()
+        {
             database
-                .create_cf(WALRUS_PACKAGE_STORE, &Options::default())
+                .create_cf(
+                    constants::WALRUS_PACKAGE_STORE,
+                    &processor_config
+                        .db_config
+                        .walrus_package_store()
+                        .to_options(),
+                )
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(COMMITTEE_STORE).is_none() {
+        if database.cf_handle(constants::COMMITTEE_STORE).is_none() {
             database
-                .create_cf(COMMITTEE_STORE, &Options::default())
+                .create_cf(
+                    constants::COMMITTEE_STORE,
+                    &processor_config.db_config.committee_store().to_options(),
+                )
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(EVENT_STORE).is_none() {
+        if database.cf_handle(constants::EVENT_STORE).is_none() {
             database
-                .create_cf(EVENT_STORE, &Options::default())
+                .create_cf(
+                    constants::EVENT_STORE,
+                    &processor_config.db_config.event_store().to_options(),
+                )
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(INIT_STATE).is_none() {
+        if database.cf_handle(constants::INIT_STATE).is_none() {
             database
-                .create_cf(INIT_STATE, &Options::default())
+                .create_cf(
+                    constants::INIT_STATE,
+                    &processor_config.db_config.init_state().to_options(),
+                )
                 .map_err(typed_store_err_from_rocks_err)?;
         }
         Ok(database)
@@ -795,31 +843,31 @@ impl EventProcessor {
     pub fn open_stores(database: &Arc<RocksDB>) -> Result<EventProcessorStores, anyhow::Error> {
         let checkpoint_store = DBMap::reopen(
             database,
-            Some(CHECKPOINT_STORE),
+            Some(constants::CHECKPOINT_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let walrus_package_store = DBMap::reopen(
             database,
-            Some(WALRUS_PACKAGE_STORE),
+            Some(constants::WALRUS_PACKAGE_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let committee_store = DBMap::reopen(
             database,
-            Some(COMMITTEE_STORE),
+            Some(constants::COMMITTEE_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let event_store = DBMap::reopen(
             database,
-            Some(EVENT_STORE),
+            Some(constants::EVENT_STORE),
             &ReadWriteOptions::default().set_ignore_range_deletions(true),
             false,
         )?;
         let init_state = DBMap::reopen(
             database,
-            Some(INIT_STATE),
+            Some(constants::INIT_STATE),
             &ReadWriteOptions::default().set_ignore_range_deletions(true),
             false,
         )?;
@@ -1220,61 +1268,64 @@ mod tests {
                 Some(db_opts),
                 metric_conf,
                 &[
-                    (CHECKPOINT_STORE, Options::default()),
-                    (WALRUS_PACKAGE_STORE, Options::default()),
-                    (COMMITTEE_STORE, Options::default()),
-                    (EVENT_STORE, Options::default()),
-                    (INIT_STATE, Options::default()),
+                    (constants::CHECKPOINT_STORE, Options::default()),
+                    (constants::WALRUS_PACKAGE_STORE, Options::default()),
+                    (constants::COMMITTEE_STORE, Options::default()),
+                    (constants::EVENT_STORE, Options::default()),
+                    (constants::INIT_STATE, Options::default()),
                 ],
             )?
         };
-        if database.cf_handle(CHECKPOINT_STORE).is_none() {
+        if database.cf_handle(constants::CHECKPOINT_STORE).is_none() {
             database
-                .create_cf(CHECKPOINT_STORE, &Options::default())
+                .create_cf(constants::CHECKPOINT_STORE, &Options::default())
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(WALRUS_PACKAGE_STORE).is_none() {
+        if database
+            .cf_handle(constants::WALRUS_PACKAGE_STORE)
+            .is_none()
+        {
             database
-                .create_cf(WALRUS_PACKAGE_STORE, &Options::default())
+                .create_cf(constants::WALRUS_PACKAGE_STORE, &Options::default())
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(COMMITTEE_STORE).is_none() {
+        if database.cf_handle(constants::COMMITTEE_STORE).is_none() {
             database
-                .create_cf(COMMITTEE_STORE, &Options::default())
+                .create_cf(constants::COMMITTEE_STORE, &Options::default())
                 .map_err(typed_store_err_from_rocks_err)?;
         }
-        if database.cf_handle(EVENT_STORE).is_none() {
+        if database.cf_handle(constants::EVENT_STORE).is_none() {
             database
-                .create_cf(EVENT_STORE, &Options::default())
+                .create_cf(constants::EVENT_STORE, &Options::default())
                 .map_err(typed_store_err_from_rocks_err)?;
         }
         let checkpoint_store = DBMap::reopen(
             &database,
-            Some(CHECKPOINT_STORE),
+            Some(constants::CHECKPOINT_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let walrus_package_store = DBMap::reopen(
             &database,
-            Some(WALRUS_PACKAGE_STORE),
+            Some(constants::WALRUS_PACKAGE_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let committee_store = DBMap::reopen(
             &database,
-            Some(COMMITTEE_STORE),
+            Some(constants::COMMITTEE_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let event_store = DBMap::<u64, PositionedStreamEvent>::reopen(
             &database,
-            Some(EVENT_STORE),
+            Some(constants::EVENT_STORE),
             &ReadWriteOptions::default(),
             false,
         )?;
         let init_state = DBMap::<u64, InitState>::reopen(
             &database,
-            Some(INIT_STATE),
+            Some(constants::INIT_STATE),
             &ReadWriteOptions::default(),
             false,
         )?;

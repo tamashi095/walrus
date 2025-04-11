@@ -27,18 +27,13 @@ use fastcrypto::{
 use futures::future::FusedFuture;
 use pin_project::pin_project;
 use prometheus::{Encoder, HistogramVec};
-use serde::{
-    de::{DeserializeOwned, Error},
-    Deserialize,
-    Deserializer,
-    Serialize,
-};
+use serde::{de::Error, Deserialize, Deserializer, Serialize};
 use serde_json;
 use sui_types::base_types::{ObjectID, SuiAddress};
 use telemetry_subscribers::{TelemetryGuards, TracingHandle};
 use tokio::{
     runtime::{self, Runtime},
-    sync::{oneshot, Semaphore},
+    sync::oneshot,
     task::{JoinError, JoinHandle},
     time::Instant,
 };
@@ -54,13 +49,14 @@ use tracing_subscriber::{
 use typed_store::DBMetrics;
 use uuid::Uuid;
 use walrus_core::{BlobId, PublicKey, ShardIndex};
+use walrus_sdk::active_committees::ActiveCommittees;
+pub use walrus_sdk::utils::load_from_yaml;
 use walrus_sui::{
     client::{retry_client::RetriableSuiClient, SuiReadClient},
     utils::SuiNetwork,
 };
 use walrus_utils::metrics::Registry;
 
-use super::active_committees::ActiveCommittees;
 use crate::node::{config::MetricsPushConfig, events::event_processor::EventProcessorMetrics};
 
 /// The maximum length of the storage node name. Keep in sync with `MAX_NODE_NAME_LENGTH` in
@@ -97,38 +93,10 @@ pub use version;
 
 use crate::common::event_blob_downloader::EventBlobDownloader;
 
-/// Load the config from a YAML file located at the provided path.
-pub fn load_from_yaml<P: AsRef<Path>, T: DeserializeOwned>(path: P) -> anyhow::Result<T> {
-    let path = path.as_ref();
-    tracing::debug!(path = %path.display(), "[load_from_yaml] reading from file");
-
-    let reader = std::fs::File::open(path).with_context(|| {
-        format!(
-            "[load_from_yaml] unable to load config from {}",
-            path.display()
-        )
-    })?;
-
-    Ok(serde_yaml::from_reader(reader)?)
-}
-
 /// Helper functions applied to futures.
 pub(crate) trait FutureHelpers: Future {
-    /// Limits the number of simultaneously executing futures.
-    async fn batch_limit(self, permits: Arc<Semaphore>) -> Self::Output
-    where
-        Self: Future,
-        Self: Sized,
-    {
-        let _permit = permits
-            .acquire_owned()
-            .await
-            .expect("semaphore never closed");
-        self.await
-    }
-
     /// Reports metrics for the future.
-    fn observe<F, const N: usize>(
+    fn observe_future<F, const N: usize>(
         self,
         histograms: HistogramVec,
         get_labels: F,
@@ -164,7 +132,7 @@ where
     Fut: Future,
     F: FnOnce(Option<&Fut::Output>) -> [&'static str; N],
 {
-    fn new(inner: Fut, histograms: HistogramVec, get_labels: F) -> Self {
+    pub fn new(inner: Fut, histograms: HistogramVec, get_labels: F) -> Self {
         Self {
             inner,
             histograms,
@@ -755,7 +723,7 @@ pub async fn collect_event_blobs_for_catchup(
 
     let contract_config = ContractConfig::new(system_object_id, staking_object_id);
     let sui_read_client = SuiReadClient::new(sui_client, &contract_config).await?;
-    let config = crate::client::Config {
+    let config = crate::client::ClientConfig {
         contract_config,
         exchange_objects: vec![],
         wallet_config: None,
@@ -764,7 +732,7 @@ pub async fn collect_event_blobs_for_catchup(
     };
 
     let walrus_client =
-        crate::client::Client::new_read_client_with_refresher(config, sui_read_client.clone())
+        walrus_sdk::client::Client::new_read_client_with_refresher(config, sui_read_client.clone())
             .await?;
 
     let blob_downloader = EventBlobDownloader::new(walrus_client, sui_read_client);
