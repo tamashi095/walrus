@@ -81,7 +81,7 @@ impl QuiltBlockV1 {
 /// An index over the blobs in a quilt.
 ///
 /// Each quilt block represents a blob stored in the quilt. And each blob is
-/// mapped to a continuous index range.
+/// mapped to a contiguous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndexV1 {
     /// Location/identity index of the blob in the quilt.
@@ -100,7 +100,7 @@ impl QuiltIndexV1 {
             .ok_or(QuiltError::blob_not_found_in_quilt(&identifier))
     }
 
-    /// Returns an iterator over (blob_id, blob_identifier) pairs in the quilt.
+    /// Returns an iterator over the identifiers of the blobs in the quilt.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.quilt_blocks.iter().map(|block| block.identifier())
     }
@@ -132,28 +132,11 @@ impl QuiltIndexV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltMetadataV1 {
     /// The BlobId of the quilt blob.
-    pub quilt_id: BlobId,
+    pub quilt_blob_id: BlobId,
     /// The blob metadata of the quilt blob.
     pub metadata: BlobMetadata,
     /// The index of the quilt.
     pub index: QuiltIndexV1,
-}
-
-impl QuiltMetadataV1 {
-    /// Returns the quilt index [`QuiltIndexV1`].
-    pub fn index(&self) -> &QuiltIndexV1 {
-        &self.index
-    }
-
-    /// Returns the [`BlobMetadata`] of the quilt.
-    pub fn metadata(&self) -> &BlobMetadata {
-        &self.metadata
-    }
-
-    /// Returns the [`BlobId`] of the quilt.
-    pub fn blob_id(&self) -> &BlobId {
-        &self.quilt_id
-    }
 }
 
 /// [`BlobMetadataWithId`] that has been verified with [`UnverifiedBlobMetadataWithId::verify`].
