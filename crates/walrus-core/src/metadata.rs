@@ -85,6 +85,8 @@ impl QuiltBlockV1 {
 ///
 /// Each quilt block represents a blob stored in the quilt. And each blob is
 /// mapped to a contiguous index range.
+///
+/// INV: The blocks are sorted by their end index, as well as their identifier.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndexV1 {
     /// Location/identity index of the blob in the quilt.
