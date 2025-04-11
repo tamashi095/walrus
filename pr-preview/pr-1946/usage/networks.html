@@ -232,6 +232,17 @@
 <p>Walrus Mainnet operates a production-quality storage network on the Sui Mainnet. The Walrus Testnet
 operates on the Sui Testnet and is used to test new features of Walrus before they graduate to the
 Mainnet. Finally, developers can operate local Walrus and Sui networks for testing.</p>
+<h2 id="network-parameters"><a class="header" href="#network-parameters">Network parameters</a></h2>
+<p>Some important fixed system parameters for Mainnet and Testnet are summarized in the following table:</p>
+<div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Mainnet</th><th>Testnet</th></tr></thead><tbody>
+<tr><td>Number of shards</td><td>1000</td><td>1000</td></tr>
+<tr><td>Epoch duration</td><td>2 weeks</td><td>1 day</td></tr>
+<tr><td>Maximum number of epochs for which storage can be bought</td><td>53</td><td>53</td></tr>
+</tbody></table>
+</div>
+<p>Many other parameters, including the system capacity and prices, are dynamic. Those are stored in
+the system object (see <a href="../dev-guide/sui-struct.html#system-and-staking-information">here</a>) and can be
+viewed with various tools like the <a href="https://walruscan.com/">Walruscan explorer</a>.</p>
 <h2 id="mainnet-configuration"><a class="header" href="#mainnet-configuration">Mainnet configuration</a></h2>
 <h3 id="mainnet-parameters"><a class="header" href="#mainnet-parameters">Mainnet parameters</a></h3>
 <p>The client parameters for the Walrus Mainnet are:</p>
