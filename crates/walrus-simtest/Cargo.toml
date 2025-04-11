@@ -18,6 +18,7 @@ sui-rpc-api.workspace = true
 sui-types.workspace = true
 tokio.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 walrus-core.workspace = true
 walrus-proc-macros = { workspace = true, features = ["walrus-simtest"] }
 walrus-rest-client.workspace = true

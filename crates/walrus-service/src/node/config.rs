@@ -583,6 +583,10 @@ pub struct CommitteeServiceConfig {
     /// Use the experimental batch recovery service endpoint.
     // TODO: Remove (WAL-594).
     pub experimental_batch_symbol_recovery: bool,
+    /// The number of connections to open to each storage node.
+    pub connections_per_node: NonZeroUsize,
+    /// The length of the queue for node requests served by the connection pool.
+    pub storage_node_request_queue_length: NonZeroUsize,
 }
 
 impl Default for CommitteeServiceConfig {
@@ -596,6 +600,8 @@ impl Default for CommitteeServiceConfig {
             max_concurrent_metadata_requests: NonZeroUsize::new(1).unwrap(),
             node_connect_timeout: Duration::from_secs(1),
             experimental_batch_symbol_recovery: true,
+            connections_per_node: defaults::CONNECTIONS_PER_NODE,
+            storage_node_request_queue_length: defaults::STORAGE_NODE_REQUEST_QUEUE_LENGTH,
         }
     }
 }
@@ -673,6 +679,12 @@ pub mod defaults {
     pub const BALANCE_CHECK_FREQUENCY: Duration = Duration::from_secs(60 * 60);
     /// SUI MIST threshold under which balance checks log a warning.
     pub const BALANCE_CHECK_WARNING_THRESHOLD_MIST: u64 = 5_000_000_000;
+    /// The number of connections to open to each storage node.
+    pub const CONNECTIONS_PER_NODE: NonZeroUsize =
+        NonZeroUsize::new(1).expect("static value is non-zero");
+    /// The length of the queue for node requests served by the connection pool.
+    pub const STORAGE_NODE_REQUEST_QUEUE_LENGTH: NonZeroUsize =
+        NonZeroUsize::new(16).expect("static value is non-zero");
 
     /// Returns the default metrics port.
     pub fn metrics_port() -> u16 {
@@ -1031,7 +1043,7 @@ impl Default for ThreadPoolConfig {
 
 #[cfg(test)]
 mod tests {
-    use std::{io::Write as _, str::FromStr};
+    use std::{io::Write as _, num::NonZero, str::FromStr};
 
     use indoc::indoc;
     use p256::{pkcs8, pkcs8::EncodePrivateKey};
@@ -1304,6 +1316,13 @@ mod tests {
             voting_params: new_voting_params,
             metadata: new_metadata,
             commission_rate: 1000,
+            blob_recovery: BlobRecoveryConfig {
+                committee_service_config: CommitteeServiceConfig {
+                    connections_per_node: NonZero::new(2).unwrap(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             ..Default::default()
         }
     }

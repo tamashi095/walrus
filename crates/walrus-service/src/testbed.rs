@@ -8,7 +8,7 @@ use std::{
     fs,
     io::Write as _,
     net::{IpAddr, SocketAddr, ToSocketAddrs},
-    num::NonZeroU16,
+    num::{NonZero, NonZeroU16},
     path::{Path, PathBuf},
     time::Duration,
 };
@@ -50,6 +50,8 @@ use crate::{
     common::config::SuiConfig,
     node::config::{
         defaults::{self, REST_API_PORT},
+        BlobRecoveryConfig,
+        CommitteeServiceConfig,
         PathOrInPlace,
         StorageNodeConfig,
     },
@@ -745,7 +747,13 @@ pub async fn create_storage_node_configs(
             db_config: Default::default(),
             rest_server: Default::default(),
             rest_graceful_shutdown_period_secs: None,
-            blob_recovery: Default::default(),
+            blob_recovery: BlobRecoveryConfig {
+                committee_service_config: CommitteeServiceConfig {
+                    connections_per_node: NonZero::new(2).unwrap(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             tls: Default::default(),
             shard_sync_config: Default::default(),
             event_processor_config: Default::default(),

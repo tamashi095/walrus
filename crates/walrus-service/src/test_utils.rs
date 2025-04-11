@@ -11,7 +11,7 @@ use std::{
     borrow::Borrow,
     default::Default,
     net::{SocketAddr, TcpStream},
-    num::NonZeroU16,
+    num::{NonZero, NonZeroU16},
     path::PathBuf,
     str::FromStr,
     sync::Arc,
@@ -85,7 +85,14 @@ use crate::{
             EndCommitteeChangeError,
             NodeCommitteeService,
         },
-        config::{self, ConfigSynchronizerConfig, ShardSyncConfig, StorageNodeConfig},
+        config::{
+            self,
+            BlobRecoveryConfig,
+            CommitteeServiceConfig,
+            ConfigSynchronizerConfig,
+            ShardSyncConfig,
+            StorageNodeConfig,
+        },
         contract_service::SystemContractService,
         errors::{SyncNodeConfigError, SyncShardClientError},
         events::{
@@ -884,6 +891,7 @@ impl StorageNodeHandleBuilder {
                 enabled: self.enable_node_config_synchronizer,
             },
             storage_node_cap: self.storage_node_capability.clone().map(|cap| cap.id),
+
             ..storage_node_config().inner
         };
 
@@ -2644,7 +2652,13 @@ pub fn storage_node_config() -> WithTempDir<StorageNodeConfig> {
             rest_server: Default::default(),
             blocklist_path: None,
             sui: None,
-            blob_recovery: Default::default(),
+            blob_recovery: BlobRecoveryConfig {
+                committee_service_config: CommitteeServiceConfig {
+                    connections_per_node: NonZero::new(2).unwrap(),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
             tls: Default::default(),
             rest_graceful_shutdown_period_secs: Some(Some(0)),
             shard_sync_config: config::ShardSyncConfig {

@@ -83,6 +83,8 @@ blob_recovery:
   invalidity_sync_timeout_secs: 300
   node_connect_timeout_secs: 1
   experimental_batch_symbol_recovery: true
+  connections_per_node: 1
+  storage_node_request_queue_length: 16
 tls:
   disable_tls: false
   certificate_path: null

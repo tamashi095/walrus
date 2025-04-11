@@ -13,7 +13,7 @@ use std::{
 use futures::TryFutureExt;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use tokio::sync::{watch, Mutex as TokioMutex};
-use tower::ServiceExt as _;
+use tower::{util::BoxCloneSyncService, ServiceExt as _};
 use walrus_core::{
     encoding::EncodingConfig,
     ensure,
@@ -105,16 +105,23 @@ impl NodeCommitteeServiceBuilder {
     pub async fn build<S>(
         self,
         lookup_service: S,
-    ) -> Result<NodeCommitteeService<RemoteStorageNode>, anyhow::Error>
+    ) -> Result<
+        NodeCommitteeService<BoxCloneSyncService<Request, Response, NodeServiceError>>,
+        anyhow::Error,
+    >
     where
         S: CommitteeLookupService + std::fmt::Debug + 'static,
     {
         let mut service_factory = DefaultNodeServiceFactory::default();
 
+        service_factory
+            .connect_timeout(self.config.node_connect_timeout)
+            .connections_per_node(self.config.connections_per_node)
+            .storage_node_request_queue_length(self.config.storage_node_request_queue_length);
+
         if let Some(registry) = self.registry.as_ref() {
             service_factory.metrics_registry(registry.clone());
         }
-        service_factory.connect_timeout(self.config.node_connect_timeout);
 
         self.build_with_factory(lookup_service, service_factory)
             .await

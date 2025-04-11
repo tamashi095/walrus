@@ -26,6 +26,7 @@ mod tests {
     use walrus_service::{
         client::ClientCommunicationConfig,
         test_utils::{test_cluster, SimStorageNodeHandle, TestNodesConfig},
+        utils::init_tracing_subscriber,
     };
     use walrus_simtest::test_utils::simtest_utils::{
         self,

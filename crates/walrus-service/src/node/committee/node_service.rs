@@ -18,13 +18,24 @@
 // the remote and storage local nodes the same.
 use std::{
     fmt::Debug,
+    num::NonZero,
     sync::Arc,
     task::{Context, Poll},
     time::Duration,
 };
 
 use futures::{future::BoxFuture, FutureExt};
-use tower::Service;
+use rustls::pki_types::CertificateDer;
+use rustls_native_certs::CertificateResult;
+use tokio::time::Instant;
+use tower::{
+    balance::p2c::Balance,
+    discover::ServiceList,
+    load::{CompleteOnResponse, PendingRequestsDiscover},
+    util::BoxCloneSyncService,
+    Service,
+    ServiceBuilder,
+};
 use walrus_core::{
     encoding::{EncodingConfig, GeneralRecoverySymbol, Primary, Secondary},
     keys::ProtocolKeyPair,
@@ -48,6 +59,7 @@ use walrus_sui::types::StorageNode as SuiStorageNode;
 use walrus_utils::metrics::Registry;
 
 use super::{DefaultRecoverySymbol, NodeServiceFactory};
+use crate::node::config::defaults;
 
 /// Requests used with a [`NodeService`].
 #[derive(Debug, Clone)]
@@ -80,6 +92,9 @@ pub(crate) enum Request {
         target_type: SliverType,
     },
 }
+
+/// Duration for which to cache native certificates when building multiple clients.
+const NATIVE_CERTS_TTL: Duration = Duration::from_secs(60);
 
 /// Responses to [`Request`]s sent to a node service.
 ///
@@ -151,6 +166,15 @@ pub(crate) enum NodeServiceError {
     #[allow(unused)]
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+impl From<Box<dyn std::error::Error + Sync + Send>> for NodeServiceError {
+    fn from(value: Box<dyn std::error::Error + Sync + Send>) -> Self {
+        match value.downcast::<NodeError>() {
+            Ok(node_error) => Self::Node(*node_error),
+            Err(other) => Self::Other(other),
+        }
+    }
 }
 
 /// Marker trait for types implementing the [`tower::Service`] signature expected of services
@@ -307,7 +331,11 @@ pub(crate) struct DefaultNodeServiceFactory {
     disable_use_proxy: bool,
     disable_loading_native_certs: bool,
     connect_timeout: Option<Duration>,
+    connections_per_node: NonZero<usize>,
+    buffer_length: NonZero<usize>,
     registry: Option<Registry>,
+    /// Cached certificates along with the time at which they were loaded.
+    native_certs: Option<(Instant, Vec<CertificateDer<'static>>)>,
 }
 
 impl Default for DefaultNodeServiceFactory {
@@ -318,12 +346,15 @@ impl Default for DefaultNodeServiceFactory {
 
 impl DefaultNodeServiceFactory {
     /// Returns a new default instance of the factory.
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             disable_use_proxy: false,
             disable_loading_native_certs: false,
             connect_timeout: None,
             registry: None,
+            connections_per_node: defaults::CONNECTIONS_PER_NODE,
+            buffer_length: defaults::STORAGE_NODE_REQUEST_QUEUE_LENGTH,
+            native_certs: None,
         }
     }
 
@@ -348,8 +379,49 @@ impl DefaultNodeServiceFactory {
         self
     }
 
+    /// The number of connections to open to each storage node.
+    pub fn connections_per_node(&mut self, count: NonZero<usize>) -> &mut Self {
+        self.connections_per_node = count;
+        self
+    }
+
+    /// The length of the queue for node requests served by the connection pool.
+    pub fn storage_node_request_queue_length(&mut self, count: NonZero<usize>) -> &mut Self {
+        self.buffer_length = count;
+        self
+    }
+
     /// Creates a new client for the specified storage node.
     pub fn build(
+        &mut self,
+        member: &SuiStorageNode,
+        encoding_config: &Arc<EncodingConfig>,
+    ) -> Result<BoxCloneSyncService<Request, Response, NodeServiceError>, ClientBuildError> {
+        if self.connections_per_node.get() == 1 {
+            return Ok(BoxCloneSyncService::new(
+                self.build_single_service(member, encoding_config)?,
+            ));
+        }
+
+        let services: Vec<_> = (0..self.connections_per_node.get())
+            .map(|_| self.build_single_service(member, encoding_config))
+            .collect::<Result<_, _>>()?;
+
+        let balance = Balance::new(PendingRequestsDiscover::new(
+            ServiceList::new(services),
+            CompleteOnResponse::default(),
+        ));
+
+        let service = ServiceBuilder::default()
+            .layer_fn(BoxCloneSyncService::new)
+            .map_err(NodeServiceError::from)
+            .buffer(self.buffer_length.get())
+            .service(balance);
+
+        Ok(service)
+    }
+
+    fn build_single_service(
         &mut self,
         member: &SuiStorageNode,
         encoding_config: &Arc<EncodingConfig>,
@@ -359,7 +431,12 @@ impl DefaultNodeServiceFactory {
 
         if self.disable_loading_native_certs {
             builder = builder.tls_built_in_root_certs(false);
+        } else if let Some(certificates) = self.load_native_certs() {
+            builder = builder.add_root_certificates(certificates);
+            // If the above is None, the client will load the certificates themselves and err if
+            // they also fail to load any certificates.
         }
+
         if self.disable_use_proxy {
             builder = builder.no_proxy();
         }
@@ -377,11 +454,44 @@ impl DefaultNodeServiceFactory {
                 encoding_config: encoding_config.clone(),
             })
     }
+
+    /// Loads and returns the native certificates, potentially caching them. Returns `None` if
+    /// loading fails or certificates are disabled.
+    fn load_native_certs(&mut self) -> Option<&Vec<CertificateDer<'static>>> {
+        // Do not provide any certs if loading is disabled.
+        if self.disable_loading_native_certs {
+            return None;
+        }
+
+        // Clear the certificates if they are too old.
+        if let Some((load_time, _)) = self.native_certs.as_ref() {
+            if load_time.elapsed() > NATIVE_CERTS_TTL {
+                self.native_certs = None;
+            }
+        }
+
+        if self.native_certs.is_none() {
+            let CertificateResult { certs, errors, .. } = rustls_native_certs::load_native_certs();
+            if !errors.is_empty() {
+                tracing::warn!(
+                    "encountered {} errors when trying to load native certs",
+                    errors.len(),
+                );
+                tracing::debug!(?errors, "errors encountered when loading native certs");
+            }
+            if certs.is_empty() {
+                tracing::warn!("failed to load any native certificates");
+            };
+            self.native_certs = Some((Instant::now(), certs));
+        }
+
+        self.native_certs.as_ref().map(|(_, certs)| certs)
+    }
 }
 
 #[async_trait::async_trait]
 impl NodeServiceFactory for DefaultNodeServiceFactory {
-    type Service = RemoteStorageNode;
+    type Service = BoxCloneSyncService<Request, Response, NodeServiceError>;
 
     async fn make_service(
         &mut self,

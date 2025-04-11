@@ -12102,6 +12102,7 @@ dependencies = [
  "sui-types",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "walrus-core",
  "walrus-proc-macros",
  "walrus-rest-client",
