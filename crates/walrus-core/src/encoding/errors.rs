@@ -9,7 +9,7 @@ use core::num::NonZeroU16;
 
 use thiserror::Error;
 
-use crate::{metadata::QuiltVersion, SliverIndex};
+use crate::SliverIndex;
 
 /// Error indicating that the data is too large to be encoded/decoded.
 #[derive(Debug, Error, PartialEq, Eq, Clone)]
@@ -156,8 +156,8 @@ pub enum SymbolVerificationError {
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum QuiltError {
     /// The quilt version is not supported.
-    #[error("invalid quilt version, expected {0:?}, got {1:?}")]
-    InvalidQuiltVersion(QuiltVersion, QuiltVersion),
+    // #[error("invalid quilt version, expected {0:?}, got {1:?}")]
+    // InvalidQuiltVersion(QuiltVersion, QuiltVersion),
     /// The blob is not found in the quilt.
     #[error("the blob is not found in the quilt: {0}")]
     BlobNotFoundInQuilt(String),

@@ -4,7 +4,7 @@
 //! Metadata associated with a Blob and stored by storage nodes.
 
 use alloc::{string::String, vec::Vec};
-use core::num::NonZeroU16;
+use core::{fmt::Debug, num::NonZeroU16};
 
 use enum_dispatch::enum_dispatch;
 use fastcrypto::hash::{Blake2b256, HashFunction};
@@ -46,92 +46,46 @@ pub enum VerificationError {
     #[error("the unencoded blob length is too large for the given config")]
     UnencodedLengthTooLarge,
 }
+
 /// Represents a blob quilted into a single quilt blob.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QuiltBlock {
+pub struct QuiltBlockV1 {
     /// The unencoded length of the blob.
-    unencoded_length: u64,
+    pub unencoded_length: u64,
     /// The start sliver index of the block.
     #[serde(skip)]
-    start_index: u16,
+    pub start_index: u16,
     /// The end sliver index of the block.
-    end_index: u16,
+    pub end_index: u16,
     /// The identifier of the block, it can be used to locate the blob in the quilt.
     identifier: String,
-    /// A CRC8 checksum of the block.
-    crc8: u8,
 }
 
-impl QuiltBlock {
-    /// Returns a new [`QuiltBlock`].
-    pub fn new(unencoded_length: u64, identifier: String, crc8: u8) -> Self {
+impl QuiltBlockV1 {
+    /// Returns a new [`QuiltBlockV1`].
+    pub fn new(unencoded_length: u64, identifier: String) -> Self {
         Self {
             unencoded_length,
             start_index: 0,
             end_index: 0,
             identifier,
-            crc8,
         }
     }
 
-    /// Set the start index of the block.
-    pub fn set_start_index(&mut self, start_index: u16) {
-        self.start_index = start_index;
-    }
-
-    /// Returns the start index of the block.
-    pub fn start_index(&self) -> u16 {
-        self.start_index
-    }
-
-    /// Set the end index of the block.
-    pub fn set_end_index(&mut self, end_index: u16) {
-        self.end_index = end_index;
-    }
-
-    /// Returns the end index of the block.
-    pub fn end_index(&self) -> u16 {
-        self.end_index
-    }
-
-    /// Returns the description of the block.
+    /// Returns the identifier of the block.
     pub fn identifier(&self) -> &str {
         &self.identifier
     }
-
-    /// Returns the CRC8 checksum of the block.
-    pub fn crc8(&self) -> u8 {
-        self.crc8
-    }
-
-    /// Sets the CRC8 checksum of the block.
-    pub fn set_crc8(&mut self, crc8: u8) {
-        self.crc8 = crc8;
-    }
-
-    /// Returns the unencoded length of the block.
-    pub fn unencoded_length(&self) -> u64 {
-        self.unencoded_length
-    }
 }
 
-/// Represents the version of the quilt index format.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
-#[repr(u8)]
-pub enum QuiltVersion {
-    /// Version 1 of the quilt index format.
-    #[default]
-    V1 = 0,
-}
-
-/// A index over the blobs in a quilt.
+/// An index over the blobs in a quilt.
 ///
-/// Each [QuiltBlock] represents a blob stored in the quilt. And each blob is
+/// Each quilt block represents a blob stored in the quilt. And each blob is
 /// mapped to a continuous index range.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuiltIndexV1 {
     /// Location/identity index of the blob in the quilt.
-    pub quilt_blocks: Vec<QuiltBlock>,
+    pub quilt_blocks: Vec<QuiltBlockV1>,
 }
 
 impl QuiltIndexV1 {
@@ -139,18 +93,16 @@ impl QuiltIndexV1 {
     pub fn get_quilt_block_by_identifier(
         &self,
         identifier: &str,
-    ) -> Result<&QuiltBlock, QuiltError> {
+    ) -> Result<&QuiltBlockV1, QuiltError> {
         self.quilt_blocks
             .iter()
-            .find(|block| block.identifier == identifier)
+            .find(|block| block.identifier() == identifier)
             .ok_or(QuiltError::blob_not_found_in_quilt(&identifier))
     }
 
     /// Returns an iterator over (blob_id, blob_identifier) pairs in the quilt.
     pub fn iter(&self) -> impl Iterator<Item = &str> {
-        self.quilt_blocks
-            .iter()
-            .map(|block| block.identifier.as_str())
+        self.quilt_blocks.iter().map(|block| block.identifier())
     }
 
     /// Returns the number of blocks in the quilt.
@@ -178,7 +130,7 @@ impl QuiltIndexV1 {
 
 /// Metadata associated with a quilt.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct QuiltMetadata {
+pub struct QuiltMetadataV1 {
     /// The BlobId of the quilt blob.
     pub quilt_id: BlobId,
     /// The blob metadata of the quilt blob.
@@ -187,7 +139,7 @@ pub struct QuiltMetadata {
     pub index: QuiltIndexV1,
 }
 
-impl QuiltMetadata {
+impl QuiltMetadataV1 {
     /// Returns the quilt index [`QuiltIndexV1`].
     pub fn index(&self) -> &QuiltIndexV1 {
         &self.index
