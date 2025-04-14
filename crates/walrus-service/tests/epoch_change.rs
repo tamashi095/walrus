@@ -24,6 +24,7 @@ async fn nodes_drive_epoch_change() -> walrus_test_utils::Result {
             blocklist_dir: None,
             enable_node_config_synchronizer: false,
         })
+        .with_default_num_checkpoints_per_blob()
         .build()
         .await?;
 

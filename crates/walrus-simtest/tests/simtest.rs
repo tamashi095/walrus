@@ -69,7 +69,6 @@ mod tests {
                 node_weights: vec![1, 2, 3, 3, 4],
                 ..Default::default()
             })
-            .with_num_checkpoints_per_blob(10)
             .build_generic::<SimStorageNodeHandle>()
             .await
             .unwrap();
@@ -229,7 +228,6 @@ mod tests {
                     node_weights: vec![1, 2, 3, 3, 4, 0],
                     ..Default::default()
                 })
-                .with_num_checkpoints_per_blob(10)
                 .with_communication_config(
                     ClientCommunicationConfig::default_for_test_with_reqwest_timeout(
                         Duration::from_secs(2),
@@ -404,6 +402,7 @@ mod tests {
                     Duration::from_secs(2),
                 ),
             )
+            .with_default_num_checkpoints_per_blob()
             .build_generic::<SimStorageNodeHandle>()
             .await
             .unwrap();

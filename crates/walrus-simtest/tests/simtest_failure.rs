@@ -47,7 +47,6 @@ mod tests {
                 node_weights: vec![1, 2, 3, 3, 4],
                 ..Default::default()
             })
-            .with_num_checkpoints_per_blob(10)
             .build_generic::<SimStorageNodeHandle>()
             .await
             .unwrap();
@@ -195,6 +194,7 @@ mod tests {
                     Duration::from_secs(2),
                 ),
             )
+            .with_default_num_checkpoints_per_blob()
             .build_generic::<SimStorageNodeHandle>()
             .await
             .unwrap();
@@ -350,6 +350,7 @@ mod tests {
                     Duration::from_secs(1),
                 ),
             )
+            .with_default_num_checkpoints_per_blob()
             .build_generic::<SimStorageNodeHandle>()
             .await
             .unwrap();

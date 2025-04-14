@@ -20,7 +20,6 @@ async fn test_event_blobs() -> anyhow::Result<()> {
             node_weights: vec![2, 2],
             ..Default::default()
         })
-        .with_num_checkpoints_per_blob(10)
         .build()
         .await?;
 
@@ -84,7 +83,6 @@ async fn test_disabled_event_blob_writer() -> anyhow::Result<()> {
             blocklist_dir: None,
             enable_node_config_synchronizer: false,
         })
-        .with_num_checkpoints_per_blob(10)
         .build()
         .await?;
 

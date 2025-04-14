@@ -2240,7 +2240,7 @@ pub mod test_cluster {
     /// The default epoch duration for tests
     pub const DEFAULT_EPOCH_DURATION_FOR_TESTS: Duration = Duration::from_secs(60 * 60);
 
-    #[derive(Debug, Default)]
+    #[derive(Debug)]
     /// Builder for the E2E test setup.
     pub struct E2eTestSetupBuilder {
         epoch_duration: Option<Duration>,
@@ -2255,6 +2255,22 @@ pub mod test_cluster {
         contract_directory: Option<PathBuf>,
     }
 
+    impl Default for E2eTestSetupBuilder {
+        fn default() -> Self {
+            Self {
+                epoch_duration: None,
+                test_nodes_config: None,
+                num_checkpoints_per_blob: Some(10),
+                communication_config: None,
+                with_subsidies: false,
+                deploy_directory: None,
+                delegate_governance_to_admin_wallet: false,
+                num_additional_fullnodes: None,
+                contract_directory: None,
+            }
+        }
+    }
+
     impl E2eTestSetupBuilder {
         /// Creates a new default builder for the e2e setup.
         pub fn new() -> Self {
@@ -2262,7 +2278,9 @@ pub mod test_cluster {
         }
 
         /// Performs the default e2e setup the test cluster with the settings specified in the
-        /// builder or the defaults if not specified for a [`TestCluster<StorageNodeHandle>`].
+        /// builder or the e2e test defaults if not specified.
+        ///
+        /// Creates a [`TestCluster<StorageNodeHandle>`] as part of the setup.
         pub async fn build(
             self,
         ) -> anyhow::Result<(
@@ -2275,7 +2293,9 @@ pub mod test_cluster {
         }
 
         /// Performs the default e2e setup the test cluster with the settings specified in the
-        /// builder or the defaults if not specified for a generic [`StorageNodeHandleTrait`].
+        /// builder or the e2e test defaults if not specified.
+        ///
+        /// Creates a cluster for a generic [`StorageNodeHandleTrait`].
         pub async fn build_generic<T: StorageNodeHandleTrait>(
             self,
         ) -> anyhow::Result<(
@@ -2544,8 +2564,17 @@ pub mod test_cluster {
         }
 
         /// Sets the number of checkpoints per event blob for the nodes in the cluster.
+        ///
+        /// The default in [`Self`] is 10, to use the default for the storage
+        /// nodes, use [`Self::with_default_num_checkpoints_per_blob`]
         pub fn with_num_checkpoints_per_blob(mut self, num_checkpoints_per_blob: u32) -> Self {
             self.num_checkpoints_per_blob = Some(num_checkpoints_per_blob);
+            self
+        }
+
+        /// Use the storage node default for the number of checkpoints per event blob.
+        pub fn with_default_num_checkpoints_per_blob(mut self) -> Self {
+            self.num_checkpoints_per_blob = None;
             self
         }
 
