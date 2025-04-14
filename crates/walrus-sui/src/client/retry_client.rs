@@ -447,24 +447,30 @@ impl<T> FailoverWrapper<T> {
 #[allow(missing_debug_implementations)]
 #[derive(Clone)]
 pub struct RetriableSuiClient {
-    sui_client: SuiClient,
+    failover_sui_client: FailoverWrapper<SuiClient>,
     backoff_config: ExponentialBackoffConfig,
     metrics: Option<Arc<SuiClientMetricSet>>,
 }
 
 impl RetriableSuiClient {
+    pub fn new(_client: SuiClient, _backoff_config: ExponentialBackoffConfig) -> Self {
+        panic!()
+    }
     /// Creates a new retriable client.
     ///
     /// NB: If you are creating the sui client from a wallet context, you should use
     /// [`RetriableSuiClient::new_from_wallet`] instead. This is because the wallet context will
     /// make a call to the RPC server in [`WalletContext::get_client`], which may fail without any
     /// retries. `new_from_wallet` will handle this case correctly.
-    pub fn new(sui_client: SuiClient, backoff_config: ExponentialBackoffConfig) -> Self {
-        RetriableSuiClient {
-            sui_client,
+    pub fn new_with_failover(
+        failover_clients: Vec<FailoverClient<SuiClient>>,
+        backoff_config: ExponentialBackoffConfig,
+    ) -> anyhow::Result<Self> {
+        Ok(RetriableSuiClient {
+            failover_sui_client: FailoverWrapper::new(failover_clients)?,
             backoff_config,
             metrics: None,
-        }
+        })
     }
 
     /// Sets the metrics for the client.
