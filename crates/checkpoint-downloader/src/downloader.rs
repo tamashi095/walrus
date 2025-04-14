@@ -506,7 +506,7 @@ mod tests {
         rocks,
         rocks::{errors::typed_store_err_from_rocks_err, MetricConf, ReadWriteOptions},
     };
-    use walrus_sui::client::retry_client::FallibleRpcClient;
+    use walrus_sui::client::retry_client::{FailoverClient, FallibleRpcClient};
     use walrus_utils::{backoff::ExponentialBackoffConfig, tests::global_test_lock};
 
     use super::*;
@@ -517,7 +517,10 @@ mod tests {
         let rest_url = "http://localhost:9000";
         let fallible = FallibleRpcClient::new(rest_url.to_string())?;
         let retriable_client = RetriableRpcClient::new(
-            vec![(fallible, rest_url.to_string())],
+            vec![FailoverClient {
+                client: Arc::new(fallible),
+                name: rest_url.to_string(),
+            }],
             Duration::from_secs(5),
             ExponentialBackoffConfig::default(),
             None,

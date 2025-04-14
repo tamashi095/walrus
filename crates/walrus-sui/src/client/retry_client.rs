@@ -299,11 +299,21 @@ where
     }
 }
 
+/// A wrapper for a client that provides failover functionality, the wrapper struct includes the
+/// actual client, as well as its name for logging purposes.
+#[derive(Clone, Debug)]
+pub struct FailoverClient<T> {
+    /// The name of the client, used for logging.
+    pub name: String,
+    /// The actual client instance.
+    pub client: Arc<T>,
+}
+
 /// A wrapper that provides failover functionality for any inner type.
 /// When an operation fails on the current inner instance, it will try the next one.
 #[derive(Clone, Debug)]
 pub struct FailoverWrapper<T> {
-    inner: Arc<Vec<(Arc<T>, String)>>,
+    failover_clients: Arc<Vec<FailoverClient<T>>>,
     current_index: Arc<AtomicUsize>,
     max_retries: usize,
 }
@@ -314,44 +324,39 @@ impl<T> FailoverWrapper<T> {
     const DEFAULT_RETRY_DELAY: Duration = Duration::from_millis(100);
 
     /// Creates a new failover wrapper.
-    pub fn new(instances: Vec<(T, String)>) -> anyhow::Result<Self> {
-        if instances.is_empty() {
+    pub fn new(failover_clients: Vec<FailoverClient<T>>) -> anyhow::Result<Self> {
+        if failover_clients.is_empty() {
             return Err(anyhow::anyhow!("No clients available"));
         }
         Ok(Self {
-            max_retries: Self::DEFAULT_MAX_RETRIES.min(instances.len()),
-            inner: Arc::new(
-                instances
-                    .into_iter()
-                    .map(|(client, name)| (Arc::new(client), name))
-                    .collect(),
-            ),
+            max_retries: Self::DEFAULT_MAX_RETRIES.min(failover_clients.len()),
+            failover_clients: Arc::new(failover_clients),
             current_index: Arc::new(AtomicUsize::new(0)),
         })
     }
 
     /// Returns the name of the current client.
     pub fn get_current_client_name(&self) -> &str {
-        &self.inner[self
+        &self.failover_clients[self
             .current_index
             .load(std::sync::atomic::Ordering::Relaxed)
             % self.client_count()]
-        .1
+        .name
     }
 
     fn client_count(&self) -> usize {
-        self.inner.len()
+        self.failover_clients.len()
     }
 
     /// Gets a client at the specified index (wrapped around if needed).
     async fn get_client(&self, index: usize) -> Arc<T> {
         let wrapped_index = index % self.client_count();
-        self.inner[wrapped_index].0.clone()
+        self.failover_clients[wrapped_index].client.clone()
     }
 
     /// Gets the name of the client at the specified index.
     fn get_name(&self, index: usize) -> &str {
-        &self.inner[index % self.client_count()].1
+        &self.failover_clients[index % self.client_count()].name
     }
 
     /// Executes an operation on the current inner instance, falling back to the next one
@@ -1418,7 +1423,7 @@ impl RetriableRpcClient {
 
     /// Creates a new retriable client.
     pub fn new(
-        clients: Vec<(FallibleRpcClient, String)>,
+        clients: Vec<FailoverClient<FallibleRpcClient>>,
         request_timeout: Duration,
         backoff_config: ExponentialBackoffConfig,
         fallback_config: Option<RpcFallbackConfig>,
@@ -1902,8 +1907,14 @@ mod tests {
         let succeeding_calls = succeeding_client.call_count.clone();
 
         let clients = vec![
-            (failing_client, "failing".to_string()),
-            (succeeding_client, "succeeding".to_string()),
+            FailoverClient {
+                client: Arc::new(failing_client),
+                name: "failing".to_string(),
+            },
+            FailoverClient {
+                client: Arc::new(succeeding_client),
+                name: "succeeding".to_string(),
+            },
         ];
 
         let wrapper = FailoverWrapper::new(clients).unwrap();
@@ -1940,8 +1951,14 @@ mod tests {
     async fn test_failover_wrapper_all_fail() {
         // Create mock clients - both fail.
         let clients = vec![
-            (MockClient::new(true), "failing1".to_string()),
-            (MockClient::new(true), "failing2".to_string()),
+            FailoverClient {
+                client: Arc::new(MockClient::new(true)),
+                name: "failing1".to_string(),
+            },
+            FailoverClient {
+                client: Arc::new(MockClient::new(true)),
+                name: "failing2".to_string(),
+            },
         ];
 
         let wrapper = FailoverWrapper::new(clients).unwrap();

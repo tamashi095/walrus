@@ -64,7 +64,7 @@ use typed_store::{
 use walrus_core::{ensure, BlobId};
 use walrus_sui::{
     client::{
-        retry_client::{FallibleRpcClient, RetriableRpcClient, RetriableSuiClient},
+        retry_client::{FailoverClient, FallibleRpcClient, RetriableRpcClient, RetriableSuiClient},
         rpc_config::RpcFallbackConfig,
     },
     types::ContractEvent,
@@ -732,7 +732,10 @@ impl EventProcessor {
         let mut valid_clients = Vec::new();
         for (client, rest_url) in clients {
             match ensure_experimental_rest_endpoint_exists(client.inner().await).await {
-                Ok(()) => valid_clients.push((client, rest_url)),
+                Ok(()) => valid_clients.push(FailoverClient {
+                    client: Arc::new(client),
+                    name: rest_url,
+                }),
                 Err(e) => {
                     tracing::warn!("Client validation failed for {:?}: {:?}", rest_url, e);
                 }
@@ -1248,7 +1251,11 @@ mod tests {
     use sui_types::messages_checkpoint::CheckpointSequenceNumber;
     use tokio::sync::Mutex;
     use walrus_core::BlobId;
-    use walrus_sui::{test_utils::EventForTesting, types::BlobCertified};
+    use walrus_sui::{
+        client::retry_client::FailoverClient,
+        test_utils::EventForTesting,
+        types::BlobCertified,
+    };
     use walrus_utils::tests::global_test_lock;
 
     use super::*;
@@ -1332,7 +1339,10 @@ mod tests {
         let rest_url = "http://localhost:8080";
         let fallible = FallibleRpcClient::new(rest_url.to_string())?;
         let retry_client = RetriableRpcClient::new(
-            vec![(fallible, rest_url.to_string())],
+            vec![FailoverClient {
+                client: Arc::new(fallible),
+                name: rest_url.to_string(),
+            }],
             Duration::from_secs(5),
             ExponentialBackoffConfig::default(),
             None,
