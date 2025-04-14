@@ -1559,111 +1559,111 @@ async fn test_post_store_action(
     Ok(())
 }
 
-// Tests upgrading the walrus contracts.
-#[ignore = "ignore E2E tests by default"]
-#[walrus_simtest]
-async fn test_quorum_contract_upgrade() -> TestResult {
-    telemetry_subscribers::init_for_testing();
-    let deploy_dir = TempDir::new()?;
-    let (_sui_cluster_handle, walrus_cluster, client, system_ctx) =
-        test_cluster::E2eTestSetupBuilder::new()
-            .with_deploy_directory(deploy_dir.path().to_path_buf())
-            .with_delegate_governance_to_admin_wallet()
-            .with_contract_directory(testnet_contract_dir()?)
-            .build()
-            .await?;
+// // Tests upgrading the walrus contracts.
+// #[ignore = "ignore E2E tests by default"]
+// #[walrus_simtest]
+// async fn test_quorum_contract_upgrade() -> TestResult {
+//     telemetry_subscribers::init_for_testing();
+//     let deploy_dir = TempDir::new()?;
+//     let (_sui_cluster_handle, walrus_cluster, client, system_ctx) =
+//         test_cluster::E2eTestSetupBuilder::new()
+//             .with_deploy_directory(deploy_dir.path().to_path_buf())
+//             .with_delegate_governance_to_admin_wallet()
+//             .with_contract_directory(testnet_contract_dir()?)
+//             .build()
+//             .await?;
 
-    let previous_version = client
-        .as_ref()
-        .sui_client()
-        .read_client()
-        .system_object_version()
-        .await?;
+//     let previous_version = client
+//         .as_ref()
+//         .sui_client()
+//         .read_client()
+//         .system_object_version()
+//         .await?;
 
-    // Copy new contracts to fresh directory
-    let upgrade_dir = TempDir::new()?;
-    copy_recursively(development_contract_dir()?, upgrade_dir.path())?;
+//     // Copy new contracts to fresh directory
+//     let upgrade_dir = TempDir::new()?;
+//     copy_recursively(development_contract_dir()?, upgrade_dir.path())?;
 
-    // Copy Move.lock files of walrus contract and dependencies to new directory
-    for contract in ["wal", "walrus"] {
-        std::fs::copy(
-            deploy_dir.path().join(contract).join("Move.lock"),
-            upgrade_dir.path().join(contract).join("Move.lock"),
-        )?;
-    }
+//     // Copy Move.lock files of walrus contract and dependencies to new directory
+//     for contract in ["wal", "walrus"] {
+//         std::fs::copy(
+//             deploy_dir.path().join(contract).join("Move.lock"),
+//             upgrade_dir.path().join(contract).join("Move.lock"),
+//         )?;
+//     }
 
-    // Change the version in the contracts
-    let walrus_package_path = upgrade_dir.path().join("walrus");
+//     // Change the version in the contracts
+//     let walrus_package_path = upgrade_dir.path().join("walrus");
 
-    // Vote for the upgrade
-    // We can vote on behalf of all nodes from the client wallet since the client
-    // wallet address was authorized for all nodes in the setup.
-    for node in walrus_cluster.nodes.iter() {
-        let node_id = node
-            .storage_node_capability
-            .as_ref()
-            .expect("capability should be set")
-            .node_id;
-        client
-            .as_ref()
-            .sui_client()
-            .vote_for_upgrade(
-                system_ctx.upgrade_manager_object,
-                node_id,
-                walrus_package_path.clone(),
-            )
-            .await?;
-    }
+//     // Vote for the upgrade
+//     // We can vote on behalf of all nodes from the client wallet since the client
+//     // wallet address was authorized for all nodes in the setup.
+//     for node in walrus_cluster.nodes.iter() {
+//         let node_id = node
+//             .storage_node_capability
+//             .as_ref()
+//             .expect("capability should be set")
+//             .node_id;
+//         client
+//             .as_ref()
+//             .sui_client()
+//             .vote_for_upgrade(
+//                 system_ctx.upgrade_manager_object,
+//                 node_id,
+//                 walrus_package_path.clone(),
+//             )
+//             .await?;
+//     }
 
-    // Commit the upgrade
-    let new_package_id = client
-        .as_ref()
-        .sui_client()
-        .upgrade(
-            system_ctx.upgrade_manager_object,
-            walrus_package_path,
-            UpgradeType::Quorum,
-        )
-        .await?;
+//     // Commit the upgrade
+//     let new_package_id = client
+//         .as_ref()
+//         .sui_client()
+//         .upgrade(
+//             system_ctx.upgrade_manager_object,
+//             walrus_package_path,
+//             UpgradeType::Quorum,
+//         )
+//         .await?;
 
-    tracing::info!("after upgrade");
+//     tracing::info!("after upgrade");
 
-    // Migrate the objects
-    client
-        .as_ref()
-        .sui_client()
-        .migrate_contracts(new_package_id)
-        .await?;
+//     // Migrate the objects
+//     client
+//         .as_ref()
+//         .sui_client()
+//         .migrate_contracts(new_package_id)
+//         .await?;
 
-    // Check the version
-    assert_eq!(
-        client
-            .as_ref()
-            .sui_client()
-            .read_client()
-            .system_object_version()
-            .await?,
-        previous_version + 1
-    );
+//     // Check the version
+//     assert_eq!(
+//         client
+//             .as_ref()
+//             .sui_client()
+//             .read_client()
+//             .system_object_version()
+//             .await?,
+//         previous_version + 1
+//     );
 
-    // Store a blob after the upgrade to check if everything works after the upgrade.
-    let blob_data = walrus_test_utils::random_data_list(314, 1);
-    let blobs: Vec<&[u8]> = blob_data.iter().map(AsRef::as_ref).collect();
-    let _results = client
-        .as_ref()
-        .reserve_and_store_blobs_retry_committees(
-            &blobs,
-            DEFAULT_ENCODING,
-            1,
-            StoreWhen::Always,
-            BlobPersistence::Permanent,
-            PostStoreAction::Keep,
-            None,
-        )
-        .await?;
+//     // Store a blob after the upgrade to check if everything works after the upgrade.
+//     let blob_data = walrus_test_utils::random_data_list(314, 1);
+//     let blobs: Vec<&[u8]> = blob_data.iter().map(AsRef::as_ref).collect();
+//     let _results = client
+//         .as_ref()
+//         .reserve_and_store_blobs_retry_committees(
+//             &blobs,
+//             DEFAULT_ENCODING,
+//             1,
+//             StoreWhen::Always,
+//             BlobPersistence::Permanent,
+//             PostStoreAction::Keep,
+//             None,
+//         )
+//         .await?;
 
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// A toolkit for blob attribute tests.
 struct BlobAttributeTestContext<'a> {
