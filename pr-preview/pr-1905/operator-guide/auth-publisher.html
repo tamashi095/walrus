@@ -331,6 +331,9 @@ JWT, if present;</li>
 <li>Verify the size of uploaded file;</li>
 <li>Verify the uniqueness of the <code>jti</code> claim.</li>
 </ul>
+<p>Disabiling the parameter verification may be useful in case the source of the store requests is
+trusted, but the publisher mayy be contacted by untrusted sources. In that case, the authentication
+of the JWT is necessary, but not the verification of the upload parameters.</p>
 <h3 id="replay-suppression-configuration"><a class="header" href="#replay-suppression-configuration">Replay-suppression configuration</a></h3>
 <p>As mentioned above, the publisher supports replay suppression to avoid the malicious reuse of JWT
 tokens.</p>
