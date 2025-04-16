@@ -891,14 +891,12 @@ for an overview over all Walrus networks.</p>
 <a class="admonition-anchor-link" href="usage/setup.html#admonition-quick-wallet-setup"></a>
 </div>
 <div>
-<p>If you just want to set up a new Sui wallet for Walrus, you can skip this section and use the
-<code>walrus generate-sui-wallet</code> command after <a href="usage/setup.html#installation">installing Walrus</a>. In that case, make
-sure to set the <code>wallet_config</code> parameter in the <a href="usage/setup.html#advanced-configuration-optional">Walrus
-configuration</a> to the newly generated wallet. Also, make sure to
-obtain some SUI and WAL tokens.</p>
+<p>If you just want to set up a new Sui wallet for Walrus, you can generate one using the
+<code>walrus generate-sui-wallet --network mainnet</code> command after <a href="usage/setup.html#installation">installing Walrus</a>.
+You still need to obtain some SUI and WAL tokens, but you do not have to install the Sui CLI.</p>
 </div>
 </div>
-<p>Interacting with Walrus requires a valid Sui wallet with some amount of SUI tokens. The
+<p>Interacting with Walrus requires a valid Sui wallet with some amount of SUI and WAL tokens. The
 normal way to set this up is via the Sui CLI; see the <a href="https://docs.sui.io/guides/developer/getting-started/sui-install">installation
 instructions</a> in the Sui
 documentation.</p>
@@ -1152,6 +1150,7 @@ Mainnet. Finally, developers can operate local Walrus and Sui networks for testi
 <h2 id="network-parameters"><a class="header" href="#network-parameters">Network parameters</a></h2>
 <p>Some important fixed system parameters for Mainnet and Testnet are summarized in the following table:</p>
 <div class="table-wrapper"><table><thead><tr><th>Parameter</th><th>Mainnet</th><th>Testnet</th></tr></thead><tbody>
+<tr><td>Sui network</td><td>Mainnet</td><td>Testnet</td></tr>
 <tr><td>Number of shards</td><td>1000</td><td>1000</td></tr>
 <tr><td>Epoch duration</td><td>2 weeks</td><td>1 day</td></tr>
 <tr><td>Maximum number of epochs for which storage can be bought</td><td>53</td><td>53</td></tr>
@@ -1215,7 +1214,8 @@ available.</p>
 <p>Interacting with Walrus requires a valid Sui Testnet wallet with some amount of SUI tokens. The
 normal way to set this up is via the Sui CLI; see the <a href="https://docs.sui.io/guides/developer/getting-started/sui-install">installation
 instructions</a> in the Sui
-documentation.</p>
+documentation. If you do not want to install the Sui CLI, you can also generate a new Sui wallet for
+Testnet using <code>walrus generate-sui-wallet --network testnet</code>.</p>
 <p>After installing the Sui CLI, you need to set up a Testnet wallet by running <code>sui client</code>, which
 prompts you to set up a new configuration. Make sure to point it to Sui Testnet, you can use the
 full node at <code>https://fullnode.testnet.sui.io:443</code> for this. See
