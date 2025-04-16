@@ -6,6 +6,7 @@
 use std::{path::Path, sync::Arc};
 
 use anyhow::Context;
+use indexmap::IndexSet;
 use tokio::{
     runtime::{self, Runtime},
     task::JoinHandle,
@@ -40,8 +41,13 @@ impl EventProcessorRuntime {
         db_config: &DatabaseConfig,
     ) -> anyhow::Result<Arc<EventProcessor>> {
         let runtime_config = EventProcessorRuntimeConfig {
-            rpc_addresses: std::iter::once(sui_reader_config.rpc.clone())
+            rpc_addresses: sui_reader_config
+                .rpc
+                .iter()
+                .cloned()
                 .chain(sui_reader_config.additional_rpc_endpoints.clone())
+                .collect::<IndexSet<String>>()
+                .into_iter()
                 .collect(),
             event_polling_interval: sui_reader_config.event_polling_interval,
             db_path: db_path.join("events"),

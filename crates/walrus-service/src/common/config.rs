@@ -5,6 +5,7 @@
 
 use std::{sync::Arc, time::Duration};
 
+use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 use serde_with::{serde_as, DurationMilliSeconds};
 use walrus_sui::{
@@ -27,7 +28,17 @@ pub struct SuiConfig {
     /// HTTP URL of the Sui full-node RPC endpoint (including scheme). This is used in the event
     /// processor and some other read operations; for all write operations, the RPC URL from the
     /// wallet is used.
-    pub rpc: String,
+    ///
+    /// This field can be omitted if `rpc_urls` is set.
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
+    pub rpc: Option<String>,
+    /// HTTP URLs of the Sui full-node RPC endpoints (including scheme). These are used in the event
+    /// processor and in other read operations; for all write operations, the RPC URL from the
+    /// wallet is used.
+    ///
+    /// For backwards compatibility, if `rpc` is set, it will be added to this list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub rpc_urls: Vec<String>,
     /// Configuration of the contract packages and shared objects.
     #[serde(flatten)]
     pub contract_config: ContractConfig,
@@ -60,8 +71,9 @@ pub struct SuiConfig {
 impl SuiConfig {
     /// Creates a new [`SuiReadClient`] based on the configuration.
     pub async fn new_read_client(&self) -> Result<SuiReadClient, SuiClientError> {
-        SuiReadClient::new_for_rpc(
-            &self.rpc,
+        let combined_rpc_urls = combine_rpc_urls(&self.rpc, &self.rpc_urls);
+        SuiReadClient::new_for_rpc_urls(
+            &combined_rpc_urls,
             &self.contract_config,
             self.backoff_config.clone(),
         )
@@ -108,14 +120,17 @@ impl From<&SuiConfig> for SuiReaderConfig {
     }
 }
 
-/// Backup-specific configuration for Sui.
+/// Reader-specific configuration for Sui.
 #[serde_with::serde_as]
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 pub struct SuiReaderConfig {
     /// HTTP URL of the Sui full-node RPC endpoint (including scheme). This is used in the event
     /// processor and some other read operations; for all write operations, the RPC URL from the
     /// wallet is used.
-    pub rpc: String,
+    ///
+    /// This field can be omitted if `rpc_urls` is set.
+    #[serde(default, skip_serializing_if = "defaults::is_none")]
+    pub rpc: Option<String>,
     /// Configuration of the contract packages and shared objects.
     #[serde(flatten)]
     pub contract_config: ContractConfig,
@@ -132,7 +147,7 @@ pub struct SuiReaderConfig {
     /// The URL of the checkpoint download fallback endpoint.
     #[serde(default, skip_serializing_if = "defaults::is_none")]
     pub rpc_fallback_config: Option<RpcFallbackConfig>,
-    /// Additional RPC endpoints to use for the event processor.
+    /// Additional RPC endpoints to use for failover.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub additional_rpc_endpoints: Vec<String>,
     /// The request timeout for communicating with Sui network.
@@ -143,13 +158,25 @@ pub struct SuiReaderConfig {
 impl SuiReaderConfig {
     /// Creates a new [`SuiReadClient`] based on the configuration.
     pub async fn new_read_client(&self) -> Result<SuiReadClient, SuiClientError> {
-        SuiReadClient::new_for_rpc(
-            &self.rpc,
+        let combined_rpc_urls = combine_rpc_urls(&self.rpc, &self.additional_rpc_endpoints);
+        SuiReadClient::new_for_rpc_urls(
+            &combined_rpc_urls,
             &self.contract_config,
             self.backoff_config.clone(),
         )
         .await
     }
+}
+
+/// Combines the RPC URL and the list of RPC URLs into a single list, ensuring that there are no
+/// duplicates, and maintaining the original order from the config.
+pub fn combine_rpc_urls(rpc: &Option<String>, rpc_urls: &[String]) -> Vec<String> {
+    rpc.iter()
+        .cloned()
+        .chain(rpc_urls.iter().cloned())
+        .collect::<IndexSet<String>>()
+        .into_iter()
+        .collect()
 }
 
 /// Shared configuration defaults.
@@ -176,5 +203,23 @@ pub mod defaults {
         // The `cfg!(test)` check is there to allow serializing the full configuration, specifically
         // to generate the example configuration files.
         !cfg!(test) && t.is_none()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn test_combine_rpc_urls() {
+        let rpc = Some("http://localhost:1".to_string());
+        let rpc_urls = vec![
+            "http://localhost:2".to_string(),
+            "http://localhost:3".to_string(),
+            "http://localhost:1".to_string(),
+        ];
+        let combined = super::combine_rpc_urls(&rpc, &rpc_urls);
+        assert_eq!(combined.len(), 3);
+        assert_eq!(combined[0], "http://localhost:1");
+        assert_eq!(combined[1], "http://localhost:2");
+        assert_eq!(combined[2], "http://localhost:3");
     }
 }

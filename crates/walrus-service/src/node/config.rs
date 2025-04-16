@@ -1060,7 +1060,8 @@ mod tests {
         };
         let config = StorageNodeConfig {
             sui: Some(SuiConfig {
-                rpc: "https://fullnode.testnet.sui.io:443".to_string(),
+                rpc: None,
+                rpc_urls: vec!["https://fullnode.testnet.sui.io:443".to_string()],
                 contract_config,
                 event_polling_interval: defaults::polling_interval(),
                 wallet_config: WalletConfig::from_path(PathBuf::from(

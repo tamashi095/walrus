@@ -27,6 +27,7 @@ use futures::{
     StreamExt,
     TryFutureExt as _,
 };
+use indexmap::IndexSet;
 use itertools::Either;
 use node_recovery::NodeRecoveryHandler;
 use rand::{rngs::StdRng, thread_rng, Rng, SeedableRng};
@@ -397,9 +398,15 @@ impl StorageNodeBuilder {
                     sui_config.event_polling_interval,
                 ))
             } else {
-                let rpc_addresses = std::iter::once(sui_config.rpc.clone())
+                let rpc_addresses = sui_config
+                    .rpc
+                    .iter()
+                    .cloned()
+                    .chain(sui_config.rpc_urls.clone())
                     .chain(sui_config.additional_rpc_endpoints.clone())
-                    .collect();
+                    .collect::<IndexSet<String>>()
+                    .into_iter()
+                    .collect::<Vec<_>>();
                 let processor_config = EventProcessorRuntimeConfig {
                     rpc_addresses,
                     event_polling_interval: sui_config.event_polling_interval,
