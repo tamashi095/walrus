@@ -73,33 +73,36 @@ use walrus_utils::{backoff::ExponentialBackoffConfig, metrics::Registry};
 
 #[cfg(msim)]
 use crate::common::config::SuiConfig;
-use crate::node::{
-    committee::{
-        BeginCommitteeChangeError,
-        CommitteeLookupService,
-        CommitteeService,
-        DefaultNodeServiceFactory,
-        EndCommitteeChangeError,
-        NodeCommitteeService,
-    },
-    config::{self, ConfigSynchronizerConfig, ShardSyncConfig, StorageNodeConfig},
-    contract_service::SystemContractService,
-    errors::{SyncNodeConfigError, SyncShardClientError},
-    events::{
-        event_processor::EventProcessor,
-        CheckpointEventPosition,
-        EventStreamCursor,
-        InitState,
-        PositionedStreamEvent,
-    },
-    server::{RestApiConfig, RestApiServer},
-    system_events::{EventManager, EventRetentionManager, SystemEventProvider},
-    DatabaseConfig,
-    Storage,
-    StorageNode,
-};
 #[cfg(msim)]
 use crate::node::{events::event_processor::EventProcessorRuntimeConfig, ConfigLoader};
+use crate::{
+    common::config::combine_rpc_urls,
+    node::{
+        committee::{
+            BeginCommitteeChangeError,
+            CommitteeLookupService,
+            CommitteeService,
+            DefaultNodeServiceFactory,
+            EndCommitteeChangeError,
+            NodeCommitteeService,
+        },
+        config::{self, ConfigSynchronizerConfig, ShardSyncConfig, StorageNodeConfig},
+        contract_service::SystemContractService,
+        errors::{SyncNodeConfigError, SyncShardClientError},
+        events::{
+            event_processor::EventProcessor,
+            CheckpointEventPosition,
+            EventStreamCursor,
+            InitState,
+            PositionedStreamEvent,
+        },
+        server::{RestApiConfig, RestApiServer},
+        system_events::{EventManager, EventRetentionManager, SystemEventProvider},
+        DatabaseConfig,
+        Storage,
+        StorageNode,
+    },
+};
 
 /// Default buyer subsidy rate (5%)
 const DEFAULT_BUYER_SUBSIDY_RATE: u16 = 500;
