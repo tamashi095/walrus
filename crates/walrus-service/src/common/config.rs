@@ -3,7 +3,7 @@
 
 //! Common configuration module.
 
-use std::{sync::Arc, time::Duration};
+use std::{iter::once, sync::Arc, time::Duration};
 
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
@@ -28,17 +28,7 @@ pub struct SuiConfig {
     /// HTTP URL of the Sui full-node RPC endpoint (including scheme). This is used in the event
     /// processor and some other read operations; for all write operations, the RPC URL from the
     /// wallet is used.
-    ///
-    /// This field can be omitted if `rpc_urls` is set.
-    #[serde(default, skip_serializing_if = "defaults::is_none")]
-    pub rpc: Option<String>,
-    /// HTTP URLs of the Sui full-node RPC endpoints (including scheme). These are used in the event
-    /// processor and in other read operations; for all write operations, the RPC URL from the
-    /// wallet is used.
-    ///
-    /// For backwards compatibility, if `rpc` is set, it will be added to this list.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub rpc_urls: Vec<String>,
+    pub rpc: String,
     /// Configuration of the contract packages and shared objects.
     #[serde(flatten)]
     pub contract_config: ContractConfig,
@@ -68,10 +58,20 @@ pub struct SuiConfig {
     pub request_timeout: Option<Duration>,
 }
 
+/// Combines the main RPC URL with additional RPC endpoints, ensuring uniqueness, and removing
+/// duplicates.
+pub fn combine_rpc_urls(rpc: &str, additional_rpc_endpoints: &[String]) -> Vec<String> {
+    once(rpc.to_string())
+        .chain(additional_rpc_endpoints.iter().cloned())
+        .collect::<IndexSet<String>>()
+        .into_iter()
+        .collect::<Vec<_>>()
+}
+
 impl SuiConfig {
     /// Creates a new [`SuiReadClient`] based on the configuration.
     pub async fn new_read_client(&self) -> Result<SuiReadClient, SuiClientError> {
-        let combined_rpc_urls = combine_rpc_urls(&self.rpc, &self.rpc_urls);
+        let combined_rpc_urls = combine_rpc_urls(&self.rpc, &self.additional_rpc_endpoints);
         SuiReadClient::new_for_rpc_urls(
             &combined_rpc_urls,
             &self.contract_config,
@@ -127,10 +127,7 @@ pub struct SuiReaderConfig {
     /// HTTP URL of the Sui full-node RPC endpoint (including scheme). This is used in the event
     /// processor and some other read operations; for all write operations, the RPC URL from the
     /// wallet is used.
-    ///
-    /// This field can be omitted if `rpc_urls` is set.
-    #[serde(default, skip_serializing_if = "defaults::is_none")]
-    pub rpc: Option<String>,
+    pub rpc: String,
     /// Configuration of the contract packages and shared objects.
     #[serde(flatten)]
     pub contract_config: ContractConfig,
@@ -168,17 +165,6 @@ impl SuiReaderConfig {
     }
 }
 
-/// Combines the RPC URL and the list of RPC URLs into a single list, ensuring that there are no
-/// duplicates, and maintaining the original order from the config.
-pub fn combine_rpc_urls(rpc: &Option<String>, rpc_urls: &[String]) -> Vec<String> {
-    rpc.iter()
-        .cloned()
-        .chain(rpc_urls.iter().cloned())
-        .collect::<IndexSet<String>>()
-        .into_iter()
-        .collect()
-}
-
 /// Shared configuration defaults.
 pub mod defaults {
     use super::*;
@@ -210,12 +196,16 @@ pub mod defaults {
 mod tests {
     #[test]
     fn test_combine_rpc_urls() {
-        let rpc = Some("http://localhost:1".to_string());
+        let rpc = "http://localhost:1".to_string();
         let rpc_urls = vec![
+            "http://localhost:2".to_string(),
             "http://localhost:2".to_string(),
             "http://localhost:3".to_string(),
             "http://localhost:1".to_string(),
+            "http://localhost:3".to_string(),
         ];
+
+        // Check that the duplicates are removed and the order is preserved.
         let combined = super::combine_rpc_urls(&rpc, &rpc_urls);
         assert_eq!(combined.len(), 3);
         assert_eq!(combined[0], "http://localhost:1");

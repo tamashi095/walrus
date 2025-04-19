@@ -50,23 +50,21 @@ impl From<FailoverError> for SuiClientError {
 
 /// A trait that defines the implementation of a function to create an injectable error. Note that
 /// this is only used by the `msim` feature, and is not used in production code.
-pub trait InjectableRetryError {
-    #[cfg(msim)]
-    fn make_injectable_error() -> Self;
+pub trait MakeRetriableError {
+    /// Create an error of this type that would be deemed retriable by the RetriableRpcError trait.
+    fn make_retriable_error() -> Self;
 }
 
-impl InjectableRetryError for SuiClientError {
-    #[cfg(msim)]
-    fn make_injectable_error() -> Self {
+impl MakeRetriableError for SuiClientError {
+    fn make_retriable_error() -> Self {
         SuiClientError::SuiSdkError(sui_sdk::error::Error::RpcError(
             jsonrpsee::core::ClientError::RequestTimeout,
         ))
     }
 }
 
-impl InjectableRetryError for RetriableClientError {
-    #[cfg(msim)]
-    fn make_injectable_error() -> Self {
+impl MakeRetriableError for RetriableClientError {
+    fn make_retriable_error() -> Self {
         RetriableClientError::RetryableTimeoutError
     }
 }
@@ -200,7 +198,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
     where
         F: FnMut(Arc<ClientT>, &'static str) -> Fut,
         Fut: Future<Output = Result<R, E>>,
-        E: InjectableRetryError,
+        E: MakeRetriableError,
         E: ToErrorType + std::fmt::Debug + From<FailoverError>,
     {
         let mut retry_guard = metrics
@@ -214,10 +212,10 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
                 {
                     let mut inject_error = false;
                     fail_point_if!("fallback_client_inject_error", || {
-                        inject_error = should_inject_error(current_index);
+                        inject_error = should_inject_error(retry_count);
                     });
                     if inject_error {
-                        Err(E::make_injectable_error())
+                        Err(E::make_retriable_error())
                     } else {
                         operation(client, method).await
                     }
@@ -277,19 +275,17 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
 mod tests {
     use std::sync::{atomic::AtomicUsize, Arc};
 
-    #[cfg(msim)]
-    use super::InjectableRetryError;
-    use super::{FailoverError, FailoverWrapper, LazyClientBuilder};
-    use crate::client::retry_client::{CheckpointRpcError, RetriableClientError};
-    #[cfg(msim)]
-    use crate::client::SuiClientError;
+    use super::{FailoverError, FailoverWrapper, LazyClientBuilder, MakeRetriableError};
+    use crate::client::{
+        retry_client::{CheckpointRpcError, RetriableClientError, RetriableRpcError},
+        SuiClientError,
+    };
 
-    #[cfg(msim)]
-    fn test_injectable_errors() {
+    #[test]
+    fn test_retriable_errors() {
         // REVIEW: make sure this test fails! then remove this line
-        assert!(false, "this is a test");
-        assert!(SuiClientError::make_injectable_error().is_retriable_rpc_error());
-        assert!(RetriableClientError::make_injectable_error().is_retriable_rpc_error());
+        assert!(SuiClientError::make_retriable_error().is_retriable_rpc_error());
+        assert!(RetriableClientError::make_retriable_error().is_retriable_rpc_error());
     }
 
     // Mock client that counts number of calls and returns configurable results.

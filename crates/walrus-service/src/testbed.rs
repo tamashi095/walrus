@@ -590,7 +590,7 @@ pub async fn create_backup_config(
     Ok(BackupConfig::new_with_defaults(
         working_dir.join("backup"),
         SuiReaderConfig {
-            rpc: Some(rpc_urls.remove(0)),
+            rpc: rpc_urls.remove(0),
             additional_rpc_endpoints: rpc_urls,
             contract_config: system_ctx.contract_config(),
             backoff_config: ExponentialBackoffConfig::default(),
@@ -717,8 +717,7 @@ pub async fn create_storage_node_configs(
         let contract_config = testbed_config.system_ctx.contract_config();
 
         let sui = Some(SuiConfig {
-            rpc: None,
-            rpc_urls: vec![rpc.clone()],
+            rpc: rpc.clone(),
             contract_config,
             event_polling_interval: defaults::polling_interval(),
             wallet_config: WalletConfig::from_path(wallet_path),

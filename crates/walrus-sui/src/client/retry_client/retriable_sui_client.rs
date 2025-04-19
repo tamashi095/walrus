@@ -35,6 +35,8 @@ use sui_sdk::{
     SuiClient,
     SuiClientBuilder,
 };
+#[cfg(msim)]
+use sui_types::transaction::TransactionDataAPI;
 use sui_types::{
     base_types::{ObjectID, SuiAddress, TransactionDigest},
     dynamic_field::derive_dynamic_field_id,
@@ -47,8 +49,6 @@ use tracing::Level;
 use walrus_core::ensure;
 use walrus_utils::backoff::{ExponentialBackoff, ExponentialBackoffConfig};
 
-#[cfg(msim)]
-use super::maybe_return_injected_error_in_stake_pool_transaction;
 use super::{
     failover::{FailoverError, LazyClientBuilder},
     retry_rpc_errors,
@@ -935,6 +935,10 @@ impl RetriableSuiClient {
             client: Arc<SuiClient>,
             transaction: Transaction,
         ) -> SuiClientResult<SuiTransactionBlockResponse> {
+            #[cfg(msim)]
+            {
+                maybe_return_injected_error_in_stake_pool_transaction(&transaction)?;
+            }
             Ok(client
                 .quorum_driver_api()
                 .execute_transaction_block(
@@ -954,13 +958,7 @@ impl RetriableSuiClient {
             // Retry here must use the exact same transaction to avoid locked objects.
             retry_rpc_errors(
                 self.get_strategy(),
-                move || {
-                    #[cfg(msim)]
-                    {
-                        maybe_return_injected_error_in_stake_pool_transaction(&transaction)?;
-                    }
-                    make_request(client.clone(), transaction.clone())
-                },
+                move || make_request(client.clone(), transaction.clone()),
                 self.metrics.clone(),
                 method,
             )
@@ -993,4 +991,55 @@ impl RetriableSuiClient {
             )
             .await
     }
+}
+
+/// Injects a simulated error for testing retry behavior executing sui transactions.
+/// We use stake_with_pool as an example here to incorporate with the test logic in
+/// `test_ptb_executor_retriable_error` in `test_client.rs`.
+#[cfg(msim)]
+fn maybe_return_injected_error_in_stake_pool_transaction(
+    transaction: &sui_types::transaction::Transaction,
+) -> anyhow::Result<()> {
+    // Check if this transaction contains a stake_with_pool operation
+
+    use rand::thread_rng;
+    use sui_macros::fail_point_if;
+
+    let is_stake_pool_tx =
+        transaction
+            .transaction_data()
+            .move_calls()
+            .iter()
+            .any(|(_, _, function_name)| {
+                *function_name == crate::contracts::staking::stake_with_pool.name
+            });
+
+    // Early return if this isn't a stake pool transaction
+    if !is_stake_pool_tx {
+        return Ok(());
+    }
+
+    // Check if we should inject an error via the fail point
+    let mut should_inject_error = false;
+    fail_point_if!("ptb_executor_stake_pool_retriable_error", || {
+        should_inject_error = true;
+    });
+
+    if should_inject_error {
+        tracing::warn!("injecting a retriable RPC error for stake pool transaction");
+
+        let retriable_error = if thread_rng().gen_bool(0.5) {
+            // Simulate a retriable RPC error (502 Bad Gateway).
+            jsonrpsee::core::ClientError::Transport(
+                "server returned an error status code: 502".into(),
+            )
+        } else {
+            // Simulate a request timeout error.
+            jsonrpsee::core::ClientError::RequestTimeout
+        };
+
+        Err(sui_sdk::error::Error::RpcError(retriable_error))?;
+    }
+
+    Ok(())
 }

@@ -3,7 +3,7 @@
 
 //! Walrus event processor runtime.
 
-use std::{path::Path, sync::Arc};
+use std::{iter::once, path::Path, sync::Arc};
 
 use anyhow::Context;
 use indexmap::IndexSet;
@@ -41,11 +41,9 @@ impl EventProcessorRuntime {
         db_config: &DatabaseConfig,
     ) -> anyhow::Result<Arc<EventProcessor>> {
         let runtime_config = EventProcessorRuntimeConfig {
-            rpc_addresses: sui_reader_config
-                .rpc
-                .iter()
+            rpc_addresses: once(&sui_reader_config.rpc)
+                .chain(sui_reader_config.additional_rpc_endpoints.iter())
                 .cloned()
-                .chain(sui_reader_config.additional_rpc_endpoints.clone())
                 .collect::<IndexSet<String>>()
                 .into_iter()
                 .collect(),

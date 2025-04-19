@@ -5,6 +5,7 @@
 
 use std::{
     future::Future,
+    iter::once,
     num::{NonZero, NonZeroU16},
     pin::Pin,
     sync::{
@@ -398,12 +399,9 @@ impl StorageNodeBuilder {
                     sui_config.event_polling_interval,
                 ))
             } else {
-                let rpc_addresses = sui_config
-                    .rpc
-                    .iter()
+                let rpc_addresses = once(&sui_config.rpc)
+                    .chain(sui_config.additional_rpc_endpoints.iter())
                     .cloned()
-                    .chain(sui_config.rpc_urls.clone())
-                    .chain(sui_config.additional_rpc_endpoints.clone())
                     .collect::<IndexSet<String>>()
                     .into_iter()
                     .collect::<Vec<_>>();

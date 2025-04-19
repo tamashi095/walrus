@@ -896,8 +896,7 @@ mod commands {
             rest_api_address,
             metrics_address,
             sui: Some(SuiConfig {
-                rpc: None,
-                rpc_urls: vec![sui_rpc],
+                rpc: sui_rpc,
                 contract_config,
                 wallet_config: WalletConfig::from_path(&wallet_config),
                 event_polling_interval: config::defaults::polling_interval(),
