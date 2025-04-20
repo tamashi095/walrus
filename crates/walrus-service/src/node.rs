@@ -417,7 +417,7 @@ impl StorageNodeBuilder {
                     system_object_id: sui_config.contract_config.system_object,
                     staking_object_id: sui_config.contract_config.staking_object,
                 };
-                let x = Box::new(
+                Box::new(
                     EventProcessor::new(
                         &config.event_processor_config,
                         processor_config,
@@ -425,8 +425,7 @@ impl StorageNodeBuilder {
                         &metrics_registry,
                     )
                     .await?,
-                );
-                x
+                )
             }
         };
 

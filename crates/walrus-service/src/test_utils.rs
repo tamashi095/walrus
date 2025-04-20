@@ -2126,7 +2126,7 @@ where
         self.as_ref()
             .inner
             .sync_node_params(config, node_capability_object_id)
-            .await;
+            .await
     }
 
     async fn end_voting(&self) -> Result<(), anyhow::Error> {
