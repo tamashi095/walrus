@@ -247,7 +247,7 @@ where
             let _ = tx.send(val);
         })
         .expect("failed to spawn thread");
-    rx.await.expect("failed to recieve result from thread")
+    rx.await.expect("failed to receive result from thread")
 }
 
 impl StorageNodeHandleTrait for StorageNodeHandle {
@@ -275,6 +275,9 @@ impl StorageNodeHandleTrait for StorageNodeHandle {
         _start_node: bool,
         _disable_event_blob_writer: bool,
     ) -> anyhow::Result<Self> {
+        // This process can take exorbitant amounts of stack memory due to the number of concurrent
+        // storage nodes. Let's move each storage node onto its own thread with a slightly larger
+        // stack.
         spawn_with_large_stack(2 << 20, builder.build()).await
     }
     // StorageNodeHandle is only used in integration test without crash and recovery. No need to
