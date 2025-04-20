@@ -25,7 +25,7 @@ pub trait LazyClientBuilder<C> {
 struct FailoverState<ClientT> {
     client: Arc<ClientT>,
     rpc_url: Option<String>,
-    index: usize,
+    current_index: usize,
 }
 
 /// An error that can occur when using the failover wrapper.
@@ -106,7 +106,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
             state: Arc::new(Mutex::new(FailoverState {
                 client: lazy_client_builders[0].lazy_build_client().await?,
                 rpc_url: lazy_client_builders[0].get_rpc_url().map(|s| s.to_string()),
-                index: 0,
+                current_index: 0,
             })),
             lazy_client_builders,
         })
@@ -160,7 +160,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
             // PLAN phase.
 
             // Compute the next wrapped index.
-            let next_index = (state.index + 1) % self.client_count();
+            let next_index = (state.current_index + 1) % self.client_count();
 
             // Load the next client.
             let client = match self.lazy_client_builders[next_index]
@@ -176,7 +176,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
             };
 
             // COMMIT phase. NB: never fail during this phase.
-            state.index = next_index;
+            state.current_index += 1;
             state.client = client.clone();
             state.rpc_url = self.lazy_client_builders[next_index]
                 .get_rpc_url()
@@ -211,8 +211,9 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
                 #[cfg(msim)]
                 {
                     let mut inject_error = false;
+                    let current_index = self.state.lock().await.current_index;
                     fail_point_if!("fallback_client_inject_error", || {
-                        inject_error = should_inject_error(retry_count);
+                        inject_error = should_inject_error(current_index);
                     });
                     if inject_error {
                         Err(E::make_retriable_error())
