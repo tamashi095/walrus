@@ -8,8 +8,6 @@ use std::{future::Future, sync::Arc, time::Duration};
 use sui_macros::fail_point_if;
 use tokio::sync::Mutex;
 
-#[cfg(msim)]
-use super::should_inject_error;
 use super::{retry_count_guard::RetryCountGuard, RetriableClientError, ToErrorType};
 use crate::client::{SuiClientError, SuiClientMetricSet};
 
@@ -102,7 +100,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
             return Err(anyhow::anyhow!("No clients available"));
         }
         Ok(Self {
-            max_failovers: Self::DEFAULT_MAX_RETRIES.min(lazy_client_builders.len()),
+            max_failovers: Self::DEFAULT_MAX_RETRIES.min(lazy_client_builders.len() - 1),
             state: Arc::new(Mutex::new(FailoverState {
                 client: lazy_client_builders[0].lazy_build_client().await?,
                 rpc_url: lazy_client_builders[0].get_rpc_url().map(|s| s.to_string()),
@@ -148,12 +146,12 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
         // It may be the case that the LazyClientBuilder fails to connect to a client, but let's not
         // let that stop us from trying the next one.
         loop {
-            // Increment the retry count.
+            // Increment the failover count.
             *failover_count += 1;
 
             if *failover_count > self.max_failovers {
                 return Err(FailoverError::FailedToGetClient(
-                    "max retries exceeded".to_string(),
+                    "max failovers exceeded".to_string(),
                 ));
             }
 
@@ -205,17 +203,30 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
             .as_ref()
             .map(|m| RetryCountGuard::new(m.clone(), format!("{method}_with_failover").as_str()));
         let mut client = self.get_current_client().await;
-        let mut retry_count = 0;
+        let mut failover_count = 0;
         loop {
             let result = {
                 #[cfg(msim)]
                 {
                     let mut inject_error = false;
-                    let current_index = self.state.lock().await.current_index;
                     fail_point_if!("fallback_client_inject_error", || {
-                        inject_error = should_inject_error(current_index);
+                        // Only inject an error if we have multiple clients and we have one valid
+                        // client in the tank.
+                        inject_error = self.client_count() > 1
+                            && failover_count < self.max_failovers
+                            && rand::random::<bool>();
                     });
                     if inject_error {
+                        tracing::warn!(
+                            "Injecting an RPC error during failover loop [
+                                method={method}, \
+                                client_count={client_count}, \
+                                failover_count={failover_count}, \
+                                max_failovers={max_failovers}\
+                            ]",
+                            client_count = self.client_count(),
+                            max_failovers = self.max_failovers,
+                        );
                         Err(E::make_retriable_error())
                     } else {
                         operation(client, method).await
@@ -237,7 +248,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
                 }
                 Err(error) => {
                     let failed_rpc_url = self.get_current_rpc_url().await;
-                    match self.fetch_next_client(&mut retry_count).await {
+                    match self.fetch_next_client(&mut failover_count).await {
                         Ok(next_client) => {
                             client = next_client;
                             let next_rpc_url = self.get_current_rpc_url().await;

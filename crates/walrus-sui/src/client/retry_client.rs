@@ -166,28 +166,3 @@ impl ToErrorType for RetriableClientError {
         }
     }
 }
-
-#[cfg(msim)]
-fn should_inject_error(current_index: usize) -> bool {
-    tracing::info!("[should_inject_error] current_index: {}", current_index);
-    // For even indices, always inject error
-    if current_index % 2 == 1 {
-        tracing::warn!(
-            "Injecting a RPC error for fallback client {} (odd index)",
-            current_index
-        );
-        true
-    } else {
-        // For odd indices, 50% chance
-        let should_fail = rand::random::<bool>();
-        if should_fail {
-            tracing::warn!(
-                "Injecting a RPC error for fallback client {} (even index, random)",
-                current_index
-            );
-            true
-        } else {
-            false
-        }
-    }
-}
