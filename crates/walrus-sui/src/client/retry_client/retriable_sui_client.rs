@@ -441,7 +441,6 @@ impl RetriableSuiClient {
             object_id: ObjectID,
             options: SuiObjectDataOptions,
         ) -> SuiClientResult<SuiObjectResponse> {
-            walrus_utils::crumb!();
             Ok(client
                 .read_api()
                 .get_object_with_options(object_id, options.clone())
@@ -457,7 +456,6 @@ impl RetriableSuiClient {
                 method,
             )
         };
-        walrus_utils::crumb!();
         self.failover_sui_client
             .with_failover(request, None, "get_object_with_options")
             .await
@@ -661,14 +659,12 @@ impl RetriableSuiClient {
     where
         U: AssociatedContractStruct,
     {
-        walrus_utils::crumb!();
         let sui_object_response = self
             .get_object_with_options(
                 object_id,
                 SuiObjectDataOptions::new().with_bcs().with_type(),
             )
             .await?;
-        walrus_utils::crumb!();
         get_sui_object_from_object_response(&sui_object_response)
     }
 

@@ -1910,13 +1910,10 @@ async fn test_blob_attribute_add_and_remove() -> TestResult {
 async fn test_blob_attribute_fields_operations() -> TestResult {
     telemetry_subscribers::init_for_testing();
 
-    walrus_utils::crumb!("PROGRESS");
     let (_sui_cluster_handle, _cluster, mut client, _) =
         test_cluster::E2eTestSetupBuilder::new().build().await?;
-    walrus_utils::crumb!("PROGRESS");
     let mut test_context = BlobAttributeTestContext::new(&mut client).await?;
 
-    walrus_utils::crumb!("PROGRESS");
     // Test adding a pair without attribute should fail.
     let result = test_context
         .insert_or_update_attribute_pairs_and_verify(
@@ -1933,7 +1930,6 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
         SuiClientError::AttributeDoesNotExist
     ));
 
-    walrus_utils::crumb!("PROGRESS");
     // Test removing a pair without an existing attribute should fail.
     let result = test_context
         .remove_blob_attribute_pairs_and_verify(&[&"key".to_string()])
@@ -1947,7 +1943,6 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
         SuiClientError::AttributeDoesNotExist
     ));
 
-    walrus_utils::crumb!("PROGRESS");
     test_context
         .insert_or_update_attribute_pairs_and_verify(
             &HashMap::from([("key".to_string(), "value".to_string())]),
@@ -1955,7 +1950,6 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
         )
         .await?;
 
-    walrus_utils::crumb!("PROGRESS");
     let kvs = test_context.key_value_pairs.clone();
     // Test adding individual pairs.
     test_context
@@ -1977,7 +1971,6 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
     let initial_value = "initial_value".to_string();
     let updated_value = "updated_value".to_string();
 
-    walrus_utils::crumb!("PROGRESS");
     test_context
         .insert_or_update_attribute_pairs_and_verify(
             &HashMap::from([(key.clone(), initial_value.clone())]),
@@ -1991,7 +1984,6 @@ async fn test_blob_attribute_fields_operations() -> TestResult {
         )
         .await?;
 
-    walrus_utils::crumb!("PROGRESS");
     // Test removing non-existent pairs.
     let non_existing_key = "non_existing_key".to_string();
     let result = test_context

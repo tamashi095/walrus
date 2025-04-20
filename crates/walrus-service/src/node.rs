@@ -369,7 +369,6 @@ impl StorageNodeBuilder {
         config: &StorageNodeConfig,
         metrics_registry: Registry,
     ) -> Result<StorageNode, anyhow::Error> {
-        walrus_utils::crumb!("PROGRESS");
         let protocol_key_pair = config
             .protocol_key_pair
             .get()
@@ -382,13 +381,11 @@ impl StorageNodeBuilder {
                     "either a Sui config or an event provider and committee service \
                             factory must be specified",
                 );
-                walrus_utils::crumb!("PROGRESS");
                 Some((create_read_client(sui_config).await?, sui_config))
             } else {
                 None
             };
 
-        walrus_utils::crumb!("PROGRESS");
         let event_manager: Box<dyn EventManager> = if let Some(event_manager) = self.event_manager {
             event_manager
         } else {
@@ -429,14 +426,12 @@ impl StorageNodeBuilder {
                     )
                     .await?,
                 );
-                walrus_utils::crumb!("PROGRESS");
                 x
             }
         };
 
         let committee_service: Arc<dyn CommitteeService> =
             if let Some(service) = self.committee_service {
-                walrus_utils::crumb!("PROGRESS");
                 service
             } else {
                 let (read_client, _) = sui_config_and_client
@@ -447,11 +442,9 @@ impl StorageNodeBuilder {
                     .metrics_registry(&metrics_registry)
                     .build(read_client)
                     .await?;
-                walrus_utils::crumb!("PROGRESS");
                 Arc::new(service)
             };
 
-        walrus_utils::crumb!("PROGRESS");
         let contract_service: Arc<dyn SystemContractService> = if let Some(service) =
             self.contract_service
         {
@@ -469,14 +462,13 @@ impl StorageNodeBuilder {
                     .await?,
             )
         };
-        walrus_utils::crumb!("PROGRESS");
 
         let node_params = NodeParameters {
             pre_created_storage: self.storage,
             num_checkpoints_per_blob: self.num_checkpoints_per_blob,
         };
 
-        let x = StorageNode::new(
+        StorageNode::new(
             config,
             event_manager,
             committee_service,
@@ -485,9 +477,7 @@ impl StorageNodeBuilder {
             self.config_loader,
             node_params,
         )
-        .await;
-        walrus_utils::crumb!("PROGRESS");
-        x
+        .await
     }
 }
 
@@ -557,12 +547,10 @@ impl StorageNode {
     ) -> Result<Self, anyhow::Error> {
         let start_time = Instant::now();
         let metrics = NodeMetricSet::new(registry);
-        walrus_utils::crumb!("PROGRESS");
 
         let node_capability = contract_service
             .get_node_capability_object(config.storage_node_cap)
             .await?;
-        walrus_utils::crumb!("PROGRESS");
 
         tracing::info!(
             walrus.node.id = %node_capability.id.to_hex_uncompressed(),
@@ -581,7 +569,6 @@ impl StorageNode {
                     node_capability.id,
                     config_loader,
                 )));
-        walrus_utils::crumb!("PROGRESS");
 
         contract_service
             .sync_node_params(config, node_capability.id)
@@ -593,7 +580,6 @@ impl StorageNode {
                     Ok(())
                 }
             })?;
-        walrus_utils::crumb!("PROGRESS");
 
         let encoding_config = committee_service.encoding_config().clone();
 
@@ -655,13 +641,10 @@ impl StorageNode {
 
         let shard_sync_handler =
             ShardSyncHandler::new(inner.clone(), config.shard_sync_config.clone());
-        walrus_utils::crumb!("PROGRESS");
         // Upon restart, resume any ongoing blob syncs if there is any.
         shard_sync_handler.restart_syncs().await?;
-        walrus_utils::crumb!("PROGRESS");
 
         let system_parameters = contract_service.fixed_system_parameters().await?;
-        walrus_utils::crumb!("PROGRESS");
         let epoch_change_driver = EpochChangeDriver::new(
             system_parameters,
             contract_service.clone(),
@@ -672,9 +655,7 @@ impl StorageNode {
 
         let node_recovery_handler =
             NodeRecoveryHandler::new(inner.clone(), blob_sync_handler.clone());
-        walrus_utils::crumb!("PROGRESS");
         node_recovery_handler.restart_recovery().await?;
-        walrus_utils::crumb!("PROGRESS");
 
         tracing::debug!(
             "num_checkpoints_per_blob for event blobs: {:?}",
@@ -682,7 +663,6 @@ impl StorageNode {
         );
 
         let last_certified_event_blob = contract_service.last_certified_event_blob().await?;
-        walrus_utils::crumb!("PROGRESS");
         let event_blob_writer_factory = if !config.disable_event_blob_writer {
             Some(EventBlobWriterFactory::new(
                 &config.storage_path,
@@ -716,7 +696,6 @@ impl StorageNode {
 
     /// Run the walrus-node logic until cancelled using the provided cancellation token.
     pub async fn run(&self, cancel_token: CancellationToken) -> anyhow::Result<()> {
-        walrus_utils::crumb!();
         if let Err(error) = self
             .epoch_change_driver
             .schedule_relevant_calls_for_current_epoch()

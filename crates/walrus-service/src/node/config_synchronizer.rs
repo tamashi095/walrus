@@ -130,17 +130,11 @@ impl ConfigSynchronizer {
     /// Synchronously syncs the node parameters with the on-chain values.
     pub async fn sync_node_params(&self) -> Result<(), SyncNodeConfigError> {
         if let Some(config_loader) = &self.config_loader {
-            walrus_utils::crumb!();
             let config = config_loader.load_storage_node_config().await?;
-            walrus_utils::crumb!();
-            let x = self
-                .contract_service
+            self.contract_service
                 .sync_node_params(&config, self.node_capability_object_id)
-                .await;
-            walrus_utils::crumb!();
-            x
+                .await
         } else {
-            walrus_utils::crumb!();
             Ok(())
         }
     }

@@ -597,9 +597,7 @@ impl SuiReadClient {
         &self,
         owner: SuiAddress,
     ) -> SuiClientResult<Option<StorageNodeCap>> {
-        walrus_utils::crumb!();
         let mut node_capabilities = self.get_owned_objects::<StorageNodeCap>(owner, &[]).await?;
-        walrus_utils::crumb!();
 
         match node_capabilities.next() {
             Some(cap) => {

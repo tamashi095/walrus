@@ -196,7 +196,6 @@ impl SuiSystemContractServiceBuilder {
         config: &SuiConfig,
         committee_service: Arc<dyn CommitteeService>,
     ) -> Result<SuiSystemContractService, anyhow::Error> {
-        walrus_utils::crumb!("build_from_config");
         Ok(self.build(
             config
                 .new_contract_client(
@@ -261,23 +260,19 @@ impl SuiSystemContractService {
         &self,
         node_capability_object_id: ObjectID,
     ) -> Result<SyncedNodeConfigSet, anyhow::Error> {
-        walrus_utils::crumb!();
         let node_capability = self
             .get_node_capability_object(Some(node_capability_object_id))
             .await?;
-        walrus_utils::crumb!();
         let pool = self
             .read_client
             .get_staking_pool(node_capability.node_id)
             .await?;
-        walrus_utils::crumb!();
 
         let node_info = pool.node_info.clone();
         let metadata = self
             .read_client
             .get_node_metadata(node_info.metadata)
             .await?;
-        walrus_utils::crumb!();
 
         Ok(SyncedNodeConfigSet {
             name: node_info.name,
@@ -379,11 +374,9 @@ impl SystemContractService for SuiSystemContractService {
         config: &StorageNodeConfig,
         node_capability_object_id: ObjectID,
     ) -> Result<(), SyncNodeConfigError> {
-        walrus_utils::crumb!();
         let synced_config = self
             .get_synced_node_config_set(node_capability_object_id)
             .await?;
-        walrus_utils::crumb!();
 
         tracing::debug!("on-chain synced config: {:?}", synced_config);
 
@@ -396,10 +389,8 @@ impl SystemContractService for SuiSystemContractService {
             synced_config.public_key.clone(),
             synced_config.next_public_key.clone(),
         )?;
-        walrus_utils::crumb!();
         let contract_client: tokio::sync::MutexGuard<'_, SuiContractClient> =
             self.contract_tx_client.lock().await;
-        walrus_utils::crumb!();
         match action {
             ProtocolKeyAction::UpdateRemoteNextPublicKey(next_public_key) => {
                 tracing::info!(
@@ -423,7 +414,6 @@ impl SystemContractService for SuiSystemContractService {
             }
             ProtocolKeyAction::DoNothing => {}
         }
-        walrus_utils::crumb!();
 
         if update_params.needs_update() {
             tracing::info!(
@@ -444,7 +434,6 @@ impl SystemContractService for SuiSystemContractService {
                 "node parameters are in sync with on-chain values"
             );
         }
-        walrus_utils::crumb!();
 
         Ok(())
     }
@@ -583,15 +572,12 @@ impl SystemContractService for SuiSystemContractService {
         node_capability_object_id: Option<ObjectID>,
     ) -> Result<StorageNodeCap, SuiClientError> {
         let node_capability = if let Some(node_cap) = node_capability_object_id {
-            walrus_utils::crumb!();
             self.read_client
                 .sui_client()
                 .get_sui_object(node_cap)
                 .await?
         } else {
-            walrus_utils::crumb!();
             let address = self.contract_tx_client.lock().await.address();
-            walrus_utils::crumb!();
             self.read_client
                 .get_address_capability_object(address)
                 .await?
