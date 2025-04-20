@@ -227,6 +227,7 @@ impl<ClientT, BuilderT: LazyClientBuilder<ClientT> + std::fmt::Debug>
                             client_count = self.client_count(),
                             max_failovers = self.max_failovers,
                         );
+                        walrus_utils::crumb!("Injecting error");
                         Err(E::make_retriable_error())
                     } else {
                         operation(client, method).await

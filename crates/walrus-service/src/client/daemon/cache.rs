@@ -92,7 +92,10 @@ impl CacheConfig {
         T: Eq + Debug + Hash + Send + Sync + 'static,
     {
         let (mut cache, handle) = self.build();
-        tokio::spawn(async move { cache.run().await });
+        tokio::spawn(async move {
+            walrus_utils::crumb!("PROGRESS");
+            cache.run().await
+        });
         handle
     }
 }

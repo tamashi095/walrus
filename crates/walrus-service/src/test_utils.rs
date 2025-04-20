@@ -26,7 +26,7 @@ use sui_types::base_types::ObjectID;
 use tempfile::TempDir;
 #[cfg(msim)]
 use tokio::sync::RwLock;
-use tokio::{task::JoinHandle, time::Duration};
+use tokio::{sync::oneshot, task::JoinHandle, time::Duration};
 use tokio_stream::{wrappers::BroadcastStream, Stream};
 use tokio_util::sync::CancellationToken;
 use tracing::Instrument as _;
@@ -233,6 +233,25 @@ pub struct StorageNodeHandle {
     pub node_runtime_handle: Option<JoinHandle<()>>,
 }
 
+async fn spawn_with_large_stack<F, T>(stack_size: usize, fut: F) -> T
+where
+    F: std::future::Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = oneshot::channel();
+    let builder = std::thread::Builder::new().stack_size(stack_size);
+    builder
+        .spawn(move || {
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            walrus_utils::crumb!("launching future in large stack");
+            let val = rt.block_on(fut);
+            walrus_utils::crumb!("completed future in large stack");
+            let _ = tx.send(val);
+        })
+        .expect("failed to spawn thread");
+    rx.await.expect("failed to recieve result from thread")
+}
+
 impl StorageNodeHandleTrait for StorageNodeHandle {
     fn cancel(&self) {
         self.cancel.cancel();
@@ -258,9 +277,14 @@ impl StorageNodeHandleTrait for StorageNodeHandle {
         _start_node: bool,
         _disable_event_blob_writer: bool,
     ) -> anyhow::Result<Self> {
-        builder.build().await
+        walrus_utils::crumb!("PROGRESS IN");
+        spawn_with_large_stack(16 << 20, async move {
+            let x = builder.build().await;
+            walrus_utils::crumb!("PROGRESS OUT");
+            x
+        })
+        .await
     }
-
     // StorageNodeHandle is only used in integration test without crash and recovery. No need to
     // use distinct IP.
     fn use_distinct_ip() -> bool {
@@ -465,6 +489,7 @@ impl SimStorageNodeHandle {
         tokio::task::JoinHandle<Result<(), anyhow::Error>>,
         tokio::task::JoinHandle<Result<(), anyhow::Error>>,
     )> {
+        walrus_utils::crumb!("PROGRESS");
         // TODO(#996): extract the common code to start the code, and use it here as well as in
         // StorageNodeRuntime::start.
         let config = config.read().await.clone();
@@ -595,6 +620,7 @@ impl StorageNodeHandleTrait for SimStorageNodeHandle {
     where
         Self: Sized,
     {
+        walrus_utils::crumb!("PROGRESS");
         let num_checkpoints_per_blob = builder.num_checkpoints_per_blob.as_ref().cloned();
         let node_capability = builder.storage_node_capability.as_ref().cloned();
         builder
@@ -891,6 +917,7 @@ impl StorageNodeHandleBuilder {
 
         let cancel_token = CancellationToken::new();
 
+        walrus_utils::crumb!("PROGRESS");
         if let Some(event_processor) = self.event_provider.as_event_processor() {
             let cloned_cancel_token = cancel_token.clone();
             let cloned_event_processor = event_processor.clone();
@@ -906,6 +933,7 @@ impl StorageNodeHandleBuilder {
             .await?;
         }
 
+        walrus_utils::crumb!("PROGRESS");
         let metrics_registry = Registry::default();
         let mut builder = StorageNode::builder();
         if let Some(num_checkpoints_per_blob) = self.num_checkpoints_per_blob {
@@ -920,6 +948,7 @@ impl StorageNodeHandleBuilder {
             .with_system_contract_service(contract_service)
             .build(&config, metrics_registry.clone())
             .await?;
+        walrus_utils::crumb!("PROGRESS");
         let node = Arc::new(node);
 
         let rest_api = Arc::new(RestApiServer::new(
@@ -934,7 +963,9 @@ impl StorageNodeHandleBuilder {
 
             tokio::task::spawn(
                 async move {
+                    walrus_utils::crumb!("PROGRESS");
                     let status = rest_api_clone.run().await;
+                    walrus_utils::crumb!("PROGRESS");
                     if let Err(error) = status {
                         tracing::error!(?error, "REST API stopped with an error");
                         std::process::exit(1);
@@ -952,7 +983,9 @@ impl StorageNodeHandleBuilder {
 
             Some(tokio::task::spawn(
                 async move {
+                    walrus_utils::crumb!("PROGRESS");
                     let status = node.run(cancel_token).await;
+                    walrus_utils::crumb!("PROGRESS");
                     if let Err(error) = status {
                         tracing::error!(?error, "node stopped with an error");
                         std::process::exit(1);
@@ -973,8 +1006,11 @@ impl StorageNodeHandleBuilder {
             .tls_built_in_root_certs(false)
             .build_for_remote_ip(config.rest_api_address)?;
 
+        walrus_utils::crumb!("PROGRESS");
         if self.run_rest_api {
+            walrus_utils::crumb!("PROGRESS");
             wait_for_rest_api_ready(&client).await?;
+            walrus_utils::crumb!("PROGRESS");
         }
 
         Ok(StorageNodeHandle {
@@ -1447,6 +1483,7 @@ impl SystemContractService for StubContractService {
         _config: &StorageNodeConfig,
         _node_capability_object_id: ObjectID,
     ) -> Result<(), SyncNodeConfigError> {
+        walrus_utils::crumb!();
         Ok(())
     }
 
@@ -1675,7 +1712,10 @@ impl TestClusterBuilder {
             storage_node_configs: TestClusterBuilder::default()
                 .storage_node_configs
                 .into_iter()
-                .map(|config| StorageNodeTestConfig::new(config.shards, use_distinct_ip))
+                .map(|config| {
+                    walrus_utils::crumb!("shards = {:?}", config.shards);
+                    StorageNodeTestConfig::new(config.shards, use_distinct_ip)
+                })
                 .collect(),
             use_distinct_ip,
             ..Default::default()
@@ -1896,7 +1936,9 @@ impl TestClusterBuilder {
             .zip(self.disable_event_blob_writer.into_iter())
             .enumerate()
         {
+            walrus_utils::crumb!("PROGRESS");
             let storage = empty_storage_with_shards(&config.shards).await;
+            walrus_utils::crumb!("PROGRESS");
             let local_identity = config.key_pair.public().clone();
             let builder = StorageNodeHandle::builder()
                 .with_storage(storage)
@@ -1936,6 +1978,7 @@ impl TestClusterBuilder {
                     (lookup_service, lookup_service_handle)
                 });
 
+                walrus_utils::crumb!("PROGRESS");
                 let service = NodeCommitteeService::builder()
                     .local_identity(local_identity)
                     .build_with_factory(
@@ -1943,6 +1986,7 @@ impl TestClusterBuilder {
                         DefaultNodeServiceFactory::avoid_system_services(),
                     )
                     .await?;
+                walrus_utils::crumb!("PROGRESS");
                 builder.with_committee_service(Arc::new(service))
             };
 
@@ -1963,6 +2007,7 @@ impl TestClusterBuilder {
             ));
         }
 
+        walrus_utils::crumb!("PROGRESS");
         // Returns error if any storage node fails to build and start.
         let nodes = future::join_all(node_futures)
             .await
@@ -1972,6 +2017,7 @@ impl TestClusterBuilder {
                 result.with_context(|| format!("Failed to start storage node {}", idx))
             })
             .collect::<Result<Vec<_>, _>>()?;
+        walrus_utils::crumb!("PROGRESS");
 
         Ok(TestCluster {
             nodes,
@@ -2107,10 +2153,14 @@ where
         config: &StorageNodeConfig,
         node_capability_object_id: ObjectID,
     ) -> Result<(), SyncNodeConfigError> {
-        self.as_ref()
+        walrus_utils::crumb!();
+        let x = self
+            .as_ref()
             .inner
             .sync_node_params(config, node_capability_object_id)
-            .await
+            .await;
+        walrus_utils::crumb!();
+        x
     }
 
     async fn end_voting(&self) -> Result<(), anyhow::Error> {
@@ -2324,6 +2374,7 @@ pub mod test_cluster {
             WithTempDir<client::Client<SuiContractClient>>,
             SystemContext,
         )> {
+            walrus_utils::crumb!("PROGRESS");
             #[cfg(not(msim))]
             let sui_cluster = test_utils::using_tokio::global_sui_test_cluster();
             #[cfg(msim)]
@@ -2332,6 +2383,7 @@ pub mod test_cluster {
                     self.num_additional_fullnodes,
                 )
                 .await;
+            walrus_utils::crumb!("PROGRESS");
 
             let sui_rpc_urls: Vec<String> = {
                 let cluster = sui_cluster.lock().await;
@@ -2344,6 +2396,7 @@ pub mod test_cluster {
             // Get a wallet on the global sui test cluster
             let mut admin_wallet =
                 test_utils::new_wallet_on_sui_test_cluster(sui_cluster.clone()).await?;
+            walrus_utils::crumb!("PROGRESS");
 
             let test_nodes_config = self.test_nodes_config.unwrap_or_else(|| TestNodesConfig {
                 node_weights: vec![1, 2, 3, 3, 4],
@@ -2361,6 +2414,7 @@ pub mod test_cluster {
             let cluster_builder = TestCluster::<T>::builder()
                 .with_shard_assignment(&vec![[]; test_nodes_config.node_weights.len()]);
 
+            walrus_utils::crumb!("PROGRESS");
             // Get the default committee from the test cluster builder
             let (members, protocol_keypairs): (Vec<_>, Vec<_>) = cluster_builder
                 .storage_node_test_configs()
@@ -2374,6 +2428,7 @@ pub mod test_cluster {
                 })
                 .unzip();
 
+            walrus_utils::crumb!("PROGRESS");
             let system_ctx = create_and_init_system_for_test(
                 &mut admin_wallet.inner,
                 n_shards,
@@ -2393,6 +2448,7 @@ pub mod test_cluster {
             let mut node_wallet_dirs = Vec::with_capacity(n_nodes);
             let mut blocklist_files = Vec::with_capacity(n_nodes);
             let mut disable_event_blob_writers = Vec::with_capacity(n_nodes);
+            walrus_utils::crumb!("PROGRESS");
 
             for (i, wallet) in
                 test_utils::create_and_fund_wallets_on_cluster(sui_cluster.clone(), n_nodes)
@@ -2417,6 +2473,7 @@ pub mod test_cluster {
                 Box::leak(Box::new(client.temp_dir));
             }
             let contract_clients_refs = contract_clients.iter().collect::<Vec<_>>();
+            walrus_utils::crumb!("PROGRESS");
 
             let contract_config = system_ctx.contract_config();
 
@@ -2448,6 +2505,7 @@ pub mod test_cluster {
                     .set_subsidies_object(subsidies_object_id)
                     .await?;
             }
+            walrus_utils::crumb!("PROGRESS");
 
             let amounts_to_stake = test_nodes_config
                 .node_weights
@@ -2476,12 +2534,15 @@ pub mod test_cluster {
                 }
             }
 
+            walrus_utils::crumb!("PROGRESS");
             end_epoch_zero(contract_clients_refs.first().unwrap()).await?;
 
+            walrus_utils::crumb!("PROGRESS");
             // Build the walrus cluster
             let sui_read_client = admin_contract_client.as_ref().read_client().clone();
 
             let committee_services = future::join_all(contract_clients.iter().map(|_| async {
+                walrus_utils::crumb!("PROGRESS");
                 let service: Arc<dyn CommitteeService> = Arc::new(
                     NodeCommitteeService::builder()
                         .build_with_factory(
@@ -2491,9 +2552,11 @@ pub mod test_cluster {
                         .await
                         .expect("service construction must succeed in tests"),
                 );
+                walrus_utils::crumb!("PROGRESS");
                 service
             }))
             .await;
+            walrus_utils::crumb!("PROGRESS");
 
             // Create a contract service for the storage nodes using a wallet in a temp dir.
             let node_contract_services = contract_clients
@@ -2509,9 +2572,14 @@ pub mod test_cluster {
 
             let event_processor_config = Default::default();
             let cluster_builder = if test_nodes_config.use_legacy_event_processor {
-                setup_legacy_event_processors(sui_read_client.clone(), cluster_builder).await?
+                walrus_utils::crumb!("PROGRESS");
+                let x =
+                    setup_legacy_event_processors(sui_read_client.clone(), cluster_builder).await?;
+                walrus_utils::crumb!("PROGRESS");
+                x
             } else {
-                setup_checkpoint_based_event_processors(
+                walrus_utils::crumb!("PROGRESS");
+                let x = setup_checkpoint_based_event_processors(
                     &event_processor_config,
                     sui_rpc_urls.as_slice(),
                     sui_read_client.clone(),
@@ -2519,7 +2587,9 @@ pub mod test_cluster {
                     system_ctx.system_object,
                     system_ctx.staking_object,
                 )
-                .await?
+                .await?;
+                walrus_utils::crumb!("PROGRESS");
+                x
             };
 
             let cluster_builder =
@@ -2547,8 +2617,12 @@ pub mod test_cluster {
                 );
             let cluster = {
                 // Lock to avoid race conditions.
+                walrus_utils::crumb!("PROGRESS");
                 let _lock = global_test_lock().lock().await;
-                cluster_builder.build().await?
+                walrus_utils::crumb!("PROGRESS");
+                let x = cluster_builder.build().await?;
+                walrus_utils::crumb!("PROGRESS");
+                x
             };
 
             // Create the client with the admin wallet to ensure that we have some WAL.
@@ -2562,6 +2636,7 @@ pub mod test_cluster {
                 refresh_config: Default::default(),
             };
 
+            walrus_utils::crumb!("PROGRESS");
             let client = admin_contract_client
                 .and_then_async(|contract_client| {
                     client::Client::new_contract_client_with_refresher(config, contract_client)
