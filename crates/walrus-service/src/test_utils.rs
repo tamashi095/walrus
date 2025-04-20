@@ -275,7 +275,7 @@ impl StorageNodeHandleTrait for StorageNodeHandle {
         _start_node: bool,
         _disable_event_blob_writer: bool,
     ) -> anyhow::Result<Self> {
-        spawn_with_large_stack(16 << 20, builder.build()).await
+        spawn_with_large_stack(2 << 20, builder.build()).await
     }
     // StorageNodeHandle is only used in integration test without crash and recovery. No need to
     // use distinct IP.
