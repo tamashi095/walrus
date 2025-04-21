@@ -238,16 +238,23 @@ where
     F: std::future::Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    let (tx, rx) = oneshot::channel();
-    let builder = std::thread::Builder::new().stack_size(stack_size);
-    builder
-        .spawn(move || {
-            let rt = tokio::runtime::Runtime::new().unwrap();
-            let val = rt.block_on(fut);
-            let _ = tx.send(val);
-        })
-        .expect("failed to spawn thread");
-    rx.await.expect("failed to receive result from thread")
+    #[cfg(msim)]
+    {
+        fut.await
+    }
+    #[cfg(not(msim))]
+    {
+        let (tx, rx) = oneshot::channel();
+        let builder = std::thread::Builder::new().stack_size(stack_size);
+        builder
+            .spawn(move || {
+                let rt = tokio::runtime::Runtime::new().unwrap();
+                let val = rt.block_on(fut);
+                let _ = tx.send(val);
+            })
+            .expect("failed to spawn thread");
+        rx.await.expect("failed to receive result from thread")
+    }
 }
 
 impl StorageNodeHandleTrait for StorageNodeHandle {
